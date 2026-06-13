@@ -1,0 +1,79 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Axle — loading-states preview</title>
+<style>
+:root { --bg:#f5f5f4; --surface:#fff; --surface-2:#fafaf9; --ink:#1c1917; --ink-2:#57534e; --muted:#78716c; --border:#e7e5e4; --border-2:#d6d3d1; --accent:#166534; --accent-soft:#dcfce7; --info-bg:#dbeafe; --info-fg:#1e40af; --r-ctl:6px; }
+body { font-family: system-ui, sans-serif; font-size:14px; background:var(--bg); color:var(--ink); margin:0; padding:24px; }
+h1 { font-size:18px; } h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-2); margin:28px 0 8px; }
+.demo { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; max-width:680px; }
+.note { color:var(--muted); font-size:12px; margin:4px 0 0; }
+@keyframes ax-spin { to { transform: rotate(360deg); } }
+@keyframes ax-appear { to { opacity:1; } }
+@keyframes ax-bar { 0% { background-position-x:-40%; } 100% { background-position-x:140%; } }
+@keyframes ax-shimmer { to { background-position-x:-200%; } }
+.spin { display:inline-block; width:12px; height:12px; border:2px solid var(--border-2); border-top-color:var(--accent); border-radius:50%; animation:ax-spin .7s linear infinite; vertical-align:-2px; }
+/* top bar (looping for the demo) */
+.topbar { position:fixed; top:0; left:0; right:0; height:3px; z-index:200; background:linear-gradient(90deg, transparent, var(--accent), transparent); background-size:40% 100%; background-repeat:no-repeat; background-position-x:-40%; animation:ax-bar 1.1s ease-in-out infinite; }
+/* queue card */
+.qcard { display:block; padding:10px 12px; border-bottom:1px solid var(--border); background:var(--surface); max-width:360px; border:1px solid var(--border); }
+.qcard span { display:flex; justify-content:space-between; gap:8px; }
+.q-from { font-weight:600; } .q-time { font-size:12px; color:var(--muted); } .q-subj { font-size:13px; }
+.qcard.ax-loading .q-time { position:relative; color:transparent; }
+.qcard.ax-loading .q-time::after { content:""; position:absolute; right:0; top:50%; margin-top:-6px; width:12px; height:12px; border:2px solid var(--accent-soft); border-top-color:var(--accent); border-radius:50%; animation:ax-spin .7s linear infinite; }
+/* workpane overlay */
+.workdemo { position:relative; height:150px; border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:12px; overflow:hidden; }
+.workdemo.ax-loading::after { content:""; position:absolute; inset:0; background:rgba(255,255,255,.55); opacity:0; animation:ax-appear .15s ease .18s forwards; }
+.workdemo.ax-loading::before { content:""; position:absolute; top:38%; left:50%; width:28px; height:28px; margin-left:-14px; border:3px solid var(--accent-soft); border-top-color:var(--accent); border-radius:50%; opacity:0; animation:ax-spin .8s linear infinite, ax-appear .15s ease .18s forwards; z-index:1; }
+/* buttons */
+button { font:inherit; padding:8px 14px; border-radius:var(--r-ctl); border:1px solid var(--border-2); background:var(--surface); cursor:pointer; }
+button.send { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+button.ax-busy { opacity:.7; pointer-events:none; }
+button.ax-busy::after { content:""; display:inline-block; width:11px; height:11px; margin-left:7px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:ax-spin .7s linear infinite; vertical-align:-1px; }
+/* skeleton */
+.qskel { padding:12px; border-bottom:1px solid var(--border); max-width:360px; }
+.qskel span { display:block; height:10px; border-radius:5px; margin:7px 0; background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size:200% 100%; animation:ax-shimmer 1.2s linear infinite; }
+.qskel span:nth-child(1){width:55%} .qskel span:nth-child(2){width:85%} .qskel span:nth-child(3){width:70%}
+/* banner */
+.banner { background:var(--info-bg); color:var(--info-fg); padding:10px 14px; border-radius:6px; font-weight:600; max-width:640px; }
+.banner.busy::before { content:""; display:inline-block; width:13px; height:13px; margin-right:8px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:ax-spin .8s linear infinite; vertical-align:-2px; }
+/* translation pending */
+.trbox { background:#f8fafc; border:1px solid var(--info-bg); border-left:3px solid #93c5fd; border-radius:6px; padding:10px 12px; max-width:640px; }
+</style></head><body>
+<div class="topbar"></div>
+<h1>Axle — loading states (UX round 2026-06-11)</h1>
+<p class="note">The green bar at the very top = any full-page navigation (every Save / Send / status / sync / link). In the app it appears only while a request is in flight, with a 0.2s delay so fast pages never flash it.</p>
+
+<h2>1 · Queue card clicked → item loading</h2>
+<div class="demo">
+  <a class="qcard ax-loading" href="#" onclick="return false">
+    <span><span class="q-from">Knut Hoffmann</span><span class="q-time">Today 10:32am</span></span>
+    <span><span class="q-subj">Bestellung Turret TF534</span></span>
+  </a>
+  <p class="note">The clicked card's timestamp becomes a spinner; the work pane (below) dims under a centred spinner after 0.18s.</p>
+  <div style="height:8px"></div>
+  <div class="workdemo ax-loading"><b>#42 Previous item</b><p class="note">Current pane content stays visible but dimmed — no blank flash.</p></div>
+</div>
+
+<h2>2 · Submitted buttons lock &amp; spin</h2>
+<div class="demo">
+  <button class="send ax-busy">Send reply to kunde@firma.de</button>
+  <button class="ax-busy">Save</button>
+  <button class="ax-busy">Attach PDF</button>
+  <p class="note">Every form button: Send, Save, Save &amp; redraft, status changes, chip menus, SAP-doc render (Crystal takes seconds), block, sync, compose.</p>
+</div>
+
+<h2>3 · Translation no longer blocks the page</h2>
+<div class="demo">
+  <div class="trbox"><p class="note" style="margin:0 0 6px">Translated for you — the customer wrote in German.</p><span class="spin"></span> Translating…</div>
+  <p class="note">The item now renders instantly; the translation fills in from a background call (and is cached, so only the very first view per language shows this).</p>
+</div>
+
+<h2>4 · Deep-link: queue skeleton while it loads</h2>
+<div class="demo">
+  <div class="qskel"><span></span><span></span><span></span></div>
+  <div class="qskel"><span></span><span></span><span></span></div>
+</div>
+
+<h2>5 · Investigating banner is visibly alive</h2>
+<div class="demo">
+  <div class="banner busy">Axle is investigating — this page refreshes automatically.</div>
+</div>
+</body></html>

@@ -45,9 +45,9 @@ one step at a time, with a control gate after each step.
 - **Vendor all assets locally** (htmx, its sse extension, any SVG icons). The box serves a
   Tailscale-only network — no CDN references.
 - **Jack is live in the tool.** Deploy in small, reversible increments, outside his busy
-  moments, server restart windows kept short. Mirror discipline as always: build in
-  `box-code/`, Taildrop + `axle-pull.ps1`, new filenames placed manually once, restart,
-  verify live via Chrome over Tailscale.
+  moments, server restart windows kept short. Box-local discipline as always: build in
+  `C:\Admin\Projects\Axle\box-code`, promote to `C:\Axle\app` via `axle-pull.ps1`, new filenames
+  placed manually once, restart, verify live via Chrome over Tailscale.
 - Existing functionality must all survive: search, sort, filters, translations, attachments
   (incl. paste-snippets + inline [image:N]), SAP-doc attach + suggestions, compose, contact-form
   flow, block-sender, resolution reasons, owner reassign, language re-tag, audit search.
@@ -146,8 +146,9 @@ one step at a time, with a control gate after each step.
    accessibility pass (focus order, contrast, hit targets), Jack/Rob feedback fixes.
    Gate: rollout sign-off; roadmap updated.
 
-Each step: build in the mirror, sandbox harness on real routes, `node --check`, deploy via
-Taildrop + axle-pull, restart, live-verify via Chrome over Tailscale, update the roadmap file,
+Each step: build in `box-code`, sandbox harness on real routes, `node --check`, promote locally
+(`axle-pull.ps1` from `C:\Admin\Projects\Axle\box-code` → `C:\Axle\app`), restart, live-verify via
+Chrome over Tailscale, update the roadmap file,
 re-run the injection harness if anything near the engine/send path was touched (it shouldn't be).
 
 ## Verification standards

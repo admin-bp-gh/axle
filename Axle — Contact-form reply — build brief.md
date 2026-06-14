@@ -80,8 +80,9 @@ The human is the trust anchor (exactly as Compose). The free-text Message is dat
 
 One concrete step at a time, Brad confirms each; explain-before-act; draft-before-send; least
 privilege; **draft-only until Brad enables the new action at a gate**. Box is Windows-only
-(PowerShell/GUI); build on the Mac mirror (`box-code/`), deploy via Taildrop + `axle-pull.ps1`
-(all files here pre-exist except any brand-new module, which needs one manual placement); restart
+(PowerShell/GUI); build in `C:\Admin\Projects\Axle\box-code` on the box and promote locally to
+`C:\Axle\app` via `axle-pull.ps1` (all files here pre-exist except any brand-new module, which needs
+one manual placement); restart
 Axle Server after `server.js`/`db.js` changes; validate in the sandbox (node --check + harnesses)
 before deploy. Update the roadmap + memory each session.
 

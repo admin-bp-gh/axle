@@ -1,5 +1,13 @@
 # Axle — Status & Roadmap
 
+> **Working environment (updated 2026-06-13):** Development now runs on the Axle box itself
+> under the `bradmin` account — the MacBook is retired. Source-of-record is `C:\Admin\Projects\Axle`
+> (git, SSH-signed commits → private GitHub `admin-bp-gh/axle`). Rollout is **box-local**: promote
+> from `C:\Admin\Projects\Axle\box-code` into the live runtime `C:\Axle\app` on the same machine
+> (copy changed files → `node --check` → restart Axle Server) — no cross-machine Taildrop. Dated
+> entries below that mention building on the Mac or `axle-send.sh`/Taildrop describe the prior
+> two-machine flow and are kept as history.
+
 > **Consolidated-questions round (2026-06-11): BUILT & SANDBOX-VERIFIED (34/34,
 > `Axle/harness/harness-questions.js`; harness-bugs 23/23 + harness-loading 37/37 +
 > harness-suggest 21/21 + harness-unread 9/9 still green), NOT yet deployed.**
@@ -606,8 +614,9 @@ asks the salesperson any human checks it needs, and presents a prioritised inbox
 draft reply. A human reviews, edits, approves, and sends — every send and every system change
 gated by explicit human approval and an action allow-list Brad controls item by item.
 
-**Architecture (locked):** Brad builds from his MacBook; Axle runs on a dedicated on-prem
-Windows 11 machine in Gouda (inherits the SAP IP whitelist). No public surface — access only via
+**Architecture (locked):** Brad builds on the Axle box itself (`bradmin` account, source in
+`C:\Admin\Projects\Axle`); Axle runs as the low-privilege `axle` user on that same dedicated
+on-prem Windows 11 machine in Gouda (inherits the SAP IP whitelist). No public surface — access only via
 Tailscale. Dedicated Anthropic org under `axle@budget-parts.nl`. Built on existing MCP connectors
 and skills (info-triage, sap-sql, purchasing, SAP read/write, Shopify, M365) plus a new MyParcel
 connector. Read-only before write; draft before send; least-privilege service accounts per system;
@@ -1083,8 +1092,12 @@ New file `translate.js`; changed `server.js`, `db.js`, `engine.js`.
   views; more human, less-fluffy draft tone.
 - **Voicemail caller lookup:** voicemail@hipservice.nl emails are matched to OCRD by phone
   (last-9-digit normalisation across +31 / 0031 / 0 / spacing); match shown in inbox/item.
-- **Transfer workflow:** Taildrop replaces the clipboard paste — `axle-send.sh` (Mac) +
-  `axle-pull.ps1` (box, routes to app/ or hardening/, runs node --check). See box conventions.
+- **Rollout (box-local, from 2026-06-13):** dev and runtime are on the same machine now — promote
+  from `C:\Admin\Projects\Axle\box-code` into `C:\Axle\app` locally (copy changed files → `node --check`
+  → restart Axle Server); new asset/CSS files placed once by hand, `axle-pull.ps1` handles the JS
+  (repointed from the old Mac Taildrop inbox to the local `C:\Admin` source). No Mac, no Taildrop.
+  Isolation holds: the `axle` user never reads `C:\Admin`; `bradmin` places the built files into
+  `C:\Axle\app`. See box conventions.
 - **Ingest:** optional `unread` mode (`node ingest.js <box> [count] unread`) processes only
   unread mail — now meaningful since handled items get marked read.
 

@@ -68,3 +68,22 @@ button green → near-black brand** (green demoted to accent/success only, per s
 ---
 
 ## Pass log
+
+### Pass 1 — token-first retheme applied
+
+**Changed:** `tokens.css` rewritten to the Polaris token set; `components.css` 21 primitive/chrome edits (white header + green brand mark, primary & **Send** → near-black `--brand`, Polaris badge tones, selection/hover green→grey/brand, subtle card shadow, off-palette hexes replaced, focus ring → Polaris blue `#005bd3`); `ui.js` asset version → `polaris1`. No HTML/logic/route/contract changes.
+
+**Build/test:** `node --check views/ui.js` ✓. CSS brace balance ✓ (tokens 1/1, components 267/267). Boot smoke ✓ — stubbed server serves `/`, `/item/:id`, `/queue`, `/blocks`, `/audit`. Headless-Chromium render at 1440×900 + 390×844 + 360: **all scenes clean — 0 console errors/warnings, 0 horizontal overflow.**
+
+**Defects found:**
+- **P2-1 (responsive):** mobile was stacked panes — queue capped at 45vh above the detail, context dumped at the bottom — not the required single-column list→detail with a back affordance.
+- **P2-2 (a11y):** mobile tap targets below 44px (queue tabs 32, seg 26, mini buttons 22, sort select 28, header links 16).
+- Non-defect (test env only): emoji glyphs (📎 attachment, voicemail icon) render as tofu in the sandbox Chromium (no emoji font); they render normally on the team's browsers.
+
+### Pass 2 — mobile list→detail + accessibility floor
+
+**Changed:** `views/ui.js` `workPanes()` gains an optional sticky mobile **Back** bar + a `.has-item` marker; `routes/item.js` passes the Back label; `components.css` mobile `@media (max-width:1100px)` rewritten to a **pure-CSS `:has()` single-column list→detail** flow (queue is the list; tapping an item shows the detail full-screen with a sticky Back bar; works with htmx swaps and without JS); touch targets raised to **≥44px**; the in-detail `.backrow` link hidden on mobile (the sticky bar replaces it); header links → 44px.
+
+**Build/test:** `node --check` ui.js + item.js ✓. Braces 280/280 ✓. Render: desktop 1440 still 3-pane (unchanged); mobile 390/360 now list→detail; deep-link `/item/:id` and htmx card-tap both resolve to full-screen detail; **0 console errors, 0 horizontal overflow** at every viewport. Tap-target re-probe: seg/tab/mini/select/compose/sync/header-links all **44px**. Keyboard focus ring = Polaris blue `#005bd3`, visible.
+
+**Defects fixed:** P2-1 ✓ (list→detail), P2-2 ✓ (44px), P3 duplicate Back link on mobile ✓ (hidden). No new P1/P2.

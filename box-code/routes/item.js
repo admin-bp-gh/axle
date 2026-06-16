@@ -660,7 +660,7 @@ app.get("/item/:id", async (req, res) => {
   const context = `
     ${sapDocsCard}
     <div class="box"><details><summary>${esc(t(lang, "what_checked"))}</summary><pre class="mail">${esc(w.brief_md || t(lang, "none_paren"))}</pre></details></div>`;
-  const panes = workPanes(center, context);
+  const panes = workPanes(center, context, { back: t(lang, "back_inbox") });
 
   // htmx queue-card click: swap only the work panes (the queue stays put). While
   // the item is busy, a small self-poller re-swaps the panes every 10s — a

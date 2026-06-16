@@ -33,7 +33,7 @@
   --warn-bg: #ffeaba;  --warn-fg: #5a4200;  /* needs answer / attention */
   --info-bg: #e1eeff;  --info-fg: #00405e;  /* investigating / info */
   --new-bg: #ededed;   --new-fg: #616161;   /* new / neutral */
-  --off-bg: #f1f1f1;   --off-fg: #8a8a8a;   /* done / archived */
+  --off-bg: #f1f1f1;   --off-fg: #616161;   /* done / archived (AA-legible) */
   --bad-bg: #ffe9e8;   --bad-fg: #8e1f0b;   /* injection / critical */
   --mark: #ffe066;                          /* search hits */
 

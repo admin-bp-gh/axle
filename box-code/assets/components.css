@@ -21,7 +21,7 @@ header .brand::before { content: ""; width: 16px; height: 16px; border-radius: 5
 header .who { margin-left: auto; font-size: var(--fs-sm); color: var(--ink-2); display: flex; align-items: center; gap: var(--s3); }
 header a { color: var(--ink-2); text-decoration: none; padding: 2px 0; border-bottom: 2px solid transparent; }
 header a:hover { color: var(--ink); }
-.langtoggle a { color: var(--faint); padding: 0 2px; font-weight: 600; }
+.langtoggle a { color: var(--ink-2); padding: 0 2px; font-weight: 600; }
 .langtoggle a.on { color: var(--ink); text-decoration: underline; }
 .langtoggle .sep { color: var(--faint); }
 

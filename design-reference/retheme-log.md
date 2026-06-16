@@ -1,0 +1,70 @@
+# Axle — Polaris retheme & hardening log
+
+Branch `axle/polaris-retheme`. One entry per pass: defects found (with severity),
+fixes applied, build/test result. `main` stays deployable throughout.
+
+## Scope & ground truth (read first)
+
+The kickoff brief describes the app as "React + Tailwind + shadcn/ui (Radix)". That
+describes the **reference mock** (`design-reference/AxlePolaris.jsx`), not this repo.
+The real Axle frontend is **Express + server-rendered HTML (template literals in
+`views/ui.js` + `routes/*.js`), HTMX 2.x + SSE, no build step**, themed by a CSS
+custom-property design system: `assets/tokens.css` (the token layer) +
+`assets/components.css` (the primitives & chrome). React/Vite/Tailwind/shadcn were
+explicitly rejected in the locked UI-rework decisions.
+
+So the token-first instruction maps **onto `tokens.css`**, not a `tailwind.config`. This
+is the cleaner expression of the same idea: change the token values, retheme the shared
+primitive classes, and the look cascades. All component logic, routes, HTMX wiring,
+approval-gate logging, streaming, and SAP/Shopify calls are untouched — this is
+presentation + responsive + bug hardening only.
+
+### Test rig (how "run the build / test in Chrome" is honoured here)
+
+No bundler ⇒ "build" = `node --check` on every touched JS file + a boot smoke test that
+fetches the real routes. The box runs at the Gouda office reachable only over Tailscale,
+and this work happens in an isolated sandbox that can't reach Brad's Chrome — so the
+browser testing is done with **headless Chromium driven in-sandbox** (Puppeteer) against
+the **real Express server** booted with the existing Step-0 harness stubs
+(`better-sqlite3`→`node:sqlite`, network/model modules stubbed) and the deterministic
+fixture DB (9 work items across every state). Same rigour the brief asks for: two
+viewports, full flow exercise, console capture, before/after screenshots — just not
+Brad's physical browser. Nothing about the app changed to enable this; the stubs and
+fixtures are the project's own harness.
+
+## Token mapping (current → Polaris)
+
+| token | was (stone/green) | now (Polaris) | note |
+|---|---|---|---|
+| `--bg` | `#f5f5f4` | `#f1f1f1` | app background |
+| `--surface` | `#ffffff` | `#ffffff` | cards/rows |
+| `--surface-2` | `#fafaf9` | `#fafafa` | subtle fills |
+| `--ink` | `#1c1917` | `#303030` | primary text = brand |
+| `--ink-2` | `#57534e` | `#616161` | secondary text |
+| `--muted` | `#78716c` | `#616161` | muted text |
+| `--faint` | `#a8a29e` | `#8a8a8a` | disabled |
+| `--border` | `#e7e5e4` | `#e3e3e3` | hairlines |
+| `--border-2` | `#d6d3d1` | `#d4d4d4` | control borders (kept slightly stronger for affordance) |
+| `--border-sub` | — | `#ebebeb` | new: subtle inner dividers |
+| `--brand` | (was `--ink`) | `#303030` | new: primary buttons near-black |
+| `--brand-hover` | — | `#1a1a1a` | new |
+| `--accent` | `#166534` | `#008060` | accent ONLY (brand mark + success); never a primary button |
+| `--accent-strong` | `#14532d` | `#006e52` | accent hover |
+| `--accent-soft` | `#dcfce7` | `#e3f9ec` | success fill / selected card |
+| success badge | `#dcfce7`/`#166534` | `#e3f9ec`/`#0c5132` | |
+| attention badge | `#fef3c7`/`#92400e` | `#ffeaba`/`#5a4200` | |
+| info badge | `#dbeafe`/`#1e40af` | `#e1eeff`/`#00405e` | |
+| neutral badge | `#e7e5e4`/`#44403c` | `#ededed`/`#616161` | |
+| `--r-ctl` | `6px` | `8px` | controls |
+| `--r-card` | `10px` | `12px` | cards |
+| `--r-chip` | `999px` | `8px` | Polaris badges are 8px rounded rects, not pills |
+| `--fs-base` | `14px` | `13px` (20px line) | Polaris body density (also improves NL fit) |
+| focus ring | green `#86efac` | `#005bd3` | Polaris focus indicator — high contrast on white & near-black |
+
+Biggest visible shifts: **dark header → white header** with a green brand mark; **Send
+button green → near-black brand** (green demoted to accent/success only, per spec); body
+13px.
+
+---
+
+## Pass log

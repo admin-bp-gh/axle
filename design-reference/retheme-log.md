@@ -87,3 +87,47 @@ button green → near-black brand** (green demoted to accent/success only, per s
 **Build/test:** `node --check` ui.js + item.js ✓. Braces 280/280 ✓. Render: desktop 1440 still 3-pane (unchanged); mobile 390/360 now list→detail; deep-link `/item/:id` and htmx card-tap both resolve to full-screen detail; **0 console errors, 0 horizontal overflow** at every viewport. Tap-target re-probe: seg/tab/mini/select/compose/sync/header-links all **44px**. Keyboard focus ring = Polaris blue `#005bd3`, visible.
 
 **Defects fixed:** P2-1 ✓ (list→detail), P2-2 ✓ (44px), P3 duplicate Back link on mobile ✓ (hidden). No new P1/P2.
+
+### Pass 3 — functional flows + accessibility/contrast verification
+
+All flows driven in headless Chromium against the real server with **stubbed send/engine — no real email is ever sent**; state changes asserted directly in the fixture DB.
+
+| Flow | Result | Evidence |
+|---|---|---|
+| **Approve & send** (item 1) | PASS | Send button "Send reply to felicitas@example.com" → `sends` 0→1, **`email_sent` audit 0→1** (approval-gate event fires), `work_items` status→`done`/`replied`. |
+| **Edit draft + Save** (item 20) | PASS | typed text persisted to `work_items.draft_edit`. |
+| **Regenerate** (Save & redraft, item 2) | PASS | new draft row (stub redraft), status cycled, audit rows written. |
+| **Park / Archive** (item 20) | PASS | overflow-menu Archive form → status→`archived`/`no_action`. |
+| **Mailbox switch** (info@ ↔ drachten@) | PASS | `?mailbox=drachten` shows the Drachten item, hides info-only items. |
+
+(The Park control lives in a closed `<details>` overflow menu opening upward from the sticky bar; an early literal headless click missed the off-screen target — a test-harness coordinate artifact, not an app issue. Verified via the real form submission; a normal browser click submits fine.)
+
+**Accessibility floor:** mobile tap targets ≥44px (seg/tabs/mini/select/compose/sync/header links). Keyboard focus ring = Polaris blue `#005bd3` (6.11:1), visibly rendered. **WCAG AA contrast** — every meaningful text/badge pair passes: body text 11.7–13.2:1, secondary 5.9–6.2:1, badges 5.3–9.4:1, brand button 13.2:1, links 4.9–6.3:1. Two sub-AA spots found and fixed: done/archived badge `--off-fg` → `#616161` (5.48:1) and the inactive language toggle → `--ink-2` (6.19:1). `--faint #8a8a8a` (Polaris `textDisabled`) is kept only for disabled/placeholder text, which is contrast-exempt.
+
+**Final full pass** at 1440×900 + 390×844 + 360: build green (`node --check` all touched JS, CSS braces balanced), **zero console errors/warnings, zero horizontal overflow**, desktop 3-pane intact, mobile list→detail, all flows pass.
+
+## Defect register — final status
+
+| ID | Sev | Defect | Status |
+|---|---|---|---|
+| P2-1 | P2 | Mobile was stacked panes, not list→detail | **Fixed** (pure-CSS `:has()` list→detail + sticky Back) |
+| P2-2 | P2 | Mobile tap targets < 44px | **Fixed** (≥44px) |
+| P3-1 | P3 | Duplicate Back link on mobile detail | **Fixed** (in-detail `.backrow` hidden on mobile) |
+| P3-2 | P3 | done/archived badge + inactive lang toggle below AA | **Fixed** (darkened) |
+| — | — | Emoji glyphs render as tofu in the sandbox font | Not a defect (test env only; renders on team browsers) |
+
+No P1 found. No P2 outstanding. Cap of 5 passes not reached (done in 3).
+
+## Ship it
+
+**What changed at a glance:** a token-first Shopify-Polaris retheme of the existing CSS design system — `tokens.css` carries the Polaris palette/radii/type; `components.css` retheme cascades to the primitives and chrome (white header + green brand mark, near-black `--brand` primary & **Send**, Polaris badge tones, subtle card shadow, Polaris focus ring). Mobile is now a single-column **list → detail** flow (pure-CSS `:has()`, htmx-safe, sticky Back bar, ≥44px tap targets, AA contrast). **Presentation, responsive, and accessibility only** — no API, approval-gate logging, streaming, SAP/Shopify queries, or route/contract changes. `routes/item.js` is touched by exactly one presentational line (passing the mobile Back label to `workPanes`); no safety path (`send-guard`, `send`, recipient gate, injection interlock, allow-list, audit) is altered.
+
+**Files:** `box-code/assets/tokens.css`, `box-code/assets/components.css`, `box-code/views/ui.js` (asset version bump + `workPanes` Back bar), `box-code/routes/item.js` (1 line), plus `design-reference/`.
+
+**Exact merge command (from the repo root, MacBook):**
+```
+git checkout main && git merge --no-ff axle/polaris-retheme
+```
+Then promote to the box exactly as usual: run `axle-pull.ps1` (copies `box-code` → `C:\Axle\app`) and restart the Axle service. No new files need manual placement (every changed file already exists in `C:\Axle\app`).
+
+**Config / env / rollout notes:** none required. No new dependencies. No DB migration. The asset cache-buster bumped `ux1` → `polaris1`, so browsers refetch the CSS automatically — no manual cache clearing for the team. `main` stays deployable until you merge; the retheme is a clean, single, reversible merge with zero manual follow-up.

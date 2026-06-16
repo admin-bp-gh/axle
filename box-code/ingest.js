@@ -46,7 +46,7 @@ function sinceFor(box) {
 function briefMd(seed, toolLog) {
   return [
     `## Investigation (${toolLog.length} tool calls)`,
-    toolLog.map((t) => `- ${t.ok ? "OK" : "FAIL"} ${t.tool} - ${t.purpose}\n  ${t.input.replace(/\s+/g, " ").slice(0, 160)}`).join("\n") || "- none",
+    toolLog.map((t) => `- ${t.ok ? "OK" : "FAIL"} ${t.tool} - ${t.purpose}\n  ${t.input.replace(/\s+/g, " ").slice(0, 160)}` + (t.result ? `\n  → ${String(t.result).replace(/\s+/g, " ").slice(0, 200)}` : "")).join("\n") || "- none",
     "",
     "## Seed context",
     "```json",

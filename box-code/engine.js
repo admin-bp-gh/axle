@@ -347,6 +347,9 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       toolLog.push({
         tool: block.name, ok, purpose: block.input.purpose || "",
         input: String(block.input.sql || block.input.query || block.input.term || ""),
+        // Short snippet of what came back, so every lookup (incl. discount reads) is reviewable.
+        result: ok ? stripInvisible(JSON.stringify(out)).slice(0, 240)
+                   : String((out && out.error) || "").slice(0, 200),
       });
       // D1: tool results are untrusted too (poisoned SAP/Shopify fields) - sanitise.
       content.push({ type: "tool_result", tool_use_id: block.id, content: stripInvisible(JSON.stringify(out)).slice(0, 4000) });

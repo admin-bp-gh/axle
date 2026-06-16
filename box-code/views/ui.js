@@ -508,7 +508,7 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ux1";
+const ASSET_V = "polaris1";
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -610,9 +610,11 @@ document.addEventListener("click", function (e) {
 // htmx to replace #workpane's contents with the same fragment GET /item/:id returns
 // for an HX request, so browsing never reloads the queue. Server-rendered HTML
 // throughout; without JS every queue card is a plain link and the page still works.
-const workPanes = (centerHtml, contextHtml) =>
-  `<section class="pane-center"><div class="pane-inner">${centerHtml}</div></section>
+const workPanes = (centerHtml, contextHtml, opts) => {
+  const back = opts && opts.back;   // mobile Back bar label; also marks this as a real item view
+  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/">${esc(back)}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
 <aside class="pane-context">${contextHtml}</aside>`;
+};
 
 // queueHtml is either the inline-rendered queue (GET /) or lazyQueue() below.
 const shell = (queueHtml, panesHtml) =>

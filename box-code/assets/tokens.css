@@ -1,51 +1,58 @@
-/* tokens.css - Axle design tokens (UI rework Step 1, 2026-06-10).
+/* tokens.css - Axle design tokens. Polaris retheme (2026-06-16).
    Single source of truth for colour, spacing, type, radii and borders.
-   Light theme only. Neutral stone palette + deep-green accent (Brad, 2026-06-10)
-   + status hues. Spacing on an 8px grid. NL strings run ~20% longer than EN:
-   nothing here fixes widths. */
+   Shopify-Polaris-derived: cool neutral greys, near-black brand for primary
+   actions, deep-green as an ACCENT only (brand mark + success tone) — never a
+   primary button. Light theme. Spacing on an 8px grid. NL strings run ~20%
+   longer than EN; the 13px body buys back some room. */
 
 :root {
-  /* -- neutrals (warm stone) -- */
-  --bg: #f5f5f4;            /* page background */
+  /* -- neutrals (Polaris cool grey) -- */
+  --bg: #f1f1f1;            /* page background */
   --surface: #ffffff;       /* cards, table rows */
-  --surface-2: #fafaf9;     /* table heads, subtle fills */
-  --ink: #1c1917;           /* primary text */
-  --ink-2: #57534e;         /* secondary text */
-  --muted: #78716c;         /* muted text */
-  --faint: #a8a29e;         /* placeholders, disabled */
-  --border: #e7e5e4;        /* hairlines */
-  --border-2: #d6d3d1;      /* control borders */
+  --surface-2: #fafafa;     /* table heads, subtle fills, hover/selected */
+  --ink: #303030;           /* primary text */
+  --ink-2: #616161;         /* secondary text */
+  --muted: #616161;         /* muted text */
+  --faint: #8a8a8a;         /* placeholders, disabled */
+  --border: #e3e3e3;        /* hairlines (cards, rows) */
+  --border-2: #d4d4d4;      /* control borders (kept a touch stronger for affordance) */
+  --border-sub: #ebebeb;    /* subtle inner dividers (card heads, separators) */
 
-  /* -- accent: deep green (matches Send; Land Rover calm) -- */
-  --accent: #166534;
-  --accent-strong: #14532d; /* hover / active */
-  --accent-soft: #dcfce7;   /* soft fills */
-  --accent-ring: #86efac;   /* focus ring */
+  /* -- brand: near-black (Shopify primary buttons) -- */
+  --brand: #303030;
+  --brand-hover: #1a1a1a;   /* hover / active */
 
-  /* -- status hues (chips, banners) -- */
-  --ok-bg: #dcfce7;    --ok-fg: #166534;    /* ready / success */
-  --warn-bg: #fef3c7;  --warn-fg: #92400e;  /* awaiting input / careful */
-  --info-bg: #dbeafe;  --info-fg: #1e40af;  /* investigating / translation */
-  --new-bg: #e7e5e4;   --new-fg: #44403c;   /* new / neutral */
-  --off-bg: #f5f5f4;   --off-fg: #a8a29e;   /* done / archived */
-  --bad-bg: #fee2e2;   --bad-fg: #991b1b;   /* injection / danger */
-  --mark: #fde047;                          /* search hits */
+  /* -- accent: deep green — ACCENT ONLY (brand mark + success). Never a primary button. -- */
+  --accent: #008060;
+  --accent-strong: #006e52; /* accent hover / active */
+  --accent-soft: #e3f9ec;   /* soft success fills */
+  --accent-ring: #005bd3;   /* focus ring — Polaris focus indicator (high contrast everywhere) */
+
+  /* -- status hues (chips, banners) — Polaris badge tones -- */
+  --ok-bg: #e3f9ec;    --ok-fg: #0c5132;    /* ready / success */
+  --warn-bg: #ffeaba;  --warn-fg: #5a4200;  /* needs answer / attention */
+  --info-bg: #e1eeff;  --info-fg: #00405e;  /* investigating / info */
+  --new-bg: #ededed;   --new-fg: #616161;   /* new / neutral */
+  --off-bg: #f1f1f1;   --off-fg: #616161;   /* done / archived (AA-legible) */
+  --bad-bg: #ffe9e8;   --bad-fg: #8e1f0b;   /* injection / critical */
+  --mark: #ffe066;                          /* search hits */
 
   /* -- spacing (8px grid) -- */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
 
-  /* -- type -- */
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --fs-xs: 12px; --fs-sm: 13px; --fs-base: 14px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 20px;
-  --lh: 1.5;
+  /* -- type (Polaris system stack, 13px/20px body) -- */
+  --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --fs-xs: 12px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 20px;
+  --lh: 1.54;   /* 13px body -> ~20px line */
 
-  /* -- shape -- */
-  --r-ctl: 6px;    /* buttons, inputs */
-  --r-card: 10px;  /* cards, modals */
-  --r-chip: 999px; /* chips */
+  /* -- shape (Polaris radii) -- */
+  --r-ctl: 8px;    /* buttons, inputs */
+  --r-card: 12px;  /* cards, modals */
+  --r-chip: 8px;   /* badges — Polaris rounded rect, not a full pill */
 
-  /* -- elevation (calm: cards are flat, only floating layers lift) -- */
-  --shadow-pop: 0 4px 16px rgba(28, 25, 23, .12);
+  /* -- elevation (calm: a hairline + a faint card lift; floating layers lift more) -- */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .04); /* subtle Polaris card shadow */
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, .10);
   --shadow-modal: 0 10px 40px rgba(0, 0, 0, .3);
-  --shadow-bar: 0 -2px 10px rgba(28, 25, 23, .06);
+  --shadow-bar: 0 -2px 10px rgba(0, 0, 0, .06);
 }

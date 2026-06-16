@@ -9,13 +9,16 @@ Box-local workflow (no Mac/Taildrop). All commands are PowerShell on the box.
   account (runs whether or not anyone is logged in), and launches the watchdog wrapper
   `C:\Axle\app\run-server.ps1`.
 - **`run-server.ps1`** is a keep-alive loop: it runs `node server.js`, and if node ever
-  exits it logs the exit and relaunches it 5 seconds later. So a crash self-heals.
+  exits it logs the exit and relaunches it 5 seconds later. So a crash self-heals. The
+  server's output is piped through `logrotate-tee.js`, which rotates `server.log` by size
+  (see **Log rotation**).
 - **`server.js`** binds **127.0.0.1:8484** only. **Tailscale Serve** terminates HTTPS on the
   tailnet and injects the visitor identity; there is no public port. The team reaches Axle
   over Tailscale.
 - Config/secrets come from **`C:\Axle\secrets\.env`** (loaded by dotenv). Data lives in
   **`C:\Axle\data\axle.db`** (SQLite, WAL — crash-safe; the server also self-repairs stuck
-  items/sync locks on startup). Logs: **`C:\Axle\logs\server.log`**.
+  items/sync locks on startup). Logs: **`C:\Axle\logs\server.log`** (rotated by size — see
+  **Log rotation**).
 - A second task, **`Axle Ingest`**, runs the mailbox ingest on its own schedule.
 
 ### Resilience (hardened 2026-06-16)
@@ -132,6 +135,34 @@ Start-ScheduledTask -TaskName "Axle Server"
 ```
 Each backup is a complete standalone database, so restoring is just copying it into place.
 
+## Log rotation (server.log) — added 2026-06-16
+
+`C:\Axle\logs\server.log` is rotated by size so it can't grow unbounded.
+
+- **What runs:** the watchdog pipes the server's stdout+stderr through
+  `C:\Axle\app\logrotate-tee.js` (`node … server.js 2>&1 | node logrotate-tee.js`). The tee
+  appends to `server.log` and, on reaching the threshold, rotates: `server.log.10` is dropped,
+  each `server.log.N` shifts to `.N+1`, `server.log` becomes `server.log.1`, and a fresh
+  `server.log` is opened.
+- **Why a tee** (not a rename/truncate of the live log): the log is held open for the
+  server's whole run, and Windows won't rename or truncate a file held open like that
+  (`The process cannot access the file because it is being used by another process`). The tee
+  is itself the writer, so it owns the handle and rotates with a clean close→rename→reopen.
+- **Settings:** threshold **100 MB**, keep **10** files (`server.log.1` … `.10`) — worst-case
+  log footprint ≈ 1.1 GB. Both are constants near the top of `logrotate-tee.js` (overridable
+  for testing via `AXLE_LOG_MAX_BYTES` / `AXLE_LOG_KEEP`). The server keeps logging across a
+  rotation; nothing is lost.
+
+**Inspect rotated logs** (`.1` is the most recent rotation; the highest number is the oldest):
+```powershell
+Get-ChildItem C:\Axle\logs\server.log* | Select-Object Name, Length, LastWriteTime
+Get-Content  C:\Axle\logs\server.log.1 -Tail 40    # previous segment
+```
+
+**Change the threshold or keep-count:** edit the `MAX` / `KEEP` defaults in
+`box-code\logrotate-tee.js`, deploy (`_incoming` + `axle-pull.ps1`), then restart the server —
+it takes effect on the next server start.
+
 ## Rebuild from scratch (high level)
 
 1. Install Node (match the box version, currently v24) and Tailscale; join the tailnet.
@@ -140,10 +171,12 @@ Each backup is a complete standalone database, so restoring is just copying it i
 3. Recreate the `axle` local account; create the **Axle Server** and **Axle Ingest** scheduled
    tasks: run as `axle`, **At startup** trigger, Limited privilege, `ExecutionTimeLimit = PT0S`,
    both battery conditions off; action = `powershell -ExecutionPolicy Bypass -File
-   C:\Axle\app\run-server.ps1`.
+   C:\Axle\app\run-server.ps1`. Recreate the **Axle Backup** task too (daily 03:00, as `axle`,
+   Limited; action = `… -File C:\Axle\app\run-backup.ps1`) and grant `axle` Modify on the
+   backup folder (`icacls "C:\Admin\Projects\Axle\Backups" /grant "axle:(OI)(CI)M"`).
 4. `tailscale serve --bg 8484`. Verify over Tailscale.
 
 ## Follow-ups (Phase 7)
 
 - **DB backup** — done 2026-06-16 (see **Backups (DB)** above).
-- **Log rotation**: `C:\Axle\logs\server.log` grows unbounded — add a simple rotation.
+- **Log rotation** — done 2026-06-16 (see **Log rotation (server.log)** above).

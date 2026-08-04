@@ -19,7 +19,8 @@ Box-local workflow (no Mac/Taildrop). All commands are PowerShell on the box.
   **`C:\Axle\data\axle.db`** (SQLite, WAL — crash-safe; the server also self-repairs stuck
   items/sync locks on startup). Logs: **`C:\Axle\logs\server.log`** (rotated by size — see
   **Log rotation**).
-- A second task, **`Axle Ingest`**, runs the mailbox ingest on its own schedule.
+- A second task, **`Axle Ingest`**, runs the mailbox ingest (and the Outlook->Axle close pass) on
+  its own schedule — see **Ingest schedule**. Its output is rotated too (see **Log rotation**).
 
 ### Resilience (hardened 2026-06-16)
 
@@ -135,7 +136,64 @@ Start-ScheduledTask -TaskName "Axle Server"
 ```
 Each backup is a complete standalone database, so restoring is just copying it into place.
 
-## Log rotation (server.log) — added 2026-06-16
+## Ingest schedule — changed 2026-07-27
+
+`Axle Ingest` runs `C:\Axle\app\run-ingest.ps1` (→ `node ingest.js all`, then the Outlook→Axle
+close pass). It was a single trigger repeating **every 15 minutes** indefinitely. It now has
+**three** triggers so Axle tracks the mailbox closely during the working day and stays cheap
+overnight:
+
+| Trigger | When | Every |
+|---|---|---|
+| Weekly, Mon–Fri, 08:00, for 10h | office hours | **2 min** |
+| Daily, 18:00, for 14h | every night 18:00–08:00 | 10 min |
+| Weekly, Sat–Sun, 08:00, for 10h | weekend days | 10 min |
+
+**Why this is safe.** Drafting cost is per-EMAIL, not per-run — the same mail is drafted either
+way, just sooner — and a quiet run is only a couple of Graph list calls plus one batched read. Graph
+throttling is nowhere near (hundreds of calls/hour against thousands per 10 min).
+
+**Runs overlap, and that is fine.** A quiet run takes about **80 seconds** (SAP pool init, Graph
+token, sequential folder fetches) — so at a 2-minute trigger a quiet run just fits, and a run that
+does real drafting will exceed it. `acquireSync` makes the next trigger **skip** rather than queue,
+logging "Another sync is already in progress". Busy periods therefore self-regulate to back-to-back
+runs. A skipped run in the log is normal, not a fault. (The lock also self-clears if a run dies:
+`acquireSync` steals a lock older than 10 minutes.)
+
+**Editing the triggers.** `Set-ScheduledTask` fails on these tasks ("user name or password is
+incorrect") because they run under the stored `axle` password. Either use the Task Scheduler GUI, or
+re-register while REUSING the existing objects so the hardening survives:
+
+```powershell
+$t = Get-ScheduledTask -TaskName "Axle Ingest"
+$cred = Get-Credential -UserName $t.Principal.UserId -Message "Password for the axle account"
+Register-ScheduledTask -TaskName "Axle Ingest" -Force `
+  -Action $t.Actions -Settings $t.Settings -Trigger @($week,$night,$wknd) `
+  -User $cred.UserName -Password $cred.GetNetworkCredential().Password -RunLevel Limited
+```
+(Weekly/Daily triggers don't accept `-RepetitionInterval` directly; build the repetition from a
+throwaway `-Once` trigger and assign `.Repetition`.)
+
+## Log rotation (server.log + ingest.log)
+
+### ingest.log — added 2026-07-27
+
+`C:\Axle\logs\ingest.log` was **never rotated** and had grown unbounded to 13.5 MB since 7 June.
+The box's `run-ingest.ps1` had also DRIFTED from the repo copy: it ran
+`cmd /c "node ingest.js all >> ingest.log 2>&1"`. That `>>` redirect is exactly the problem
+`logrotate-tee.js` was written for — it holds the log open for the whole run, so the file cannot be
+renamed or truncated even by hand. Fixing this was a prerequisite for the 2-minute cadence (~10x the
+runs: ~400/day).
+
+`run-ingest.ps1` now pipes through the same tee as the server, with a smaller budget:
+`AXLE_LOG=…\ingest.log`, `AXLE_LOG_MAX_BYTES=20MB`, `AXLE_LOG_KEEP=5` → a **~100 MB ceiling**.
+The repo copy is now the authoritative one. At ~30–40 lines per run that is roughly 2–3 months of
+history; the log is something to grep, not read. (If it ever needs trimming, make a no-change run
+log one line instead of a full `console.table`.)
+
+The existing 13.5 MB file was archived by hand as `ingest.log.1` when this went in.
+
+### server.log — added 2026-06-16
 
 `C:\Axle\logs\server.log` is rotated by size so it can't grow unbounded.
 
@@ -179,4 +237,5 @@ it takes effect on the next server start.
 ## Follow-ups (Phase 7)
 
 - **DB backup** — done 2026-06-16 (see **Backups (DB)** above).
-- **Log rotation** — done 2026-06-16 (see **Log rotation (server.log)** above).
+- **Log rotation** — `server.log` done 2026-06-16; `ingest.log` done 2026-07-27 (see **Log
+  rotation** above).

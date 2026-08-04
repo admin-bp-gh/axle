@@ -1,5 +1,253 @@
 # Axle — Status & Roadmap
 
+> **★ INGEST CADENCE RAISED 2026-07-27.** `Axle Ingest` went from one trigger every 15 min to three:
+> **every 2 min Mon–Fri 08:00–18:00**, every 10 min overnight (daily 18:00, 14h) and on weekend days.
+> Safe because drafting cost is per-EMAIL not per-run, and a quiet run is a couple of Graph list
+> calls plus one batched read; Graph throttling is orders of magnitude away. A quiet run measures
+> ~80s, so at a 2-min trigger quiet runs just fit and drafting runs overrun — `acquireSync` makes the
+> next trigger SKIP rather than queue, so busy periods self-regulate to back-to-back runs. Skips in
+> the log are normal. Push notifications are not an option (Graph webhooks need a public HTTPS
+> endpoint; Axle has no public surface by design), so faster polling is the right answer.
+> **Prerequisite fixed first: `ingest.log` rotation.** It had never rotated — 13.5 MB unbounded since
+> 7 June — and the box's `run-ingest.ps1` had DRIFTED from the repo, running
+> `cmd /c "node ingest.js all >> ingest.log 2>&1"`. That `>>` is precisely what `logrotate-tee.js`
+> was written to replace: it holds the log open for the entire run, so it could not be rotated even
+> by hand. The wrapper now pipes through the same tee as the server (20 MB × 5 = ~100 MB ceiling) and
+> the repo copy is authoritative again. ~400 runs/day at ~30–40 lines each ≈ 2–3 months of history.
+> Both changes are documented in **Axle — Server runbook.md** (*Ingest schedule*, *Log rotation*),
+> including the `Set-ScheduledTask` stored-password workaround for editing these triggers.
+
+> **⚠ INCIDENT + FIX — SILENT MAIL LOSS FROM WHOLE-DOMAIN SENDER BLOCKS (found & closed 2026-07-27).**
+> **What happened.** Two mis-clicks on the old "Block sender → the whole domain" option:
+> `@shopify.com` (jack@, 30 Jun, from item 400) and `@gmail.com` (drachten@, 14 Jul, from item 616).
+> `isBlockedSender` matches a domain pattern against the sender's domain and every subdomain, and
+> ingest checks it BEFORE rule matching — so from those dates on, **every consumer customer on gmail
+> (13 days) and every webshop contact-form message (4 weeks) was skipped before it could become a
+> work item.** The contact-form reply feature (action #4) had effectively been receiving nothing.
+> The tell that it was a mis-click and not intent: 22 seconds after the `@gmail.com` domain block, the
+> same user added `samdigitalhud34@gmail.com` as an ADDRESS block — they realised, re-blocked
+> correctly, and never removed the domain row.
+> **Why nobody noticed for four weeks.** A blocked sender is skipped silently from the user's point of
+> view. It *is* audited (`sender_block_hit`) and appears as `blocked` in the ingest run table, but
+> nothing surfaces in the UI, and the Open list simply looks quieter. There is no signal that
+> distinguishes "no mail arrived" from "mail arrived and was discarded".
+> **How it was found.** Not by looking for it — Brad noticed info@ showed 6 open items against 10
+> unread in Outlook. The `--audit` diagnostic written to explain that gap named five senders as
+> BLOCKED SENDER, four of them plainly real customers, which pointed straight at the blocklist.
+> **Fix (Brad's call): whole-domain blocking REMOVED entirely.** An interim guardrail (a protected
+> list of consumer/ISP/infrastructure domains, `shared-domains.js`) was built and then discarded in
+> favour of the simpler, safer rule — `POST /item/:id/block` no longer reads `kind` from the request
+> at all and always blocks the single address; the confirm page shows the one address with no choice.
+> Pre-existing domain rows still MATCH (all are legitimate single-organisation marketing/spam domains)
+> but can no longer be created, and stay removable on the Blocked page. `shared-domains.js` and its
+> harness are stubbed as obsolete pending deletion.
+> **Recovery:** both bad rows deleted. No backfill — ingest's watermark means such mail is never
+> re-read, and Brad's judgement was that anything missed was handled in Outlook anyway.
+> **New standing diagnostics** (`outlook-close.js`, read-only, keep these):
+> `--explain <itemId>` — why one Axle item is or isn't closable, incl. the live Graph state and the
+> real folder the message sits in. `--audit` — every unread message in the monitored folders and
+> where it landed in Axle (open / closed / archived / blocked / not ingested), matched the way ingest
+> matches (message id, then thread key). `--missing [days]` — everything that ARRIVED in the monitored
+> folders but never became a work item. That last one is the direct detector for this class of fault;
+> worth running periodically.
+> **Residual risk, accepted:** blocked-sender skips are still invisible in the UI. `--missing` finds
+> them on demand but nothing runs it automatically.
+
+> **★ CLOSE-IN-OUTLOOK — BUILT, DEPLOYED & LIVE-VERIFIED 2026-07-27. Allow-list action #5 ENABLED.**
+> **v2, same day: extended from "read" to "read / moved out of the monitored folders / deleted".**
+> Brad's follow-up: Axle's queue must reflect only mail that is still in the **Inbox** (plus info@'s
+> **Shopify Contact Form**). Tom works entirely in Outlook and files his mail away; that work should
+> leave Axle when he does. Same trigger for a deleted email — #826 sat open in Axle after being
+> deleted in Outlook.
+> **Three close reasons now** (`decide()`, pure and unit-tested): `read` (still in a monitored folder,
+> marked read) · `moved` (parentFolderId is not one we watch) · `gone` (the id 404s). All three write
+> the SAME `resolution='outlook'` — the team only needs "handled in Outlook" — with the specific
+> reason in the audit detail. Note an Exchange move MINTS A NEW ID, so a move to another folder or to
+> Deleted Items usually surfaces as `gone` rather than `moved`; they are the same conclusion.
+> `getReadStates` became `getMessageStates`, now selecting `id,isRead,parentFolderId` and mapping a
+> 404 to `{gone:true}` (403/429/5xx stay omitted = "unknown, leave alone"). New `C.folderIds()`
+> resolves the monitored folder NAMES to real ids — necessary because `resolveFolderId` passes the
+> well-known `"inbox"` through unresolved, which is fine for a URL but useless for comparing against
+> a parentFolderId. The folder list comes from `rules.js` `folders`, the same one ingest reads, so the
+> two ends of the pipeline cannot drift.
+> **Fail-safe, made visible.** If the folder lookup fails the monitored set is EMPTY, and `decide()`
+> treats an empty set as "don't know where the folders are" and skips the `moved` rule — rather than
+> concluding every email has been moved and closing the entire queue in one run. Because a silent
+> fail-safe is indistinguishable from "nothing was moved", `report.folders` is in every report and
+> every log line (expect **2** for info@, **1** for drachten@; a 0 flags the skip explicitly).
+> **v2 verification (2026-07-27).** Harness 54/54. Dry run found **17 `gone`, 0 `moved`, 0 `read`** —
+> all noise (voicemail notifications, newsletters, dispatch mails) deleted in Outlook, **#826 among
+> them**; the scheduled ingest then closed them, and #826 now reads "Done · handled in Outlook" in the
+> UI. `folders` came back **2 / 1**, which is what proves the 0 `moved` is real and not the fail-safe
+> engaging. The `moved` rule is therefore armed but **not yet exercised live** — it will fire the
+> first time Tom files an ingested email out of the Inbox.
+> **The gap it closes.** The team can always handle an email the old way, straight in Outlook. Until
+> now that email stayed on Axle's Open list until someone remembered to press Done, so the queue
+> slowly filled with work that was already finished — a real adoption drag, especially in Drachten.
+> Marking an email read in the shared mailbox is the team's existing "I've dealt with this" gesture;
+> Axle now believes it and closes the item.
+> **Why a separate pass, not an ingest tweak.** Ingest is a watermark poll that skips any conversation
+> whose newest message id it has already seen (`processThread`), so it can never notice a *change* of
+> read state on mail it has already ingested. `outlook-close.js` works the other way round: it starts
+> from Axle's OPEN items and asks Graph about exactly their `latest_message_id`. It runs after every
+> ingest (scheduled 15-min task and the manual Sync) — deliberately *after*, because a new inbound on
+> an existing thread re-opens the item with a new, unread message id, which then correctly keeps it open.
+> **New.** `connectors.getReadStates(mailbox, ids)` — Graph `$batch`, 20 sub-requests per call, all
+> GETs. Anything that isn't a clean 200 (404 moved/deleted, 403 out of RBAC scope, 429 throttled) is
+> **omitted rather than guessed at**, so "absent" reads as "unknown, leave it alone".
+> `work_items.resolution = 'outlook'` (no migration — the column already existed and
+> `statusWithRes` renders any key), shown as "Done · handled in Outlook" / "Afgehandeld · afgehandeld
+> in Outlook".
+> **Read-only against M365.** The only write is Axle's own SQLite plus a `closed_in_outlook` audit row
+> per close. The existing Axle→Outlook direction (`markReadSafe`'s `isRead` PATCH) only ever touches
+> already-closed items, and closed items are excluded from this worklist, so the two cannot fight.
+> **Exclusions are safety rules, not optimisations:** never an injection-flagged item (a flagged email
+> must not silently vanish before its careful check), never `investigating`, never a compose-origin
+> item (no inbound message to read), never an already-closed one. The UPDATE repeats the status
+> condition in its WHERE, so a human pressing Send or Done in the same instant always wins.
+> **Known trade-off, accepted deliberately (Brad, 2026-07-27):** it goes on read state, so a
+> reading-pane preview counts as handled. Silent auto-close was chosen over a confirm badge for zero
+> friction; the mitigation is that Reopen is one click and every close is audited. This is the first
+> capability that closes an item without a human clicking — a deliberate, reversible exception to the
+> "closing is a human act" stance (T13), justified because it touches no customer, no order and no
+> business system.
+> **Gated.** OFF by default: `AXLE_ACTION_OUTLOOK_CLOSE=on` in `C:\Axle\secrets\.env` + restart.
+> Both mailboxes at once (Brad's call — Drachten needs the adoption help most).
+> **Tested.** `harness\harness-outlook-close.js` — 32 assertions: happy path, every exclusion, dry
+> run, gate-off, and `$batch` chunking/de-dup/per-message-failure handling. Ran green in the Linux
+> sandbox via a `node:sqlite` shim for `better-sqlite3` (the repo's binary is the Windows build —
+> `invalid ELF header`); **re-run it on the box after deploy**, where the real driver is used.
+> **Deploy (done 2026-07-27).** `outlook-close.js` is a NEW file — the puller routes by existing
+> basename and skipped it; placed by hand. `sprocket.js` ALSO skipped (`name exists in 2 places: app,
+> app\routes`) — the allow-list one is the top-level `C:\Axle\app\sprocket.js`; copied manually. The
+> puller placed `connectors.js`, `ingest.js`, `views\ui.js`; `sprocket\axle-help.md` copied directly.
+> Enabled with `AXLE_ACTION_OUTLOOK_CLOSE=on`. (Noted in passing: `.env` carries a duplicate
+> `AXLE_ACTION_COMPOSE_SEND=on` line — harmless, same value, worth tidying.)
+>
+> **Pre-flight dry run (`--dry-run --list`, added for exactly this).** 128 of 153 open items would
+> close: info 58/71, drachten 70/82, 17 `unknown` (moved/deleted — correctly left alone). The age
+> profile is what made it safe to enable in one go: **0 touched today**, 3 idle 1–2 days, 36 idle 3–7,
+> 89 idle 8–30 — stale backlog, not live work being swept. By status: 38 `new`, 69 `awaiting_input`,
+> 21 `ready`. The 21 `ready` (drafts nobody sent) were the category carrying the most assumption, so
+> Brad spot-checked two in Outlook (#819 Brinkman-Vuren, 2 days idle; #523 roll-cage quotation, 20
+> days) — both had genuinely been answered in Outlook. That confirmed the premise for the whole set.
+>
+> **LIVE VERIFICATION (2026-07-27, Chrome over Tailscale, driven by the assistant).** Triggered the
+> real `Axle Ingest` scheduled task (as the `axle` user, the exact 15-min path) rather than a manual
+> run, so the wiring was proved and not just the module: `Outlook-close info: checked 72, read 58,
+> closed 58, unknown 9` / `drachten: checked 82, read 70, closed 70, unknown 8`. In the UI: **Open
+> 153 → 29**, Done 695, chips render **"Done · handled in Outlook"**. Reopen round-trip tested on
+> item #122 (Open 29→30, Done 695→694, resolution cleared, status back to New), then restored via
+> Mark done — state left as found. The injection exclusion is visible in the result: the three
+> UPS/FedEx phishing items still sit open with the red **Check** chip despite being read, exactly as
+> designed. The 29 that remain open are genuine live work (today/Friday customer mail).
+>
+> **Not yet exercised:** the fresh *read-now → closes-at-next-sync* loop on a live item. Every one of
+> the 128 was read before the feature existed. The path is identical, but the loop itself is unproven
+> end-to-end; it will prove itself in normal use within a day.
+
+> **★ EDITABLE SEND RECIPIENT — BUILT, DEPLOYED & LIVE-VERIFIED 2026-07-10. Gate MET.**
+> The reply recipient is no longer hard-locked to the thread sender. A salesperson may redirect a
+> reply to another on-file address or type a free-text one. The guarantee that replaced the hard
+> lock: **a human, and only a human, may redirect a reply — deliberately, visibly, and in the audit
+> log.** No model output, no email body, no tool result can set a recipient.
+> **How it holds up, in code not prompt text.** `work_items.recipient` is written by exactly ONE
+> route (`POST /item/:id/recipient`), from a human's click or keystrokes. `mode=known` accepts only
+> an address `recipient-set.knownAddressesFor()` produced (thread sender + resolver
+> `sendableAddresses` — never a free-text SAP name column, so a poisoned `CardName` cannot reach the
+> menu). `mode=typed` passes `send-guard.acceptTypedRecipient()`: one address, no
+> comma/semicolon/angle-bracket/whitespace, so no multi-recipient smuggling or display-name
+> injection. Injection-flagged and done/archived items are refused the control outright. Picking a
+> reply's own sender **clears** the override, so `to_source=sender` keeps meaning "we replied to
+> whoever wrote to us". Residual risk: a hostile email socially-engineering a salesperson into
+> typing an address. Nothing stops that; the confirm is the mitigation, the audit is detection.
+> **New.** `recipient-set.js` — the single definition of an item's known addresses, pure with the
+> two SAP lookups injected (a dead SAP costs a radio option, never the page).
+> `work_items.recipient_source` (`NULL`/`onfile`/`typed`), written only by that route, read at send
+> time to stamp `to_source` into the `email_sent` audit row — **deliberately NOT re-derived at send
+> time**, so the send path never depends on SAP being up. NULL ⇒ `onfile`, correct for every
+> pre-migration recipient (all were resolver-produced).
+> **Dedup migration.** `sends` UNIQUE index widened `(work_item_id, body_sha256)` →
+> `(work_item_id, to_addr, body_sha256)`, old index dropped BY NAME (`CREATE … IF NOT EXISTS`
+> cannot widen), plus the three matching queries in `sendWorkItem`. Before this, sending the same
+> body on to a second address was **silently swallowed** — redirect, no email, no error. ⚠ One-way
+> in practice: reverting to the narrow index FAILS once a body has gone to two addresses. Roll back
+> the DB together with the code.
+> **UI.** The recipient control lives IN the Send button (split button + caret popover), because the
+> sticky action bar is guaranteed on screen at the moment of sending. Amber **changed** pill when the
+> active recipient isn't the default. The typed input is never pre-filled from anything. The two old
+> radio cards (contact-form, return) are gone; their To lines are read-only; the old routes stay one
+> release as thin `mode=known` aliases. `ASSET_V` polaris9 → **polaris12**.
+> **Tested.** `recipient.test.js` 27/27, `recipient-set.test.js` 20/20, `sends-index.test.js` 6/6
+> (real SQLite, `AXLE_DB` pinned to a temp file; the Linux sandbox cannot run these — `better-sqlite3`
+> there is the Windows binary, `invalid ELF header`). Injection harness **40/40**, incl. two new
+> cases: `T1-en-recipient-redirect` (email ordering Axle to redirect the reply) and
+> `T4-sap-cardname-address` (attacker address hidden in `OCRD.CardName`); the `C2_flag` flake behaved.
+> **LIVE VERIFICATION (2026-07-10, Chrome over Tailscale, driven by the assistant, real sends):**
+> test item #637 from `admin@budget-parts.nl`. (1) Untouched send → `to_source=sender`. (2) Typed
+> redirect to `brad@sharnock.com` → **changed** pill before the click, `recipient_set … mode=typed`
+> then `email_sent … to_source=typed`. (3) **Dedup proven both ways in production**: the identical
+> body `sha=2bc3ece1aee4` delivered to two different addresses (impossible before today), then a
+> third send to an already-used address correctly swallowed. (4) Picking the sender cleared the
+> override (`recipient_cleared`) — exercised on live item #628, which had been left pointed at
+> `brad@sharnock.com` during earlier manual poking. Injection-flagged #631: **zero** carets and
+> popovers, note "Sending disabled". `class="cfpick"` absent across items 605–640. Test item archived.
+> **TWO REAL BUGS FOUND ONLY BY DRIVING IT LIVE — both fixed, both invisible to 53 unit tests:**
+> 1. **The send confirmation was silently dead.** The button used
+>    `onclick="return confirm('…')"`. `esc()` turns `'` into `&#39;`; the HTML parser decodes it back
+>    to a bare `'` **before** the JS is compiled, ending the string literal → `SyntaxError` → the
+>    handler never runs → **the button submits with no dialog.** The new EN copy ("…{customer}'s
+>    known addresses") triggered it, but it was latent: any customer named *Jan's Garage* killed the
+>    existing confirm on every reply. Fix: the text moved to `data-confirm`, read by a delegated
+>    capture-phase listener via `dataset` — inert data, never compiled. **Never interpolate a
+>    translated string into JS source inside an HTML attribute.**
+> 2. **The typed radio was a dead end.** A typed override rendered as a checked-but-**disabled**
+>    radio; disabled inputs don't submit, so "Use address" posted an empty `addr` and the route
+>    rejected it (visible in the audit as `recipient_rejected … picked=`). Fix: the typed address is
+>    now a read-only "Currently sending to: … — typed" line above the radios; only resolver-produced
+>    addresses are selectable, matching what `pickKnown()` accepts.
+> Also fixed on first sight: `Use address` rendered white-on-white — `.menu-list button{background:none}`
+> ties on specificity with `button.primary` and wins by source order, stripping the brand background
+> while `.primary`'s white text survived.
+> **Deviations from the brief.** Radios are labelled `on file`, not `on file, SAP` / `on file,
+> Shopify`: `resolve-customer.sendableAddresses` merges OCRD `E_Mail`/`U_E_Mail` and the Shopify
+> contact into one flat list with no provenance, and splitting them means changing
+> `resolve-customer.js`, which this build left untouched. The re-open rule compares the **incoming**
+> address against the stored `sender_email` (which `ingest.js` never updates on re-open, so watching
+> the column would never fire), and clears any confirmed recipient — not just typed ones — when the
+> correspondent changes; compose items are excluded or they'd become un-sendable.
+> **Files. New:** `recipient-set.js`, `recipient-set.test.js`, `recipient.test.js`,
+> `sends-index.test.js`. **Changed:** `db.js`, `send-guard.js`, `server.js`, `ingest.js`,
+> `routes/shared.js` (+`itemKind`), `routes/item.js`, `views/ui.js`, `assets/components.css`,
+> `hardening/cases.js`.
+> **Open.** No `AXLE_ACTION_RECIPIENT_OVERRIDE` kill switch (Brad's call — withdrawing the feature
+> means a code edit + restart; ~30 min to add if wanted). No live contact-form / return item was
+> available to eyeball the new read-only To line and "Confirm recipient" button — same shared code
+> path, unit-covered. Delete the two alias routes at the next deploy. Uncommitted in git, like the
+> P1/return work before it.
+
+> **★ RETURN-REQUEST HANDLING — BUILT, DEPLOYED & SEND-ENABLED 2026-07-06.**
+> Axle now handles Shopify self-service "Return items" notifications ("Return requested for order
+> #S…", sender = our own info@) and direct return/withdrawal emails. Pipeline: new `shopify_return_request`
+> rule (`rules.js`) → ingest enrichment resolves the order's customer via the deterministic resolver and
+> code-holds the recipient (`return-note.js`, `ingest.js`, `db.js` `return_json`) → read-only
+> **`return_dossier`** tool (`connectors.js` + `agent-tools.js`): Shopify Return object (best-effort) +
+> SAP order/AR-invoice(shipped/withdrawal-clock)/item facts/customer signals, with reason→who-pays,
+> B2C-vs-B2B (VAT/name) and electrical hints → engine playbook (`engine.js` RETURN LOOKUP line +
+> `business-knowledge.md` block) drafts a customer-addressed reply + salesperson action list.
+> **NEW ALLOW-LIST ACTION (Phase 5): "send return reply" — `AXLE_ACTION_RETURN_SEND`, now ON.** A return
+> reply is a NEW outbound to the code-held, resolver-produced customer address (`assembleNewOutboundSend`,
+> no quoted notification), same deterministic send-guard as contact-form/compose. The team can now SEND
+> return replies from Axle, not just draft. Existing 4 allow-list actions unchanged.
+> **Validated** end-to-end against #S18522/#S18583/#S18664/#S18147 (live SAP+Shopify): correct customer
+> recipient, windows, refund route, and strong drafts (incl. low-value keep-and-credit + high-return-rate
+> flags). Also deployed two global wording tweaks (sign-off matches reply language; no exact refund € in
+> the customer draft). **Known gap:** the box Shopify custom-app token lacks the **`read_returns`** scope,
+> so the structured return reason can't be read yet — the dossier degrades gracefully (`returns_available:
+> false`) and the draft asks the customer the reason. Add `read_returns` (scope → release → store reinstall)
+> to auto-enable reason-aware drafting; no code change needed. **Promote:** copied changed files → `C:\Axle\app`,
+> `node --check` all clean, `return-dossier.test.js` 9/9, restarted Axle Server.
+
 > **Working environment (updated 2026-06-13):** Development now runs on the Axle box itself
 > under the `bradmin` account — the MacBook is retired. Source-of-record is `C:\Admin\Projects\Axle`
 > (git, SSH-signed commits → private GitHub `admin-bp-gh/axle`). Rollout is **box-local**: promote
@@ -7,6 +255,416 @@
 > (copy changed files → `node --check` → restart Axle Server) — no cross-machine Taildrop. Dated
 > entries below that mention building on the Mac or `axle-send.sh`/Taildrop describe the prior
 > two-machine flow and are kept as history.
+
+> **★ P1 SPRINT — "make drafts accurate by leveraging our own data" — COMPLETE & DEPLOYED 2026-06-26.**
+> All four P1 tasks from the 26 Jun adoption analysis are built, promoted to `C:\Axle\app`, and verified.
+> Per-task detail + promote blocks are in the four entries below (P1.1–P1.4). This banner is the summary.
+> **What shipped (all READ-ONLY, under `axle_read`, no new permission / allow-list / send-path change):**
+> - **`part_dossier`** — one call returns everything we know about a part (customer code via the COALESCE
+>   rule, stock/on-order, web price, `U_Tag_Model`, `U_Alternatives`, `U_FAQ`, `UserText`, Shopify handle)
+>   plus its whole BaseCode (`U_WS_LRNo`) family, so the model stops improvising `OITM` keyword SQL.
+> - **`part_finder`** — model/year/engine or VIN + description → RANKED candidates from `U_M_*` flags +
+>   `U_Tag_Model` + `U_Alternatives` (not a blind LIKE), with conservative VIN year-decode.
+> - **Tool-result cap fix** — array-aware trimming (`capToolResult`) with a `{_truncated_rows:N}` marker;
+>   caps 12000 (part tools) / 6000 (rest); `sapQuery` rows 50→200. The right answer is no longer silently dropped.
+> - **Confidence gate enforced** — model reports `fitment_confirmed`; `applyFitmentGate` deterministically
+>   demotes an unconfirmed part out of a `ready` draft into a confirm-first `interim_draft` + question.
+> **Verification:** pure-logic unit tests all green (dossier 19/19, finder 28/28, cap 15/15, gate 15/15);
+> the SAP + Shopify queries were validated against the LIVE DB/store during the build; injection harness
+> re-run after each engine change ended 37/38 — the only red is the **known nondeterministic `C2_flag`
+> flake** on a T4/T6 data-poisoning case (still CONTAINED at `awaiting_input`, not a regression; two earlier
+> runs this session hit 38/38), and **`B6-legit-stock` stayed `ready`**, proving the new gate doesn't catch
+> benign stock emails. **Files touched:** `connectors.js`, `agent-tools.js`, `engine.js` (+ four `*.test.js`).
+> **Open:** one optional live eyeball — next under-specified fitment email should hold with a "we think it's
+> X, confirm your VIN" interim rather than asserting the part.
+> **What we learned (2026-06-26):**
+> - The accuracy gap was **retrieval, not connections** — Axle already had SAP/Shopify/MyParcel + the IMDx
+>   sweep data; the fix was curated lookup tools + one steering line, not new integrations. Confirmed by how
+>   cleanly the dossier/finder surface the right variant on real families (e.g. the 5 Freelander-2 front discs).
+> - **Common tokens flood recall** — "front" matches hundreds of parts, so `part_finder` orders the SQL by
+>   token-overlap so the genuine 3-token matches survive the `TOP` cap before JS re-ranks. Ordering matters as
+>   much as the cap size.
+> - **Enforce gates in code, not just the prompt** — the confidence gate follows the injection-containment
+>   pattern (model-reported flag + deterministic enforcement), and is **strict-on-`false`** so it can only ever
+>   downgrade an explicit unconfirmed-fitment recommendation and never catches a benign `n/a` email.
+> - **`BaseCode` = `OITM.U_WS_LRNo`**; customer-facing code = COALESCE(AllMakes > BritPart > Hotbray > U_WS_LRNo
+>   > ItemCode) — both now computed in JS (testable) rather than re-derived ad hoc.
+> - **Mount-truncation quirk reconfirmed** (see the box-tooling note): the bash sandbox serves truncated copies
+>   of just-edited files, so `node --check`/`require` on them false-fails. Each pure function was proven via a
+>   `/tmp` standalone copy; box-side `node --check` at promote stays authoritative.
+> **Next (Brad's call, ~1–2 weeks out):** P2 (returns/tone few-shots from real sends) or P3 (Drachten
+> re-onboarding). Brad is speaking with Drachten first, then we pick up the next review/optimization task.
+>
+> **P1.4 — enforce the confidence gate (2026-06-26): DEPLOYED to C:\Axle\app + harness-verified
+> 2026-06-26; gate MET (see P1 sprint banner).** Final P1 task — completes the "make drafts accurate" sprint.
+> READ-ONLY, no permission/allow-list/send-path change.
+> **Problem.** `business-knowledge.md` says "assert a part only when fitment data and a catalogue agree"
+> but nothing ENFORCED it; `PROPOSE, DON'T PUNT` let the model drop an unconfirmed part straight into a
+> `ready` draft — the confident-wrong draft (invented brake advice, BTR9641-vs-MXC5648) that forces a
+> full rewrite.
+> **Fix (defence in depth, mirrors injection containment).** (1) Output contract gains
+> `fitment_confirmed: true|false|"n/a"`. (2) New deterministic `applyFitmentGate(result)` in
+> `engine.js`, run right after `applyContainment`, acting ONLY on an explicit `false`: if the status is
+> `ready`, the unconfirmed part is demoted out of the default-send `draft` into `interim_draft`
+> (keeping the model's OWN interim if it wrote one, else salvaging the draft text so the research isn't
+> lost), status → `awaiting_input`, a confirmation question is guaranteed, and `high` confidence is
+> capped to `medium`. Net: when fitment isn't nailed down Axle returns a holding reply + a confirm
+> question instead of a confident assertion — but the candidate is preserved as a one-click "please
+> confirm" interim (Brad's choice: option A, keep the proposal rather than discard it; nothing
+> auto-sends regardless). (3) Prompt: new `CONFIDENCE GATE` rule (when to use n/a / true / false; VIN-
+> specific & genuine parts always `false`/human-checked) and `PROPOSE, DON'T PUNT` reconciled so
+> "propose your best candidate" means *as something to confirm*, never an assertion in a ready draft.
+> Strict-on-false means benign emails (the usual `n/a`) can't be caught — protects harness `B6-legit-stock`.
+> **Files. New:** `box-code/fitment-gate.test.js`. **Changed:** `engine.js` only.
+> **Tested.** 15/15 (`node fitment-gate.test.js`): false+ready → demoted, draft salvaged to interim,
+> held, question guaranteed, confidence capped; model's own interim preserved (not overwritten);
+> already-held item untouched; `true` / `n/a` / missing → no-op; low confidence left as-is. Sandbox
+> `node --check` false-fails on the mount quirk; verified via Read (contract line, function, both
+> return sites, export, prompt rules all in place); box `node --check` authoritative at promote.
+> **PROMOTE (box-local, on the box):**
+> ```powershell
+> Copy-Item C:\Admin\Projects\Axle\box-code\engine.js C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1      # places it + node --check; must print OK (no FAIL)
+> node C:\Admin\Projects\Axle\box-code\fitment-gate.test.js   # expect 15/15
+> Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
+> ```
+> If it prints `FAIL`, do NOT restart. Rollback: prior version in git (box-code).
+> **CONTROL GATE (live-verify):** re-run the injection harness (engine `SYSTEM` changed) — all-green bar
+> the known `C2_flag` flake; benign `B6-legit-stock` must still be `ready`. Then on a real fitment email
+> where the customer gives too little vehicle data, confirm Axle holds (status awaiting_input), puts a
+> "we think it's X, please confirm" suggestion in the interim with a confirmation question, and does NOT
+> assert the part in a ready draft. **This closes P1 — all four accuracy tasks built.** Next:
+> P2 (returns/tone few-shots) or P3 (Drachten) per Brad's call.
+>
+> **P1.3 — fix result-limit truncation (2026-06-26): DEPLOYED to C:\Axle\app + harness-verified
+> 2026-06-26; gate MET (see P1 sprint banner).** Third P1 task. READ-ONLY, no permission/allow-list/send change.
+> **Problem.** Two truncations could silently delete the correct part before the model saw it:
+> `sapQuery` hard-capped at 50 rows, and the engine truncated every tool result with a blind
+> `JSON.stringify(out).slice(0, 4000)` — which also cut mid-JSON, handing the model malformed data.
+> The 4000-char cap had become the binding limit for our own tools too (a full 12-item dossier with
+> `U_FAQ` + `UserText`, or a 15-candidate finder result, can exceed it).
+> **Fix.** New array-aware `capToolResult(out, maxChars)` in `engine.js`: trims whole trailing rows of
+> the result (or of the result object's largest array field — a dossier's `items`, a finder's
+> `candidates`), appends a `{_truncated_rows:N}` marker, and keeps the JSON VALID so the model is told
+> rows were dropped instead of silently misreading a cut. Per-tool caps via `capFor()`:
+> `part_dossier` / `part_finder` / `sap_query` → 12000 chars, all others → 6000 (Sonnet's context
+> absorbs this; ≈5000 is the realistic full-dossier size, so 12000 is ~2.4× headroom and lets large
+> families render in full — closes the P1.1/P1.2 coupling note). `sapQuery` row cap raised 50 → 200,
+> with the char cap as the real payload bound. The 240-char audit-log snippet (`toolLog`) is unchanged.
+> **Files. New:** `box-code/cap-tool-result.test.js`. **Changed:** `engine.js`, `agent-tools.js`.
+> **Tested.** 15/15 (`node cap-tool-result.test.js`): under-cap unchanged; big bare array → valid JSON,
+> leading rows kept, correct drop count, within cap; dossier-shaped object → `items` trimmed while
+> `query`/`matched` preserved, valid JSON; oversized no-array blob → clearly-marked hard slice within
+> cap; cap tiers correct. Sandbox `node --check` on the edited files false-fails on the mount-truncation
+> quirk; verified via Read; box `node --check` authoritative at promote.
+> **PROMOTE (box-local, on the box):**
+> ```powershell
+> Copy-Item `
+>   C:\Admin\Projects\Axle\box-code\engine.js, `
+>   C:\Admin\Projects\Axle\box-code\agent-tools.js `
+>   C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1      # places each + node --check; must print OK (no FAIL)
+> node C:\Admin\Projects\Axle\box-code\cap-tool-result.test.js   # expect 15/15
+> Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
+> ```
+> If any JS prints `FAIL`, do NOT restart. Rollback: prior versions are in git (box-code).
+> **CONTROL GATE (live-verify):** re-run the injection harness (engine changed) — all-green bar the
+> known `C2_flag` flake; then confirm a part lookup that returns a big family/candidate set renders in
+> full (no mid-JSON cut), with a `_truncated_rows` marker only when genuinely over the cap. Then P1.4
+> (enforce the confidence gate).
+>
+> **P1.2 — `part_finder` fitment tool (2026-06-26): BUILT in box-code; live-validated against SAP +
+> Shopify during the build; DEPLOYED to C:\Axle\app + harness-verified 2026-06-26; gate MET (see P1 sprint banner).** Second P1 task — the
+> structured-first counterpart to `part_dossier` (which is for when you already have a code). READ-ONLY,
+> `axle_read`, no new permission, send path untouched.
+> **What it adds.** When the customer has NO code but describes a part for a vehicle ("which front discs
+> fit my Freelander 2 2010", a VIN, etc.), `part_finder` returns RANKED candidates from our structured
+> model-fitment flags (`U_M_*`) + `U_Tag_Model` notes + `U_Alternatives` — not a blind LIKE. Each
+> candidate: `item_code`, `customer_code`, `name`, `quality`, `on_hand`, `web_price_excl_vat`, `fitment`
+> (read for VIN-break / engine / front-rear disambiguation), `handle`, and `match` (which model flag
+> matched + which words hit). Also returns the decoded vehicle + a note.
+> **How.** New `partFinder(params)` in `connectors.js`, with pure exported helpers: `vinDecode()`
+> (conservative — model YEAR from VIN position 10 always, model left null so the draft confirms it;
+> VIN-specific fitment still routes to a human/EPC check), `modelToColumn()` (maps model+year to ONE
+> whitelisted `U_M_*` column — the whitelist is the injection guard since identifiers can't be
+> parameterised), `tokenize()` / `categoryFromTokens()` (soft `U_C_*` category boost), and
+> `rankCandidates()` (scores token-overlap + in-stock + ABC + category; pure/unit-tested). The SQL
+> filters by the model flag + broad token presence (parameterised LIKEs) and ORDERS BY token-overlap so
+> the most-relevant rows survive the `TOP 80` cap; one batched best-effort `shopifyHandles()` call
+> (shared helper) attaches product handles. Tool def + dispatch in `agent-tools.js`; the engine
+> `PART LOOKUP` line extended to route vehicle-description questions to `part_finder`.
+> **Files. New:** `box-code/part-finder.test.js`. **Changed:** `connectors.js`, `agent-tools.js`,
+> `engine.js` (same three as P1.1 — re-promote).
+> **Tested.** Pure logic 28/28 (`node part-finder.test.js` — VIN decode, model→column specificity/year
+> handling, category mapping, ranking order incl. front-discs out-ranking rear, evidence attach). The
+> candidate query was run live: for "front brake disc" on a Freelander 2 (flag `U_M_Free_2`, tokens
+> front/brake/disc, category `U_C_Braking`) the relevance-ordered top 7 were exactly the front-disc
+> variants (`LR000571` in stock, the `LR027107` family, vented `LR007055G`), with clips/nuts/door-handle
+> noise pushed below. Sandbox `node --check` on the edited files false-fails on the mount-truncation
+> quirk; verified well-formed via Read; box `node --check` authoritative at promote.
+> **PROMOTE (box-local, on the box):**
+> ```powershell
+> Copy-Item `
+>   C:\Admin\Projects\Axle\box-code\connectors.js, `
+>   C:\Admin\Projects\Axle\box-code\agent-tools.js, `
+>   C:\Admin\Projects\Axle\box-code\engine.js `
+>   C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1      # places each + node --check; must print OK (no FAIL)
+> node C:\Admin\Projects\Axle\box-code\part-finder.test.js    # expect 28/28
+> node C:\Admin\Projects\Axle\box-code\part-dossier.test.js   # still 19/19
+> Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
+> ```
+> If any JS prints `FAIL`, do NOT restart. Rollback: prior versions are in git (box-code).
+> **CONTROL GATE (live-verify):** re-run the injection harness (engine `SYSTEM` changed) — all-green bar
+> the known `C2_flag` flake; then on a real fitment email ("which X fits my <vehicle>"), confirm Axle
+> calls `part_finder`, the draft proposes ranked candidates with the customer code + product link, and
+> reads the fitment note (VIN-break/engine) rather than guessing. Then P1.3 (fix result-limit truncation).
+>
+> **P1.1 — `part_dossier` read tool (2026-06-26): BUILT in box-code; live-validated against SAP +
+> Shopify during the build; DEPLOYED to C:\Axle\app + harness-verified 2026-06-26; gate MET (see P1 sprint banner).** First task of the P1
+> "make drafts accurate by leveraging our own data" sprint (from the 26 Jun adoption analysis: Jack
+> rewrites ~half of every draft, median match 0.77, driven by wrong-part-number drafts). READ-ONLY,
+> runs under the existing `axle_read` account — no new permission, send path untouched.
+> **What it adds.** One tool that returns EVERYTHING we know about a part in a single call, so the
+> drafting model stops improvising `OITM` keyword SQL (the root cause of wrong-variant drafts). Given
+> any code a customer quotes — our ItemCode, a supplier/customer code (AllMakes/BritPart/Hotbray), the
+> BaseCode (`U_WS_LRNo`), or a superseded code that only lives in `U_Alternatives` — it resolves the
+> part and returns it WITH its whole BaseCode family (the brand/quality variants sharing `U_WS_LRNo`)
+> so the right variant is picked, not guessed. Per item: `item_code`, `customer_code` (the COALESCE
+> customer-facing rule, computed in JS), `base_code`, `name`, `quality`, `abc`, `dropship`, `on_hand`,
+> `on_order`, `web_price_excl_vat`, `fitment` (`U_Tag_Model`), `alternatives`, and the Shopify `handle`
+> (batched in one read-only call). The directly-matched item(s) also carry `faq` (`U_FAQ`) and
+> `long_description` (`UserText`); siblings stay compact for disambiguation. This puts the entire IMDx
+> sweep investment directly under the draft.
+> **How.** New `partDossier(code)` in `connectors.js` (parameterised, shared read-only pool; two SAP
+> queries — rank-resolve the code then load the family — plus one best-effort batched Shopify
+> `productVariants(query:"sku:…")` handle lookup that can never fail the dossier). Pure helpers
+> `customerCode()` + `assembleDossier()` hold the testable logic (customer-code precedence, matched-vs-
+> compact shaping, text caps `faq`≈1000 / `long_description`≈800, ordering). Tool def + dispatch in
+> `agent-tools.js`; one `PART LOOKUP` steering line added to the engine `SYSTEM` prompt telling the
+> model to call `part_dossier` first and prefer it over hand-written `OITM` SQL; the `PROPOSE, DON'T
+> PUNT` line re-pointed from "search OITM by description keywords" to `part_dossier`.
+> **Note (coupling with P1.3).** Family capped at 12 and text trimmed so a typical dossier sits well
+> under the engine's current 4000-char `tool_result` cap; P1.3 raises that cap so large families render
+> in full. **Files. New:** `box-code/part-dossier.test.js`. **Changed:** `connectors.js`,
+> `agent-tools.js`, `engine.js`.
+> **Tested.** Pure logic 19/19 (`node part-dossier.test.js`). The two SAP queries were run live against
+> the real DB during the build (exact + supplier-code resolution → `LR027107C`; `U_Alternatives`
+> fallback found the family from superseded code `LR000470`; the 5-member Freelander-2 front-disc family
+> loaded with all fields). The Shopify handle query was run live (`sku:LR027107C OR sku:LR027107` →
+> correct handles). Sandbox `node --check` on the just-edited `agent-tools.js`/`engine.js` false-fails
+> on the known mount-truncation quirk; both verified well-formed via the Read tool; box-side
+> `node --check` at promote is authoritative.
+> **PROMOTE (box-local, on the box):**
+> ```powershell
+> Copy-Item `
+>   C:\Admin\Projects\Axle\box-code\connectors.js, `
+>   C:\Admin\Projects\Axle\box-code\agent-tools.js, `
+>   C:\Admin\Projects\Axle\box-code\engine.js `
+>   C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1      # places each + node --check; must print OK (no FAIL)
+> node C:\Admin\Projects\Axle\box-code\part-dossier.test.js   # expect 19/19
+> Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
+> ```
+> If any JS prints `FAIL`, do NOT restart. Rollback: prior versions are in git (box-code).
+> **CONTROL GATE (live-verify):** re-run the injection harness (engine `SYSTEM` changed) — must stay
+> all-green bar the known `C2_flag` flake; then on a real part email, confirm Axle calls `part_dossier`
+> (visible in the tool log), the draft uses the `customer_code` + a real product link from the returned
+> `handle`, and a multi-variant family is disambiguated rather than guessed. Then P1.2 (part-finder).
+>
+> **FR-0001 — Resizable queue/work panel divider (2026-06-23): BUILT in box-code, sandbox-checked;
+> awaiting box promote + live-verify (gate below).** Presentation-only — no backend, no data read, no
+> safety path touched. (FR-0001's Sprocket log was a mis-classification — the requester's actual words
+> were a help question; Brad chose to build resizable panels anyway.)
+> **What it adds.** A draggable splitter on the boundary between the left inbox/queue pane and the work
+> area. Drag to set the queue width; the width is **persisted per browser** (localStorage `axleQueueW`);
+> double-click resets to the responsive default; arrow keys nudge when the handle is focused. Desktop
+> only — hidden in the mobile (list→detail) layout. Width clamped 220–560px.
+> **How.** `.shell` grid gains a 6px gutter track and a `--queue-w` variable
+> (`grid-template-columns: var(--queue-w, clamp(290px,22vw,380px)) 6px minmax(0,1fr)`); a `#paneSplit`
+> separator (role=separator, tabindex, aria-label) sits in the gutter; a small vanilla IIFE in the page
+> footer wires pointer drag + persistence + keyboard. No new route, no new asset.
+> **Files. Changed:** `views/ui.js` (`shell()` splitter element; footer splitter IIFE; `ASSET_V`
+> polaris8 → **polaris9**), `assets/components.css` (`.shell` track + `.pane-split` + `.ax-resizing` +
+> mobile hide). `node --check` clean.
+> **PROMOTE (box-local, on the box):**
+> ```powershell
+> Copy-Item `
+>   C:\Admin\Projects\Axle\box-code\views\ui.js, `
+>   C:\Admin\Projects\Axle\box-code\assets\components.css `
+>   C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1
+> Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
+> ```
+> **CONTROL GATE (live-verify, hard-refresh, confirm `?v=polaris9`):** a drag handle sits on the
+> inbox/work boundary; dragging resizes the queue and the width survives a reload and item navigation;
+> double-click resets; the handle is absent on a narrow/mobile view. Presentation-only. This is the last
+> of the four June feature requests (FR-0001…FR-0004 now all built).
+
+> **FR-0002 — Customer summary card + detail modal (2026-06-23): DEPLOYED & LIVE-VERIFIED on the box;
+> gate MET.** READ-ONLY throughout — a new low-privilege read
+> of OCRD/ORDR/OINV; no writes, no new allow-list action, no DB migration.
+> **What it adds.** An at-a-glance **customer card** at the top of the item context pane (on inbound
+> items with a resolved sender, and on compose items via `compose_customer`) showing the three fields
+> Brad picked: **discount tier** (the customer's price list, e.g. "Sales - Special (20%)"), **open
+> orders** (count + €), **open invoices** (count + outstanding €), plus name/code/country/group and an
+> on-hold flag. A **View full customer** button opens a **modal overlay** (Brad's chosen treatment)
+> with lifetime invoiced, last-12-months, account balance, customer-since and last-order, plus the 10
+> most recent orders and invoices with open/paid status.
+> **How.** New read-only module `customer-summary.js` (`summarise()` for the card, `detail()` for the
+> modal) querying SAP via the existing shared read-only pool (`connectors.getPool`), 3-minute per-card
+> cache. Discount tier = `OCRD.ListNum → OPLN.ListName` (sort-prefix stripped); open orders = `ORDR`
+> DocStatus='O'; open invoices/outstanding = `OINV` DocStatus='O' (`DocTotal-PaidToDate`); balance =
+> `OCRD.Balance`. CardCode is resolved on the TRUSTED side (`compose_customer` or
+> sender→`customerByEmail`), never from email content, so the card/modal can only ever read the
+> email's own customer. The item page wraps the lookup in try/catch so SAP slowness/outage can never
+> break the page. New route `GET /item/:id/customer-modal` returns the modal body (htmx-loaded into a
+> native `<dialog>`); audited `customer_detail_viewed`.
+> **Files. New:** `box-code/customer-summary.js`. **Changed:** `routes/item.js` (resolver + card +
+> modal renderers + the `/customer-modal` route + card in the context pane), `views/ui.js`
+> (`cust_*`/`col_*` i18n EN+NL; `ASSET_V` polaris7 → **polaris8**), `assets/components.css`
+> (`.cuscard`/`.cusgrid`/`.cusdialog` + status pills).
+> **Tested (sandbox):** module loads + `cleanTier` 6/6; the SAP queries were validated live against
+> real customers (K128912 and the busy K107034 — tier, open counts, lifetime/12-mo, history all
+> correct) via the read-only MCP during the build; `node --check` clean on all changed JS (full files,
+> no mount truncation this run).
+> **LIVE VERIFICATION (2026-06-23, Chrome over Tailscale):** promoted via `axle-pull.ps1` (all JS OK),
+> restarted. Item #248 (Ron Korendijk) showed the card — tier "Sales - Standard", open orders 1·€49.55,
+> open invoices 0·€0.00 (all matching SAP); **View full customer** opened the modal with correct
+> history (lifetime €673.18, balance −€49.55, customer since 2025-08-04, recent orders with Open/Closed
+> and invoices with Paid pills); `/audit` logged `customer_detail_viewed #248 K128912`. Item #287
+> (unknown/phishing sender, injection-flagged) correctly showed **no** customer card and no error.
+> Compose items use the same card path via `compose_customer`. Gate MET.
+> **PROMOTE (box-local, on the box):**
+> ```powershell
+> Copy-Item `
+>   C:\Admin\Projects\Axle\box-code\customer-summary.js, `
+>   C:\Admin\Projects\Axle\box-code\routes\item.js, `
+>   C:\Admin\Projects\Axle\box-code\views\ui.js, `
+>   C:\Admin\Projects\Axle\box-code\assets\components.css `
+>   C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1      # places each + node --check; customer-summary.js is NEW -> app root (correct — it's a top-level module)
+> Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
+> ```
+> If any JS prints `FAIL`, do not restart. Rollback: prior versions are in git (box-code);
+> `customer-summary.js` is new, so reverting just deletes it and restores the three changed files.
+> **CONTROL GATE (live-verify, hard-refresh, confirm `?v=polaris8`):** an inbound item from a known
+> customer shows the card with the right tier + open orders/invoices; **View full customer** opens the
+> modal with correct history; a compose item shows the same card; an unknown/guest sender shows no card
+> (and no error); `/audit` logs `customer_detail_viewed`. Then FR-0001 (resizable panels).
+
+> **FR-0003 + FR-0004 — Suggested-document PREVIEW + suggestions while COMPOSING (2026-06-23):
+> DEPLOYED & LIVE-VERIFIED on the box; gate MET.** Two
+> post-launch Sprocket requests (logged by Brad), both READ-ONLY / draft-only — **no new send
+> privilege, no new allow-list action, no SAP write, no DB migration.** Built on the existing
+> auto-attach infrastructure.
+> **FR-0003 (preview before attaching).** New route `GET /item/:id/preview-doc` renders the
+> Boyum/Crystal print PDF of a referenced SAP document and serves it **inline in a new tab, staging
+> nothing.** It resolves the document deterministically from the typed number and validates the
+> DocEntry is **in the resolver's own set** — the SAME invariant as `/attach-doc` — so a hand-crafted
+> query can't render an arbitrary document. A **Preview** link now sits beside every **Attach** button
+> in the Suggested-documents panel (in-scope, ambiguous candidates, and the out-of-scope
+> "different customer — review" rows). Preview deliberately does NOT block on customer scope (it is a
+> strictly less-committal, internal, read-only view than attach — which still gates + audits scope
+> overrides); each preview is audited `doc_pdf_previewed`, with an `OUT-OF-SCOPE` marker when relevant.
+> **FR-0004 (suggestions when composing).** Compose items were explicitly excluded from doc
+> suggestions. They now get them: the compose branch of `runRedraft` (which produces both the first
+> draft and every redraft) computes `buildSuggestions(instruction + draft, scope, {extraRefs})` scoped
+> to the **resolved compose customer's CardCode** (`compose_customer`) and stores it in
+> `doc_suggestions_json`; `computeItemSuggestions` now reads it for compose items (the sender-based
+> lazy fallback stays inbound-only). `/attach-doc` already scopes compose items via `compose_customer`,
+> so one-click attach AND the new FR-0003 preview both work for composed emails. A compose to a
+> guest/unknown customer (no card) yields only out-of-scope (explicit-confirm) suggestions — never a
+> silent one-click, exactly like an unknown inbound sender.
+> **Safety.** Email/customer text stays untrusted: every number is a candidate that is resolved
+> deterministically and customer-scope-checked; the crown-jewel guard (never one-click-attach across
+> the customer boundary) is unchanged; injection-flagged items surface nothing. `send-guard`, send,
+> recipient gate, allow-list and audit schema all untouched.
+> **Files. New:** `routes/item.js` `GET /preview-doc`; `box-code/compose-suggest.test.js` (dev test,
+> not deployed). **Changed:** `routes/item.js` (Preview link in `suggestionsPanel`; compose allowed in
+> `computeItemSuggestions`), `routes/shared.js` (compute compose suggestions), `views/ui.js`
+> (`sugg_preview` / `sugg_preview_title` EN+NL; `ASSET_V` polaris6 → **polaris7**),
+> `assets/components.css` (`.suggdoc` row + `a.preview-doc`).
+> **Tested (sandbox):** `compose-suggest.test.js` 5/5 (in-scope / guest / foreign / model-hint / none)
+> against the real `doc-suggest.js`; `doc-suggest.test.js` still 27/27 (no inbound regression). Edited
+> `.js` are Read-verified well-formed; `node --check` is authoritative on the box at promote (the bash
+> mount serves truncated copies of just-edited files — known quirk, so sandbox `node --check` of edited
+> files is unreliable and skipped).
+> **LIVE VERIFICATION (2026-06-23, Chrome over Tailscale, driven by the assistant):** promoted via
+> `axle-pull.ps1` — all three JS printed OK, server restarted. (a) Inbound item #248 (Ron Korendijk)
+> showed the in-scope suggestion **Order 226574 · Korendijk beheer BV · €49.55** with a **Preview**
+> link; clicking it rendered the real Boyum print PDF inline in a new tab and attached nothing;
+> `/audit` logged `doc_pdf_previewed #248 Order 226574 DocEntry 26475 cust K128912` (no `doc_pdf_attached`).
+> (b) A test compose to the same customer (who=`226574`) drafted correctly (it even asked a real
+> stock question — 1 of 2 units on hand) and its SAP-documents card showed the **in-scope** suggestion
+> for order 226574 ("mentioned as 'order 226574'") with a working Preview link — confirming FR-0004 on
+> a composed email. Inbound `doc_suggestions` still firing normally (no regression). The test compose
+> item was archived. Gate MET.
+> **PROMOTE (box-local, on the box):**
+> ```powershell
+> Copy-Item `
+>   C:\Admin\Projects\Axle\box-code\routes\item.js, `
+>   C:\Admin\Projects\Axle\box-code\routes\shared.js, `
+>   C:\Admin\Projects\Axle\box-code\views\ui.js, `
+>   C:\Admin\Projects\Axle\box-code\assets\components.css `
+>   C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1      # places each file + node --check; must print OK (no FAIL)
+> Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
+> ```
+> If any JS prints `FAIL`, do NOT restart — fix first. Rollback: the prior versions live in git
+> (box-code); check out the previous commit and re-pull.
+> **CONTROL GATE (live-verify over Tailscale, hard-refresh; confirm `?v=polaris7` in page source):**
+> (a) an inbound item with a suggested doc shows a **Preview** link that opens the correct PDF in a new
+> tab and attaches nothing; (b) a freshly **composed** email to a known customer mentioning an
+> order/invoice number shows that document as an in-scope one-click suggestion (and Preview works on it);
+> (c) `/audit` shows `doc_pdf_previewed` on preview, and nothing attaches or sends without a click.
+> Then Brad's go-ahead before FR-0002 (customer summary) and FR-0001 (resizable panels). FR-0001's
+> Sprocket log was a mis-classification (the requester's words were a help question); Brad chose to
+> build resizable panels anyway.
+
+> **Runtime relocation prepped (2026-06-19): eliminate `C:\Axle`; everything under
+> `C:\Admin\Projects\Axle`. Box-code made self-locating. SUPERSEDED 2026-06-21 — Brad reversed course: keep `C:\Axle` SEPARATE from `C:\Admin\Projects\Axle` (source/docs), the standard source-vs-deployment split. No cutover; the self-locating path changes stay STAGED in box-code, backward-compatible (resolve to `C:\Axle` as before) — deploy whenever or leave.** Brad asked
+> for all Axle files in the project folder and nothing in `C:\Axle`. Approach: the live runtime moves
+> from `C:\Axle\*` to `C:\Admin\Projects\Axle\runtime\*` (gitignored), mirroring the structure
+> (app/data/secrets/logs/sprocket/render/layouts). Every runtime path in box-code is now resolved
+> **relative to the app folder** (`__dirname` / `$PSScriptRoot`) instead of hardcoded to `C:\Axle`, so
+> the same code runs at the old and new locations — the move "just works". Changed: `server.js`,
+> `ingest.js`, `send.js`, `backfill-atts.js` (.env via `__dirname`); `db.js`, `backup-db.js`,
+> `verify-backup.js`, `logrotate-tee.js`, `sprocket-store.js`, `sprocket.js`, `sap-doc-pdf.js` (relative
+> defaults; still env-overridable); `run-server.ps1`, `run-backup.ps1` (via `$PSScriptRoot`); NEW
+> version-controlled `run-ingest.ps1` (Axle Ingest task launcher, was box-only); `.gitignore` (+`runtime/`).
+> The **UX fixes ship in the same cutover** (the promote copies all of box-code). Three scheduled tasks
+> to repoint (Axle Server / Axle Ingest / Axle Backup), `.env` path overrides to remove, and the Crystal
+> `render-doc.ps1` layout path to fix — full step-by-step in **`Axle — Migration & Rollout — move runtime
+> into project folder — 2026-06-19.md`** (backup → copy → promote → .env → render → tasks → verify →
+> delete `C:\Axle`; rollback included). Non-live dev/test scripts still hold `C:\Axle` refs (triage.js,
+> *-test.js, drafts2.js, wipe-slate.js, hardening/harness.js, legacy axle-pull.ps1) — flagged, optional
+> sweep. **DB-edit gotcha update:** after cutover the live DB is `runtime\data\axle.db` and `db.js`
+> self-locates; pin `AXLE_DB` to that path for ad-hoc `node -e` writes run from outside `runtime\app`.
+
+> **UX & bug-squash pass (2026-06-19): whole-tool review; the reported "More actions" clipping bug
+> FIXED + live-verified, 2 more squashed; DEPLOYED to `C:\Axle\app` + LIVE-VERIFIED 2026-06-21 (new action bar + un-clipped menu confirmed in production).** Fresh audit of every
+> screen (code + a live read-only Chrome walk-through over Tailscale — nothing sent/saved/committed)
+> with a full bug register + UX redesign proposal in **`Axle — UX & Bug Review — 2026-06-19.md`**.
+> Root cause of the reported bug: the three panes use `overflow-y:auto`, which per spec forces
+> `overflow-x` to clip too, so any `<details>` pop-up opening past a pane edge hides behind the
+> neighbour — the action menu (when the bar wraps and strands its button on the left), the queue
+> Filter menu, the editable chips, and the Sprocket-cog overlap are all the same family. **Fix:** a
+> positioner in `page()` (`views/ui.js`) that, on menu open, switches the list to `position:fixed`
+> (escapes the panes' overflow — no transformed ancestor), flips above/below for room and clamps into
+> the viewport; **verified by injecting it into the live app DOM** — menu renders at x378–718 (list
+> pane ends 345), `clearOfQueue:true`, `onScreen:true`, all labels readable. Also fixed: mobile
+> **Back** now `history.back()` (was discarding queue filters + scroll on every tap); empty
+> context-pane border seam. **Plus the action-bar redesign (proposal A, approved):** `Mark done`
+> promoted from the overflow to a visible bar button; the rarer closes (phone/archive/block) stay in
+> `⋯ More actions`; the redraft note moved to the button tooltip so the bar no longer wraps. Same
+> `/status` route — layout-only. **Presentation-only — no safety path touched** (`send-guard`, send,
+> recipient gate, allow-list, audit all unchanged). `ASSET_V` polaris5→polaris6. **Files:**
+> `views/ui.js`, `assets/components.css`, `routes/item.js`. **Promote (box-local, on the box — the
+> live runtime isn't reachable from the assistant sandbox):** the one-paste PowerShell block in
+> review doc §4 backs up the live files, copies the three, `node --check`s, and restarts Axle Server
+> only if clean. ~25 further issues triaged (quick-squash vs needs-a-call) + the rest of the phased
+> UX proposal (chips, queue keyboard nav, accessibility, i18n) awaiting Brad's sign-off.
 
 > **Sprocket — STEP 3 / new-request notifications (2026-06-16): DEPLOYED & LIVE-VERIFIED on the box;
 > gate MET.** Sandbox: email builder 14/14 `harness/check-notify.js`. **LIVE VERIFICATION (Chrome over
@@ -866,9 +1524,29 @@ email content is always data, never instructions.
 
 | | |
 |---|---|
-| **Phase** | 6 — live with Jack. Allow-list: #1 Send (reply) ON · #2 mark-as-read ON · #3 send new/compose **ON (Gate D 2026-06-09)** · #4 contact-form send **ON (Gate 5 2026-06-09)** · read-only **Shopify: read discounts** scope granted **2026-06-16** (no send-action). Auto-attach suggested SAP docs live (draft-only, no new action). Session-10 language hardening **live (2026-06-10)**. Code-review fixes (shared SQL pool, CSRF middleware, cache bound) **live (2026-06-10)**. Discount-awareness (live Shopify discount reads inform brief + draft, draft-only) **deployed & live-e2e verified 2026-06-16**. |
+| **Phase** | 6 — live with Jack. Allow-list: #1 Send (reply) ON · #2 mark-as-read ON · #3 send new/compose **ON (Gate D 2026-06-09)** · #4 contact-form send **ON (Gate 5 2026-06-09)** · read-only **Shopify: read discounts** scope granted **2026-06-16** (no send-action). Auto-attach suggested SAP docs live (draft-only, no new action). Session-10 language hardening **live (2026-06-10)**. Code-review fixes (shared SQL pool, CSRF middleware, cache bound) **live (2026-06-10)**. Discount-awareness (live Shopify discount reads inform brief + draft, draft-only) **deployed & live-e2e verified 2026-06-16**. Brendan onboarded as 2nd Gouda sales user (2026-06-19); info@ sales unified to one shared owner **Sales(Gouda)** (Jack + Brendan; Tom and Drachten unchanged). |
 | **Step** | **UI rework (own chat) Step 2 — three-pane shell + queue (F1–F4) DEPLOYED & LIVE-VERIFIED (2026-06-10); GATE OPEN — a full working day in it, then git commit** (see top entry). Steps 0+1 deployed, gate-signed & committed (box `1103ee5`). After Step 2's full-day gate: Step 3 (context pane, F10) → Step 4 (SSE liveness, F12) → Step 5 (polish; incl. the Dutch FOOTER_LINE regex note from Step 1). Parallel carries: (1) roll out contact-form reply to Jack + team; (2) Gate 4 carry — live walkthrough with Jack + drachten@ Send re-test; (3) enable CSRF (`AXLE_ALLOWED_ORIGIN`) ~2026-06-11 after a day of normal use. |
 | **Blockers** | None. |
+
+### Session (2026-06-19) — Brendan onboarded (Gouda sales) + info@ sales unified to a shared "Sales(Gouda)" bucket
+
+**Brendan added as a second Gouda sales user.** Already on the `@budget-parts.nl` tailnet; registered in
+`users` (`brendan@budget-parts.nl`, role `sales`) on the live DB `C:\Axle\data\axle.db`. First insert
+silently didn't take (the row never matched his injected identity); fixed by pinning
+`$env:AXLE_DB=C:\Axle\data\axle.db` and re-inserting a clean, typed-inline login. **Gotcha for future box
+DB edits: manual `node -e` writes must pin `AXLE_DB` to `C:\Axle\data\axle.db` (the file the server reads),
+or they can land in a different file and the change silently won't take.** Verified: Not-registered page
+cleared, his queue loads; per-user audit intact (actions logged under each tailnet login).
+
+**Gouda info@ sales is now one shared queue (Brad's call: Jack and Brendan jointly work info@).** Rather
+than mirror one person onto another, renamed the routing bucket: `rules.js` now defines
+`const SALES_GOUDA = "Sales(Gouda)"` and uses it for every info@ sales rule (customer_*, voicemail,
+b2b_known, catch_all). Tom (purchasing) and Drachten are unchanged; `admin_forward` stays `owner:null`.
+`ownerChoices('info')` → `["Sales(Gouda)","Tom"]`, so the reassign dropdown and "mine" queues follow
+automatically (rules.js stays the single source of truth). Deployed via `axle-pull` (node --check OK) +
+Server restart. DB migrated in one pass: both users `owner_label='Sales(Gouda)'`; **178** existing
+Jack/Brendan items moved onto the bucket. Both salespeople now see one identical queue. **No change to the
+action allow-list — this is access/routing only.**
 
 ### Session 11 (2026-06-10) — Feature round: 5 UI/connector enhancements
 Five features agreed, built one at a time (decisions: snippets = paste-to-attach **and** inline-in-body
@@ -1717,6 +2395,7 @@ Nothing is permitted by default.
 | 2 | Mark inbound email as read | M365 Graph (Mail.ReadWrite) | **enabled** | 2026-06-07 | Fires on send / mark-done / archive. RBAC-scoped to info@/drachten@. No-op-safe if permission absent. |
 | 3 | Send new (non-reply) / composed email | M365 Graph (Mail.Send) | **enabled** | 2026-06-09 | Compose (Phase 6). **Gate D signed off 2026-06-09** — enabled via env `AXLE_ACTION_COMPOSE_SEND=on`; live-verified end-to-end (composed NL email to admin@budget-parts.nl via card K128289 → fresh/un-threaded, single To, no CC/BCC, audit `kind=compose_new`, delivered & confirmed in the mailbox). Recipient is **deterministically resolved** by `resolve-customer.js` from SAP/Shopify, shown verbatim, human-confirmed, SHA-tied — model/data can never set it. Shared `send-guard.assembleNewOutboundSend` (flagged-item block, single To, no CC/BCC, URL allowlist, verbatim body, no quoted history); per-send human approval via the Send button. RBAC info@/drachten@ only; admin@ denied. |
 | 4 | Send reply to contact-form customer (resolved/confirmed recipient) | M365 Graph (Mail.Send) | **enabled** | 2026-06-09 | Contact-form reply build (session 8); **Gate 5 signed off 2026-06-09**. Enabled via env `AXLE_ACTION_CONTACTFORM_SEND=on` in `C:\Axle\secrets\.env` (unset/≠`on` ⇒ `/send` refuses at the route). New OUTBOUND (not in-thread; the thread sender is Shopify's mailer): `send-guard.assembleContactFormSend` builds a fresh email (`originalMessageId=null`, no threading, no quoted history, fresh subject). Recipient is **deterministically parsed** from the form body (`contact-form-parser.js`), enriched via `resolve-customer.js`, shown verbatim, human-confirmed, validated by `pickRecipient`, code-held + SHA-tied — model/body can never set it. Default To = form-typed address (SAP/Shopify addresses shown/pickable). Outbound language follows the **customer's actual message language**; proposed subject aligned to the draft language. Single To, no CC/BCC, URL allowlist, verbatim body. A flagged or unconfirmed-recipient item refuses (UI + route 400). RBAC info@/drachten@ only; admin@ denied. Governed separately from #3. **Live-verified 2026-06-09** (known+cold × EN/NL + order-ref delivered; injection + unconfirmed-recipient refusals confirmed). |
+| 5 | Close a work item whose email was read, filed out of the monitored folders, or deleted in Outlook | M365 Graph (read-only `$batch` GET of `isRead`) + Axle DB | **enabled** | 2026-07-27 | Outlook→Axle reconciliation (`outlook-close.js`), added 2026-07-27. Answers the adoption gap where an email handled in Outlook stayed on Axle's Open list until someone remembered to press Done. Runs after every ingest (scheduled 15-min task + manual Sync), starting from Axle's OPEN items and asking Graph about exactly their `latest_message_id` — ingest itself can never notice a read-state change, since it skips any conversation whose newest message id it has already seen. **Read-only against M365** (GETs only; the `isRead` PATCH stays in `send.js`, and it only ever touches already-closed items, so the two directions cannot fight). The only write is Axle's own SQLite: `status='done', resolution='outlook'`, plus a `closed_in_outlook` audit row per close; the UI shows "Done · handled in Outlook". **Exclusions (safety, not optimisation):** never an injection-flagged item (a flagged email must not silently vanish), never `investigating`, never a compose-origin item, never an already-closed one; an id Graph does not return cleanly (404 moved/deleted, 403 out of scope, 429 throttled) is left alone rather than guessed at. Guarded UPDATE, so a human pressing Send/Done in the same instant always wins. **Known trade-off:** it goes on read state, so a reading-pane preview counts as handled — reversible in one click via Reopen, and documented for the team in `axle-help.md`. Enabled via env `AXLE_ACTION_OUTLOOK_CLOSE=on` in `C:\Axle\secrets\.env` + restart; both mailboxes. Covered by `harness\harness-outlook-close.js` (32 assertions: happy path, all exclusions, dry run, gate off, `$batch` chunking/failure handling). **Live-verified 2026-07-27** — first run closed 128 stale items (info 58, drachten 70) via the real scheduled ingest; Open 153 → 29; Reopen round-trip confirmed; flagged phishing items correctly stayed open. **v2 the same day** extends the trigger from `read` alone to `read` / `moved` (parentFolderId no longer one of the mailbox's `rules.js` folders — Inbox, plus info@'s Shopify Contact Form) / `gone` (404, i.e. deleted; an Exchange move mints a new id so most moves surface here). All three write `resolution='outlook'`; the reason lives in the audit detail. `report.folders` exposes the monitored-folder count every run so the empty-set fail-safe (which disables `moved` rather than closing everything) can never engage silently. v2 verified: harness 54/54; 17 `gone` closed incl. #826; `folders` = 2/1 confirming folder resolution. The `moved` rule is armed but not yet exercised live. |
 
 > **Read capability added (2026-06-16): "Shopify — read discounts".** Axle may READ Shopify
 > discount data (every discount code + automatic discount) live via the existing read-only

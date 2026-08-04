@@ -17,7 +17,10 @@ async function sapQuery(q) {
   const clean = assertSelectOnly(q);
   const pool = await C.getPool();      // shared persistent pool (see connectors.js)
   const r = await pool.request().query(clean);
-  return r.recordset.slice(0, 50);
+  // Row cap raised 50 -> 200 (P1.3): a broad part search could push the right row past 50.
+  // The engine's per-tool char cap (capToolResult) is the real payload bound, and it trims
+  // whole trailing rows safely rather than dropping the answer mid-JSON.
+  return r.recordset.slice(0, 200);
 }
 
 async function shopifyQuery(q) {
@@ -35,6 +38,34 @@ const toolDefs = [
     }, required: ["sql", "purpose"] },
   },
   {
+    name: "part_dossier",
+    description: "Look up EVERYTHING we know about ONE part in a single call - use this FIRST for any part / stock / price / fitment question instead of hand-writing OITM SQL. Accepts ANY code the customer might quote: our ItemCode, a supplier/customer code (AllMakes / BritPart / Hotbray), the BaseCode, or a superseded/equivalent code (resolved via U_Alternatives). Returns the matched part AND its BaseCode family - the brand/quality variants sharing the same U_WS_LRNo - so you can pick the RIGHT variant rather than guessing. Each item carries: item_code, customer_code (the code the CUSTOMER recognises - use THIS as the visible part number in replies), base_code, name, quality (Genuine|OEM|Aftermarket), abc, dropship, on_hand, on_order, web_price_excl_vat (EUR excl VAT), fitment (the U_Tag_Model note), alternatives, and the Shopify product handle (build the product-page link from it). The directly-matched item(s) also carry faq and long_description. items=[] means the code matched nothing - then try sap_query.",
+    input_schema: { type: "object", properties: {
+      code: { type: "string", description: "the part code to look up (ItemCode, customer/supplier code, BaseCode, or a superseded code)" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["code", "purpose"] },
+  },
+  {
+    name: "part_finder",
+    description: "Find the RIGHT part for a vehicle when the customer does NOT give a code - 'which X fits my <model/year/engine or VIN>'. Pass a free-text part description plus whatever vehicle data you have (model, year, engine and/or VIN). Returns RANKED candidate parts built from our structured model-fitment flags (U_M_*) + the U_Tag_Model fitment notes + U_Alternatives - NOT a blind keyword search - so the best-fitting variants come first with the fitment evidence attached. Each candidate: item_code, customer_code (use THIS as the visible part number), name, quality, on_hand, web_price_excl_vat (EUR excl VAT), fitment (the U_Tag_Model note - read it for VIN-break / engine / front-rear disambiguation), handle (build the product link from it), and match (which model flag matched + which description words hit). Also returns the decoded vehicle (a VIN gives the model year) and a note. Use part_dossier instead when you already have a specific code. Engine and VIN-specific fitment are HINTS, not proof - when fitment is not certain, hold the draft and ask the salesperson to confirm.",
+    input_schema: { type: "object", properties: {
+      description: { type: "string", description: "what part the customer wants, e.g. 'front brake discs'" },
+      model: { type: "string", description: "vehicle model, e.g. 'Defender', 'Discovery 3', 'Freelander 2'" },
+      year: { type: "string", description: "model year, e.g. '2010'" },
+      engine: { type: "string", description: "engine if known, e.g. '2.2 TD4'" },
+      vin: { type: "string", description: "full 17-character VIN if available" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["description", "purpose"] },
+  },
+  {
+    name: "return_dossier",
+    description: "For a RETURN / WITHDRAWAL request, look up EVERYTHING about that return in ONE call — use this FIRST for any return, retour, withdrawal/herroeping, or a Shopify 'Return requested for order #S...' notification, instead of hand-writing order/invoice SQL. Pass the order reference the customer quotes (Shopify order name '#S18522' or 'S18522', or a SAP DocNum). Returns: the Shopify Return object (return_object.present + status, and per-line reason/reason_note/customer_note + who_pays_default), the real customer_email (the recipient for a Shopify-notification reply — the notification's sender is info@, NOT the customer), the SAP order (payment + refund_route), whether an AR invoice exists (shipped=true = goods shipped/collected) with days_since_shipped and the within_14_day_withdrawal / within_goodwill_60 flags, per-item facts (customer_code, quality, abc, category, unit_price_excl_vat, electrical_hint), and customer signals (customer_signal.likely_business, tier, prior_credit_notes = return history). All fields are HINTS: YOU judge electrical (sealed/value-deduction rule) and B2C-vs-B2B (statutory withdrawal + 15% restocking) from the signals. found=false means the reference matched no order — then try shopify_query / sap_query.",
+    input_schema: { type: "object", properties: {
+      order_ref: { type: "string", description: "the order the customer quotes: Shopify name '#S18522'/'S18522', or a SAP DocNum" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["order_ref", "purpose"] },
+  },
+  {
     name: "shopify_query",
     description: "Run a read-only Shopify Admin GraphQL query (API 2025-07). Mutations are rejected. Useful for: orders by name (query: \"name:S12345\") with fulfillments/trackingInfo, customer order history by email, product/variant lookups by SKU.",
     input_schema: { type: "object", properties: {
@@ -44,7 +75,7 @@ const toolDefs = [
   },
   {
     name: "myparcel_search",
-    description: "Search MyParcel shipments by reference (SAP order number - labels always carry it), barcode, customer name or postcode. Returns up to 5 shipments with: human-readable status and carrier, reference, created date, package type, delivery options (signature, only-recipient, return-if-not-home, age check, insurance), the full recipient address and multi-collo linkage. For delivery events, the expected delivery moment or the customer tracking link, follow up with myparcel_track using the returned shipment id.",
+    description: "Search MyParcel shipments by reference (SAP order number - labels always carry it), barcode, customer name or postcode. Covers BOTH branches - Gouda and Drachten - and each result carries a 'shop' field saying which one dispatched it. Returns up to 5 shipments with: human-readable status and carrier, reference, created date, package type, delivery options (signature, only-recipient, return-if-not-home, age check, insurance), the full recipient address and multi-collo linkage. For delivery events, the expected delivery moment or the customer tracking link, follow up with myparcel_track using the returned shipment id.",
     input_schema: { type: "object", properties: {
       term: { type: "string", description: "search term" },
       purpose: { type: "string", description: "one line: why you need this" },
@@ -52,7 +83,7 @@ const toolDefs = [
   },
   {
     name: "myparcel_track",
-    description: "Track & trace for MyParcel shipment id(s) from myparcel_search (NOT the barcode). Returns per shipment: current status, phase (registered/handed_to_carrier/sorting/distribution/delivered), whether the status is final, the latest event, delay flag, expected/estimated delivery moment, the customer-facing tracking URL (give THIS link to the customer) and the full event history.",
+    description: "Track & trace for MyParcel shipment id(s) from myparcel_search (NOT the barcode). Covers both the Gouda and Drachten branches; each result carries a 'shop' field. Returns per shipment: current status, phase (registered/handed_to_carrier/sorting/distribution/delivered), whether the status is final, the latest event, delay flag, expected/estimated delivery moment, the customer-facing tracking URL (give THIS link to the customer) and the full event history.",
     input_schema: { type: "object", properties: {
       ids: { type: "string", description: "shipment id(s) from myparcel_search, separated by ; for multiple" },
       purpose: { type: "string", description: "one line: why you need this" },
@@ -70,6 +101,13 @@ const toolDefs = [
 
 async function runTool(name, input, ctx) {
   if (name === "sap_query") return sapQuery(String(input.sql));
+  if (name === "part_dossier") return C.partDossier(String(input.code));
+  if (name === "return_dossier") return C.returnDossier(String(input.order_ref));
+  if (name === "part_finder") return C.partFinder({
+    description: String(input.description || ""), model: String(input.model || ""),
+    year: input.year ? String(input.year) : null, engine: String(input.engine || ""),
+    vin: String(input.vin || ""),
+  });
   if (name === "shopify_query") return shopifyQuery(String(input.query));
   if (name === "myparcel_search") return C.myparcelSearch(String(input.term).slice(0, 60));
   if (name === "myparcel_track") return C.myparcelTrack(String(input.ids).slice(0, 120));

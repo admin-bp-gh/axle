@@ -204,6 +204,98 @@ async function getMessageHtml(mailbox, messageId) {
   return (data.body && data.body.content) || "";
 }
 
+// Resolve a mailbox's monitored folder names to their REAL Graph folder ids. resolveFolderId
+// passes the well-known "inbox" straight through, which is fine for building a URL but useless
+// for COMPARING against a message's parentFolderId — so the well-known name is resolved here to
+// the actual id. Cached per mailbox+name by resolveFolderId for the custom folders; the inbox
+// lookup is one extra GET per mailbox per run. Read-only.
+const inboxIdCache = {};
+async function folderIds(mailbox, names) {
+  const out = new Set();
+  for (const name of names || []) {
+    if (!name || String(name).toLowerCase() === "inbox") {
+      if (!inboxIdCache[mailbox]) {
+        const token = await graphToken();
+        const r = await fetch(
+          `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/mailFolders/inbox?$select=id`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await r.json();
+        if (data.error) throw new Error(data.error.message);
+        inboxIdCache[mailbox] = data.id;
+      }
+      out.add(inboxIdCache[mailbox]);
+    } else {
+      out.add(await resolveFolderId(mailbox, name));
+    }
+  }
+  return out;
+}
+
+// A folder's display name from its id — the reverse of resolveFolderId, for diagnostics ("where
+// did this message actually go?"). Returns null rather than throwing when the folder is not
+// readable. Read-only.
+async function folderName(mailbox, folderId) {
+  if (!mailbox || !folderId) return null;
+  try {
+    const token = await graphToken();
+    const r = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/mailFolders/${encodeURIComponent(folderId)}?$select=displayName`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await r.json();
+    return data.error ? null : data.displayName || null;
+  } catch (e) { return null; }
+}
+
+// Read the current state of a set of message ids in ONE mailbox, via the Graph $batch endpoint
+// (20 sub-requests per call — the documented cap). READ-ONLY: every sub-request is a GET, so
+// this can never change mailbox state; the PATCH that marks mail read lives in send.js.
+//
+// Returns a Map id -> one of:
+//   { gone: true }                    the message no longer exists at that id (HTTP 404) — it was
+//                                     deleted, or moved (an Exchange move MINTS A NEW ID, so the
+//                                     old one 404s; "moved" and "deleted" are indistinguishable
+//                                     here and are treated the same by callers).
+//   { isRead, folderId }              the message is still there; folderId is its parentFolderId,
+//                                     so a caller can ask whether it is still in a folder we watch.
+// Anything else (403 out of RBAC scope, 429 throttled, 5xx) is OMITTED rather than guessed at, so
+// "absent" reads as "unknown, leave it alone". Never throws on a per-message failure; only a hard
+// batch-level Graph error propagates.
+const BATCH_MAX = 20;
+async function getMessageStates(mailbox, messageIds) {
+  const out = new Map();
+  const ids = [...new Set((messageIds || []).filter(Boolean))];
+  if (!mailbox || !ids.length) return out;
+  const token = await graphToken();
+  const mb = encodeURIComponent(mailbox);
+  for (let i = 0; i < ids.length; i += BATCH_MAX) {
+    const chunk = ids.slice(i, i + BATCH_MAX);
+    const r = await fetch("https://graph.microsoft.com/v1.0/$batch", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: chunk.map((id, n) => ({
+          id: String(n),
+          method: "GET",
+          url: `/users/${mb}/messages/${encodeURIComponent(id)}?$select=id,isRead,parentFolderId`,
+        })),
+      }),
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error.message);
+    for (const resp of data.responses || []) {
+      const id = chunk[parseInt(resp.id, 10)];
+      if (!id) continue;
+      if (resp.status === 404) out.set(id, { gone: true });
+      else if (resp.status === 200 && resp.body && typeof resp.body.isRead === "boolean") {
+        out.set(id, { isRead: resp.body.isRead, folderId: resp.body.parentFolderId || null });
+      }
+    }
+  }
+  return out;
+}
+
 // ---------- SAP B1 (read-only SQL login) ----------
 const sqlConfig = () => ({
   server: process.env.SQL_SERVER,
@@ -261,6 +353,377 @@ async function sapStockPrice(itemCodes) {
      WHERE T0.ItemCode IN (${params.join(",")})`
   );
   return r.recordset;
+}
+
+// ---------- Part dossier (P1.1): everything we know about ONE part ----------
+// One assembled object per part so the drafting model stops stitching six OITM queries
+// it gets wrong. Given any identifier a customer might quote — our ItemCode, a
+// supplier/customer code (AllMakes/BritPart/Hotbray), the BaseCode (U_WS_LRNo), or a
+// superseded/equivalent code that only lives in U_Alternatives — resolve the part, then
+// return it WITH its BaseCode family (siblings sharing U_WS_LRNo) so brand/quality variant
+// disambiguation is right in front of the model. Read-only, parameterised, shared pool.
+// Shopify product handles are batched into one read-only call (best effort).
+
+// Customer-facing code rule (single source of truth, JS side so it is unit-testable):
+// first non-empty of AllMakes > BritPart > Hotbray > BaseCode(U_WS_LRNo) > ItemCode.
+function customerCode(r) {
+  const pick = (v) => (v == null ? "" : String(v).trim());
+  return pick(r.U_Code_AllMakes) || pick(r.U_Code_BritPart) || pick(r.U_Code_Hotbray)
+       || pick(r.U_WS_LRNo) || pick(r.ItemCode);
+}
+
+// Assemble the dossier objects from raw OITM/ITM1 rows + a sku->handle map. Pure (no I/O)
+// so it is unit-testable. matchedSet = the ItemCodes the lookup resolved to; those carry the
+// heavy text (faq / long_description); siblings stay compact for disambiguation. Matched
+// items are listed first. Text fields are capped so a whole family stays compact.
+function assembleDossier(familyRows, matchedSet, handleMap = {}) {
+  const trim = (s, n) => {
+    const t = (s == null ? "" : String(s)).replace(/\s+/g, " ").trim();
+    return t.length > n ? t.slice(0, n) + "…" : t;
+  };
+  const rows = [...familyRows].sort(
+    (a, b) => (matchedSet.has(b.ItemCode) ? 1 : 0) - (matchedSet.has(a.ItemCode) ? 1 : 0)
+  );
+  return rows.map((r) => {
+    const matched = matchedSet.has(r.ItemCode);
+    const o = {
+      item_code: r.ItemCode,
+      customer_code: customerCode(r),
+      base_code: (r.U_WS_LRNo || "").trim() || undefined,
+      name: (r.ItemName || "").trim() || undefined,
+      quality: (r.U_Quality || "").trim() || undefined,
+      abc: (r.U_ABC || "").trim() || undefined,
+      dropship: (r.U_WS_DropShip || "").trim() || undefined,
+      on_hand: r.OnHand,
+      on_order: r.OnOrder,
+      web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
+      fitment: trim(r.U_Tag_Model, 200) || undefined,
+      alternatives: trim(r.U_Alternatives, 200) || undefined,
+      handle: handleMap[r.ItemCode] || undefined,
+    };
+    if (matched) {
+      o.matched = true;
+      const faq = trim(r.U_FAQ, 1000);
+      const long = trim(r.UserText, 800);
+      if (faq) o.faq = faq;
+      if (long) o.long_description = long;
+    }
+    return o;
+  });
+}
+
+const PART_CODE_RE = /[^A-Za-z0-9._/\- ]/g;   // safe set for SQL params + Shopify search
+async function partDossier(code) {
+  const q = String(code || "").trim().replace(PART_CODE_RE, "").slice(0, 40);
+  if (!q) return { query: String(code || ""), matched: [], items: [] };
+  const pool = await getPool();
+
+  // Step 1 — resolve the code to real item(s) + their BaseCode, ranked: exact ItemCode,
+  // then a supplier/customer code, then a BaseCode hit.
+  let matches = (await pool.request().input("code", sql.NVarChar, q).query(
+    `SELECT TOP (5) ItemCode, U_WS_LRNo,
+            CASE WHEN ItemCode=@code THEN 0 WHEN U_WS_LRNo=@code THEN 2 ELSE 1 END AS rnk
+     FROM OITM
+     WHERE ItemCode=@code OR U_Code_AllMakes=@code OR U_Code_BritPart=@code
+        OR U_Code_Hotbray=@code OR U_WS_LRNo=@code
+     ORDER BY rnk`
+  )).recordset;
+
+  // Step 1b — fallback: a superseded/equivalent code that only lives in U_Alternatives
+  // (guarded to >=4 chars to avoid spurious substring hits).
+  if (!matches.length && q.length >= 4) {
+    matches = (await pool.request().input("like", sql.NVarChar, "%" + q + "%").query(
+      `SELECT TOP (5) ItemCode, U_WS_LRNo FROM OITM WHERE U_Alternatives LIKE @like`
+    )).recordset;
+  }
+  if (!matches.length) return { query: q, matched: [], items: [] };
+
+  const matchedSet = new Set(matches.map((m) => m.ItemCode));
+  const baseCodes = [...new Set(matches.map((m) => (m.U_WS_LRNo || "").trim()).filter(Boolean))];
+
+  // Step 2 — load the BaseCode family (siblings sharing U_WS_LRNo) plus the matched items
+  // themselves (covers items with no BaseCode). Cap the family.
+  const req = pool.request();
+  const ins = [];
+  baseCodes.forEach((b, i) => { req.input("b" + i, sql.NVarChar, b); ins.push("@b" + i); });
+  const mc = [...matchedSet];
+  mc.forEach((c, i) => { req.input("m" + i, sql.NVarChar, c); });
+  const where = [
+    ins.length ? `I.U_WS_LRNo IN (${ins.join(",")})` : null,
+    `I.ItemCode IN (${mc.map((_, i) => "@m" + i).join(",")})`,
+  ].filter(Boolean).join(" OR ");
+  const family = (await req.query(
+    `SELECT TOP (12) I.ItemCode, I.U_WS_LRNo,
+            I.U_Code_AllMakes, I.U_Code_BritPart, I.U_Code_Hotbray,
+            I.ItemName, I.U_Quality, I.U_ABC, I.U_WS_DropShip,
+            I.OnHand, I.OnOrder, P.Price AS WebPrice,
+            CAST(I.U_Tag_Model AS NVARCHAR(MAX)) AS U_Tag_Model,
+            I.U_Alternatives,
+            CAST(I.U_FAQ AS NVARCHAR(MAX)) AS U_FAQ,
+            CAST(I.UserText AS NVARCHAR(MAX)) AS UserText
+     FROM OITM I
+     LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1
+     WHERE ${where}`
+  )).recordset;
+
+  // Step 3 — Shopify product handles for the returned items, one batched read-only call.
+  // Best effort: a Shopify hiccup or a non-synced item must never fail the dossier.
+  let handleMap = {};
+  try {
+    const skus = family.map((r) => String(r.ItemCode).replace(/[^A-Za-z0-9._/-]/g, "")).filter(Boolean);
+    if (skus.length) {
+      const search = skus.map((s) => `sku:${s}`).join(" OR ");
+      const data = await shopifyGraphql(
+        `{ productVariants(first: 50, query: ${JSON.stringify(search)}) { edges { node { sku product { handle } } } } }`
+      );
+      for (const e of (data.productVariants && data.productVariants.edges) || []) {
+        const n = e.node || {};
+        if (n.sku && n.product && n.product.handle) handleMap[n.sku] = n.product.handle;
+      }
+    }
+  } catch (e) { handleMap = {}; }
+
+  return { query: q, matched: [...matchedSet], items: assembleDossier(family, matchedSet, handleMap) };
+}
+
+// ---------- Part finder (P1.2): model/VIN + description -> RANKED candidates ----------
+// The structured-first counterpart to part_dossier (which is for when you already have a
+// code). Given a free-text description plus whatever vehicle data we have (model/year/engine
+// and/or VIN), constrain by our structured model-fitment flag (U_M_*) and rank candidates by
+// description-token overlap + stock + ABC + a soft category boost — NOT a blind LIKE that
+// truncates the right part away. All pure helpers are exported for unit testing.
+
+// Valid model-fitment flag columns (authoritative list from business-knowledge.md). The
+// resolved column is whitelisted against this set before it is ever interpolated into SQL —
+// identifiers cannot be parameterised, so the whitelist is the injection guard.
+const VALID_MODEL_COLS = new Set([
+  "U_M_General", "U_M_Jaguar", "U_M_Series1", "U_M_Series_2_3", "U_M_Def_Old", "U_M_Def_New",
+  "U_M_Disc1", "U_M_Disc2", "U_M_Disc3", "U_M_Disc4", "U_M_Disc5", "U_M_DiscSport",
+  "U_M_Free_1", "U_M_Free_2", "U_M_RR_71_94", "U_M_RR_94_01", "U_M_RR_02_12", "U_M_RR_13_22",
+  "U_M_RR_22", "U_M_RR_Sport_05_13", "U_M_RR_Sport_14_22", "U_M_RR_Sport_23",
+  "U_M_Evoque_12_18", "U_M_Evoque_19", "U_M_Velar_17",
+]);
+const VALID_CAT_COLS = new Set([
+  "U_C_Accessories", "U_C_Axle_Susp", "U_C_Body_Chassis", "U_C_Braking", "U_C_Cables",
+  "U_C_Clutch", "U_C_Cool_Heat", "U_C_Drive_Mech", "U_C_Electrical", "U_C_Engine", "U_C_Exhaust",
+  "U_C_Fixings_Hard", "U_C_Fuel_System", "U_C_Gearbox", "U_C_Interior", "U_C_Safety",
+  "U_C_Service", "U_C_Tools", "U_C_Wheels", "U_C_Gifts", "U_C_Cleaning",
+]);
+
+// VIN model-year code -> year (post-2001 interpretation; the 30-year cycle repeats letters,
+// so this is the most-recent-plausible read and is always treated as approximate).
+const VIN_YEAR = {
+  "1": 2001, "2": 2002, "3": 2003, "4": 2004, "5": 2005, "6": 2006, "7": 2007, "8": 2008, "9": 2009,
+  A: 2010, B: 2011, C: 2012, D: 2013, E: 2014, F: 2015, G: 2016, H: 2017, J: 2018, K: 2019,
+  L: 2020, M: 2021, N: 2022, P: 2023, R: 2024, S: 2025, T: 2026, V: 2027, W: 2028, X: 2029, Y: 2030,
+};
+
+// Deliberately conservative: decode the model YEAR (reliable, position 10) and the WMI; do NOT
+// guess the model from the VDS (error-prone) — leave it null so the finder/draft asks to confirm
+// the model. VIN-specific exact fitment always routes to a human/EPC check (confidence gate).
+function vinDecode(vin) {
+  const v = String(vin || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const info = { vin: v, wmi: v.slice(0, 3) || null, year: null, year_approx: true, model: null };
+  if (v.length !== 17) { info.note = "not a 17-character VIN"; return info; }
+  if (VIN_YEAR[v[9]]) info.year = VIN_YEAR[v[9]];
+  info.is_landrover = v.startsWith("SAL");
+  if (v.startsWith("SAJ")) info.model = "Jaguar";   // named only so the draft can say we don't do Jaguar
+  return info;
+}
+
+// model (+ optional year) -> the single U_M_* fitment column. Most-specific patterns first.
+// Returns { column, matched, model_label, year_needed }. column is null (matched=false) when it
+// can't be pinned (unknown model, or a model that needs a year we don't have).
+function modelToColumn(model, year) {
+  const m = String(model || "").toLowerCase().trim();
+  const y = year ? parseInt(year, 10) : null;
+  const col = (c, l) => ({ column: VALID_MODEL_COLS.has(c) ? c : null, matched: VALID_MODEL_COLS.has(c), model_label: l, year_needed: false });
+  const need = (l) => ({ column: null, matched: false, model_label: l, year_needed: true });
+  if (!m) return { column: null, matched: false, model_label: null, year_needed: false };
+  const inR = (a, b) => y != null && y >= a && y <= b;
+
+  if (/range\s*rover\s*sport|\brrs\b|rr\s*sport/.test(m)) {
+    if (inR(2005, 2013)) return col("U_M_RR_Sport_05_13", "Range Rover Sport 2005-2013");
+    if (inR(2014, 2022)) return col("U_M_RR_Sport_14_22", "Range Rover Sport 2014-2022");
+    if (y != null && y >= 2023) return col("U_M_RR_Sport_23", "Range Rover Sport 2023+");
+    return need("Range Rover Sport");
+  }
+  if (/evoque/.test(m)) {
+    if (inR(2012, 2018)) return col("U_M_Evoque_12_18", "Range Rover Evoque 2012-2018");
+    if (y != null && y >= 2019) return col("U_M_Evoque_19", "Range Rover Evoque 2019+");
+    return need("Range Rover Evoque");
+  }
+  if (/velar/.test(m)) return col("U_M_Velar_17", "Range Rover Velar 2017+");
+  if (/discovery\s*sport|disco\s*sport/.test(m)) return col("U_M_DiscSport", "Discovery Sport");
+  if (/range\s*rover|\brr\b/.test(m)) {
+    if (inR(1971, 1994)) return col("U_M_RR_71_94", "Range Rover Classic 1971-1994");
+    if (inR(1994, 2001)) return col("U_M_RR_94_01", "Range Rover P38 1994-2001");
+    if (inR(2002, 2012)) return col("U_M_RR_02_12", "Range Rover L322 2002-2012");
+    if (inR(2013, 2021)) return col("U_M_RR_13_22", "Range Rover L405 2013-2022");
+    if (y != null && y >= 2022) return col("U_M_RR_22", "Range Rover L460 2022+");
+    return need("Range Rover");
+  }
+  if (/defender/.test(m)) {
+    if ((y != null && y >= 2020) || /l663|new\s*defender/.test(m)) return col("U_M_Def_New", "Defender L663 (2020+)");
+    return col("U_M_Def_Old", "Defender (old-style, 1983-2016)");   // unqualified Defender = Def_Old
+  }
+  if (/discovery|disco/.test(m)) {
+    const n = (m.match(/disco(?:very)?\s*([1-5])/) || [])[1];
+    if (n) return col("U_M_Disc" + n, "Discovery " + n);
+    if (inR(1989, 1998)) return col("U_M_Disc1", "Discovery 1");
+    if (inR(1998, 2004)) return col("U_M_Disc2", "Discovery 2");
+    if (inR(2004, 2009)) return col("U_M_Disc3", "Discovery 3");
+    if (inR(2009, 2016)) return col("U_M_Disc4", "Discovery 4");
+    if (y != null && y >= 2017) return col("U_M_Disc5", "Discovery 5");
+    return need("Discovery (number or year)");
+  }
+  if (/freelander/.test(m)) {
+    if (/freelander\s*2|frl\s*2|\bfl2\b/.test(m)) return col("U_M_Free_2", "Freelander 2");
+    if (/freelander\s*1|frl\s*1|\bfl1\b/.test(m)) return col("U_M_Free_1", "Freelander 1");
+    if (inR(1997, 2006)) return col("U_M_Free_1", "Freelander 1");
+    if (inR(2006, 2014)) return col("U_M_Free_2", "Freelander 2");
+    return need("Freelander (1 or 2)");
+  }
+  if (/series\s*1|series\s*i\b/.test(m)) return col("U_M_Series1", "Series 1");
+  if (/series\s*(2|3|2a|ii|iii)/.test(m)) return col("U_M_Series_2_3", "Series 2/3");
+  if (/jaguar/.test(m)) return col("U_M_Jaguar", "Jaguar");
+  return { column: null, matched: false, model_label: model || null, year_needed: false };
+}
+
+const FINDER_STOP = new Set(["the", "for", "and", "my", "a", "an", "to", "is", "of", "with", "need", "want", "please", "part", "parts", "fit", "fits", "land", "rover"]);
+function tokenize(s) {
+  return [...new Set((String(s || "").toLowerCase().match(/[a-z0-9]{2,}/g) || []))]
+    .filter((t) => !FINDER_STOP.has(t)).slice(0, 8);
+}
+
+// First description token that maps to a product category column (soft ranking boost only).
+const CAT_MAP = {
+  brake: "U_C_Braking", brakes: "U_C_Braking", disc: "U_C_Braking", discs: "U_C_Braking",
+  pad: "U_C_Braking", pads: "U_C_Braking", caliper: "U_C_Braking", rotor: "U_C_Braking",
+  clutch: "U_C_Clutch", exhaust: "U_C_Exhaust", silencer: "U_C_Exhaust",
+  filter: "U_C_Service", oil: "U_C_Service", service: "U_C_Service", spark: "U_C_Service",
+  suspension: "U_C_Axle_Susp", shock: "U_C_Axle_Susp", shocks: "U_C_Axle_Susp",
+  spring: "U_C_Axle_Susp", wishbone: "U_C_Axle_Susp",
+  bearing: "U_C_Drive_Mech", driveshaft: "U_C_Drive_Mech", propshaft: "U_C_Drive_Mech", cv: "U_C_Drive_Mech",
+  gearbox: "U_C_Gearbox", radiator: "U_C_Cool_Heat", coolant: "U_C_Cool_Heat",
+  thermostat: "U_C_Cool_Heat", heater: "U_C_Cool_Heat",
+  fuel: "U_C_Fuel_System", injector: "U_C_Fuel_System",
+  sensor: "U_C_Electrical", light: "U_C_Electrical", lamp: "U_C_Electrical",
+  battery: "U_C_Electrical", alternator: "U_C_Electrical", starter: "U_C_Electrical",
+  gasket: "U_C_Engine", timing: "U_C_Engine", belt: "U_C_Engine",
+};
+function categoryFromTokens(tokens) {
+  for (const t of (tokens || [])) { const c = CAT_MAP[t]; if (c && VALID_CAT_COLS.has(c)) return c; }
+  return null;
+}
+
+// Pure ranking: score each candidate row by description-token overlap (across name + fitment
+// note + alternatives) with boosts for in-stock, ABC tier and a category-flag hit. Returns the
+// top N shaped candidates with the fitment evidence attached. No I/O — unit-testable.
+function rankCandidates(rows, tokens, opts = {}) {
+  const toks = (tokens || []).map((t) => t.toLowerCase());
+  const abcBoost = (a) => ({ "A+": 2, A: 1.5, B: 1 }[(a || "").trim()] || 0);
+  const scored = (rows || []).map((r) => {
+    const hay = ((r.ItemName || "") + " " + (r.U_Tag_Model || "") + " " + (r.U_Alternatives || "")).toLowerCase();
+    const hit = toks.filter((t) => hay.includes(t));
+    let score = hit.length * 10 + (r.OnHand > 0 ? 3 : 0) + abcBoost(r.U_ABC);
+    if (opts.hasCat && String(r.CatFlag || "").toUpperCase() === "Y") score += 4;
+    return { r, score, hit };
+  });
+  scored.sort((a, b) =>
+    b.score - a.score ||
+    ((b.r.OnHand > 0 ? 1 : 0) - (a.r.OnHand > 0 ? 1 : 0)) ||
+    ((a.r.WebPrice == null ? 1e9 : a.r.WebPrice) - (b.r.WebPrice == null ? 1e9 : b.r.WebPrice))
+  );
+  return scored.slice(0, opts.limit || 15).map(({ r, score, hit }) => ({
+    item_code: r.ItemCode,
+    customer_code: customerCode(r),
+    name: (r.ItemName || "").trim() || undefined,
+    quality: (r.U_Quality || "").trim() || undefined,
+    on_hand: r.OnHand,
+    web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
+    fitment: r.U_Tag_Model ? String(r.U_Tag_Model).replace(/\s+/g, " ").trim().slice(0, 200) : undefined,
+    handle: (opts.handleMap || {})[r.ItemCode] || undefined,
+    match: { model_flag: opts.column || null, tokens_matched: hit, score: Math.round(score * 10) / 10 },
+  }));
+}
+
+// Batched, best-effort Shopify product handles for a set of ItemCodes (skus). One read-only
+// call; never throws (a Shopify hiccup must not fail a finder/dossier lookup).
+async function shopifyHandles(itemCodes) {
+  try {
+    const skus = [...new Set((itemCodes || []).map((s) => String(s).replace(/[^A-Za-z0-9._/-]/g, "")).filter(Boolean))].slice(0, 50);
+    if (!skus.length) return {};
+    const search = skus.map((s) => `sku:${s}`).join(" OR ");
+    const data = await shopifyGraphql(`{ productVariants(first: 50, query: ${JSON.stringify(search)}) { edges { node { sku product { handle } } } } }`);
+    const map = {};
+    for (const e of (data.productVariants && data.productVariants.edges) || []) {
+      const n = e.node || {};
+      if (n.sku && n.product && n.product.handle) map[n.sku] = n.product.handle;
+    }
+    return map;
+  } catch (e) { return {}; }
+}
+
+async function partFinder(params = {}) {
+  const { description = "", model = "", year = null, engine = "", vin = "" } = params;
+  const vinInfo = vin ? vinDecode(vin) : null;
+  const useModel = (model && String(model).trim()) || (vinInfo && vinInfo.model) || "";
+  const useYear = year || (vinInfo && vinInfo.year) || null;
+  const mc = modelToColumn(useModel, useYear);
+  const tokens = tokenize(description);
+  const catCol = categoryFromTokens(tokens);
+
+  const vehicle = {
+    model: useModel || null, year: useYear || null, engine: (engine && String(engine).trim()) || null,
+    source: vin ? "vin" : "given", vin: vinInfo ? vinInfo.vin : undefined, year_approx: vinInfo ? true : undefined,
+    model_flag: mc.column || null,
+    confidence: mc.column ? (vin && !(model && String(model).trim()) ? "medium" : "high") : "low",
+  };
+  const out = { vehicle, candidates: [], note: "" };
+
+  if (!mc.column && !tokens.length) {
+    out.note = "Give a model (and year) and/or a part description to search.";
+    return out;
+  }
+
+  const pool = await getPool();
+  const req = pool.request();
+  const where = ["I.U_Shopify_Active='y'", "I.validFor='y'"];
+  if (mc.column) where.push(`I.${mc.column}='Y'`);   // column whitelisted in modelToColumn
+  if (tokens.length) {
+    tokens.forEach((t, i) => req.input("t" + i, sql.NVarChar, "%" + t + "%"));
+    const ors = tokens.map((_, i) => `I.ItemName LIKE @t${i} OR CAST(I.U_Tag_Model AS NVARCHAR(MAX)) LIKE @t${i} OR I.U_Alternatives LIKE @t${i}`).join(" OR ");
+    where.push("(" + ors + ")");
+  }
+  const catSelect = catCol && VALID_CAT_COLS.has(catCol) ? `, I.${catCol} AS CatFlag` : "";
+  // Order by description-token overlap FIRST so the most-relevant rows survive the TOP cap
+  // (a common token like "front" matches hundreds of parts; without this a 3-token disc match
+  // could be crowded out before the model sees it — the truncation problem P1.3 also addresses).
+  const relevance = tokens.length
+    ? tokens.map((_, i) => `CASE WHEN (I.ItemName LIKE @t${i} OR CAST(I.U_Tag_Model AS NVARCHAR(MAX)) LIKE @t${i} OR I.U_Alternatives LIKE @t${i}) THEN 1 ELSE 0 END`).join(" + ")
+    : "0";
+  const rows = (await req.query(
+    `SELECT TOP (80) I.ItemCode, I.U_WS_LRNo, I.U_Code_AllMakes, I.U_Code_BritPart, I.U_Code_Hotbray,
+            I.ItemName, I.U_Quality, I.U_ABC, I.OnHand, P.Price AS WebPrice,
+            CAST(I.U_Tag_Model AS NVARCHAR(MAX)) AS U_Tag_Model, I.U_Alternatives${catSelect}
+     FROM OITM I LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1
+     WHERE ${where.join(" AND ")}
+     ORDER BY (${relevance}) DESC, CASE WHEN I.OnHand > 0 THEN 0 ELSE 1 END, I.U_ABC`
+  )).recordset;
+
+  const handleMap = await shopifyHandles(rows.map((r) => r.ItemCode));
+  out.candidates = rankCandidates(rows, tokens, { column: mc.column, hasCat: !!catCol, handleMap, limit: 15 });
+
+  const notes = [];
+  if (!mc.column && useModel) notes.push(mc.year_needed
+    ? `Could not pin ${mc.model_label || useModel} without a model year — searched by description only.`
+    : `Model "${useModel}" not recognised — searched by description only.`);
+  if (!useModel && !vin) notes.push("No vehicle given — results are description-only; ask for model + year + engine to narrow fitment.");
+  if (vehicle.engine) notes.push("Engine is not a fitment column — used only as a ranking hint; confirm engine/VIN-specific fitment with the customer or EPC.");
+  if (vin && !(vinInfo && vinInfo.model)) notes.push("VIN gives the model year; confirm the exact model — VIN-specific fitment still needs a human/EPC check.");
+  out.note = notes.join(" ");
+  return out;
 }
 
 // ---------- Phone lookup (voicemail caller match) ----------
@@ -351,6 +814,13 @@ async function shopifyOrderByName(orderName) {
 // Code maps from the official API reference (developer.myparcel.nl, data-types; verified
 // 2026-06-10). Raw integer codes are translated so the model and the salesperson never see
 // a bare "status 3". READ-ONLY: search + track only, never shipment creation.
+//
+// TWO BRANCHES (added 2026-08-04). MyParcel issues ONE API KEY PER SHOP, and a key can only read
+// its own shop — anything else returns 401 readResourceOwnedByOthers. Budget Parts runs two shops
+// under one account (207826): 137660 "Budget Parts B.V." (Gouda) and 137714 "Budget Parts Noord"
+// (Drachten). Until now Axle held only the Gouda key, so every parcel lookup for the drachten@
+// mailbox silently found nothing — 3,734 Drachten shipments were invisible. Searches and tracking
+// therefore fan out over every configured key and merge, tagging each result with its branch.
 const MYPARCEL_STATUS = {
   1: "pending - concept", 2: "pending - registered", 3: "enroute - handed to carrier",
   4: "enroute - sorting", 5: "enroute - distribution", 6: "enroute - customs",
@@ -374,9 +844,37 @@ const MYPARCEL_DELIVERY = { 1: "morning", 2: "standard", 3: "evening", 4: "picku
 const mpStatus = (code) => `${code} (${MYPARCEL_STATUS[code] || "unknown"})`;
 const mpFlag = (v) => (Number(v) === 1 || v === true) || undefined;  // 0/absent -> undefined (kept out of output)
 
-function mpHeaders() {
-  const auth = Buffer.from(process.env.MYPARCEL_API_KEY).toString("base64");
+// One entry per shop: MYPARCEL_API_KEY is the primary (labelled by MYPARCEL_SHOP_LABEL, default
+// "gouda"); any MYPARCEL_API_KEY_<LABEL> adds another, e.g. MYPARCEL_API_KEY_DRACHTEN. Built lazily
+// so a key added to the environment is picked up without a code change, and so Axle keeps working
+// unchanged when only one key is configured.
+function mpAccounts() {
+  const out = [];
+  if (process.env.MYPARCEL_API_KEY) {
+    out.push({ shop: (process.env.MYPARCEL_SHOP_LABEL || "gouda").toLowerCase(), key: process.env.MYPARCEL_API_KEY });
+  }
+  for (const [k, v] of Object.entries(process.env)) {
+    const m = /^MYPARCEL_API_KEY_(.+)$/.exec(k);
+    if (m && v && v.trim()) out.push({ shop: m[1].toLowerCase(), key: v.trim() });
+  }
+  return out;
+}
+
+function mpHeaders(key) {
+  const auth = Buffer.from(key || process.env.MYPARCEL_API_KEY).toString("base64");
   return { Authorization: `basic ${auth}`, Accept: "application/json", "User-Agent": "CustomApiCall/2" };
+}
+
+// Run a read against every configured shop. A branch being down, or a shipment id belonging to the
+// other branch (which answers 401), must never sink the whole lookup — a partial answer beats none
+// when a customer is waiting on a tracking link.
+async function mpFanOut(fn) {
+  const accounts = mpAccounts();
+  const settled = await Promise.all(accounts.map(async (a) => {
+    try { return { shop: a.shop, value: await fn(a) }; }
+    catch { return { shop: a.shop, value: null }; }
+  }));
+  return settled.filter((r) => r.value);
 }
 
 // One shipment, mapped to the data points the team actually uses when creating shipments:
@@ -411,10 +909,19 @@ function mpShipment(s) {
 
 async function myparcelSearch(searchTerm, size = 5) {
   const n = Math.min(Math.max(parseInt(size, 10) || 5, 1), 10);
-  const r = await fetch(`https://api.myparcel.nl/shipments?q=${encodeURIComponent(searchTerm)}&size=${n}`, { headers: mpHeaders() });
-  if (!r.ok) return [];
-  const data = await r.json();
-  return (data.data.shipments || []).map(mpShipment);
+  const url = `https://api.myparcel.nl/shipments?q=${encodeURIComponent(searchTerm)}&size=${n}`;
+  const per = await mpFanOut(async (a) => {
+    const r = await fetch(url, { headers: mpHeaders(a.key) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data.data.shipments || [];
+  });
+  // Newest first across both branches, then trim to what the caller asked for.
+  return per
+    .flatMap(({ shop, value }) => value.map((s) => ({ shop, s })))
+    .sort((x, y) => String(y.s.created).localeCompare(String(x.s.created)))
+    .slice(0, n)
+    .map(({ shop, s }) => ({ shop, ...mpShipment(s) }));
 }
 
 // Track & trace for shipment id(s) from myparcelSearch (GET /tracktraces/{id;id}).
@@ -425,10 +932,25 @@ async function myparcelTrack(shipmentIds) {
   const ids = (Array.isArray(shipmentIds) ? shipmentIds : String(shipmentIds).split(/[;,\s]+/))
     .map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 10);
   if (!ids.length) return [];
-  const r = await fetch(`https://api.myparcel.nl/tracktraces/${ids.join(";")}?extra_info=delivery_moment`, { headers: mpHeaders() });
-  if (!r.ok) return [];
-  const data = await r.json();
-  return (data.data.tracktraces || []).map((t) => ({
+  const url = `https://api.myparcel.nl/tracktraces/${ids.join(";")}?extra_info=delivery_moment`;
+  const per = await mpFanOut(async (a) => {
+    const r = await fetch(url, { headers: mpHeaders(a.key) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data.data.tracktraces || [];
+  });
+  // An id belongs to exactly one branch, so first answer wins; dedupe guards against overlap.
+  const seen = new Set();
+  const merged = [];
+  for (const { shop, value } of per) {
+    for (const t of value) {
+      if (seen.has(t.shipment_id)) continue;
+      seen.add(t.shipment_id);
+      merged.push({ shop, t });
+    }
+  }
+  return merged.map(({ shop, t }) => ({
+    shop,
     shipment_id: t.shipment_id,
     status: t.status ? mpStatus(t.status.current) : undefined,
     phase: t.status ? t.status.main : undefined,               // registered|handed_to_carrier|sorting|distribution|delivered
@@ -442,6 +964,251 @@ async function myparcelTrack(shipmentIds) {
   }));
 }
 
+// ---------- Return dossier: everything we know about ONE return request ----------
+// One assembled object for a return/withdrawal request, so the drafting model does not
+// stitch together Shopify + SAP by hand. Given an order reference the customer quotes (a
+// Shopify order name #S18522 / S18522, or a SAP DocNum), it pulls:
+//   * the Shopify Return object (status + per-line reason/note/customerNote/sku) — the
+//     self-service "Return items" intake — plus the order's real customer email;
+//   * the SAP order (ORDR, joined by NumAtCard = the Shopify name), whether an AR invoice
+//     exists (OINV = shipped/collected; its date starts the 14-day withdrawal clock and is
+//     the credit-note reference), the payment method (U_Paid → refund route), the order total;
+//   * per-item facts (OITM/ITM1: name, quality, ABC, category, customer code, price);
+//   * customer signals (OCRD: VAT number, tier, prior credit-note count = return history).
+// It DERIVES hints only — days since invoice, withdrawal/goodwill windows, a default
+// who-pays-return-shipping per reason, a business-vs-consumer signal, an electrical hint,
+// a refund route. These are HINTS for the model, which makes the final judgement (Brad's
+// "use AI logic" for electrical + B2C/B2B). READ-ONLY: reads Shopify + SAP, writes nothing.
+
+// Shopify returnReason enum -> who bears return shipping by default. Our error = we pay;
+// change-of-mind = customer pays; ambiguous/blank = confirm with the customer (this is the
+// only case the draft asks the reason, per the agreed design).
+const RETURN_REASON_WHOPAYS = {
+  DEFECTIVE: "us", WRONG_ITEM: "us", NOT_AS_DESCRIBED: "us",
+  UNWANTED: "customer", SIZE_TOO_SMALL: "customer", SIZE_TOO_LARGE: "customer",
+  STYLE: "customer", COLOR: "customer",
+  OTHER: "confirm", UNKNOWN: "confirm",
+};
+function whoPaysForReason(reason) {
+  return RETURN_REASON_WHOPAYS[String(reason || "").toUpperCase()] || "confirm";
+}
+
+// Business-vs-consumer signal from the card name + VAT number (no hard SAP field — Brad's
+// decision is to judge it). A VAT number present, or a business marker in the name, => likely
+// business (no statutory withdrawal right; 15% restocking fee may apply). The model decides.
+// Leading boundary only (no trailing \b) so concatenated business words match too — e.g.
+// "Autobedrijf Jansen" / "Garagebedrijf" (the standard Dutch forms) must read as business.
+const BUSINESS_NAME_RE = /\b(auto|bedrijf|b\.?v\.?\b|service|garage|ltd|gmbh|holding|automotive|4x4|motors|trading|company|handel|onderdelen|parts|tuning|classics?)/i;
+function businessSignal(name, vat) {
+  const hasVat = !!String(vat || "").trim();
+  const nameHit = BUSINESS_NAME_RE.test(String(name || ""));
+  return { likely_business: hasVat || nameHit, has_vat: hasVat, name_marker: nameHit };
+}
+
+// Electrical hint from the item name/category (no hard SAP field — the model confirms). Used
+// only to surface the sealed / diminished-value rule as a proposal, never an auto-deduction.
+const ELECTRICAL_RE = /\b(electr|sensor|ecu|relay|switch|solenoid|module|wiring|loom|harness|motor|actuator|lamp|light|bulb|headlamp|coil|battery|alternator|starter|gauge|pump|ignition|abs|airbag|control unit|amplifier|antenna|aerial)\b/i;
+function electricalHint(name, cat) {
+  return ELECTRICAL_RE.test(String(name || "") + " " + String(cat || ""));
+}
+
+const PAYMENT_METHOD = { Y: "paid", N: "unpaid", P: "PIN", C: "Cash", S: "Shopify", B: "Bank", A: "Account" };
+// Refund route from the SAP payment letter: Shopify orders refund via Shopify; bank/PIN need
+// the customer's IBAN; account is settled on the account. A credit note is always issued.
+function refundRoute(uPaid) {
+  const p = String(uPaid || "").toUpperCase();
+  if (p === "S") return "refund via Shopify (original payment)";
+  if (p === "B" || p === "P") return "refund by bank transfer — ask the customer for their IBAN";
+  if (p === "A") return "settle on the customer's account";
+  if (p === "N") return "order not marked paid — verify payment before any refund";
+  return "confirm payment method before refunding";
+}
+
+const daysBetween = (a, b) => Math.floor((a.getTime() - b.getTime()) / 86400000);
+
+async function returnDossier(orderRef, opts = {}) {
+  const raw = String(orderRef || "").trim();
+  const mName = raw.match(/S\d{4,6}/i);                       // Shopify order name digits
+  const shopName = mName ? mName[0].toUpperCase() : null;     // e.g. "S18522"
+  const mDoc = raw.match(/\b\d{5,7}\b/);                      // a bare SAP DocNum
+  const sapDocNum = !shopName && mDoc ? parseInt(mDoc[0], 10) : null;
+  if (!shopName && !sapDocNum) return { order_ref: raw, found: false, note: "no Shopify order name (S#####) or SAP DocNum found in the reference" };
+
+  const pool = await getPool();
+  const numAtCard = shopName ? "#" + shopName : null;
+  const today = opts.now ? new Date(opts.now) : new Date();
+
+  // --- Shopify: order (always) + Return object (best effort) ---
+  // Two calls on purpose: the base order + line items read with the standard read_orders scope,
+  // while the Return object needs the read_returns scope. Splitting them means a missing read_returns
+  // grant degrades to "returns unavailable" instead of nuking the whole lookup (the whole query is
+  // rejected — data:null — when a single denied field is present).
+  let shop = null, returnsAvailable = false, returnsError = null;
+  if (shopName) {
+    try {
+      const d = await shopifyGraphql(`{ orders(first:1, query:"name:${shopName}") { edges { node {
+        name createdAt email displayFulfillmentStatus
+        customer { email numberOfOrders }
+        lineItems(first:30) { edges { node { sku name quantity } } }
+      } } } }`);
+      shop = (d.orders.edges[0] && d.orders.edges[0].node) || null;
+    } catch (e) { shop = { error: e.message }; }
+    if (shop && !shop.error) {
+      try {
+        const dr = await shopifyGraphql(`{ orders(first:1, query:"name:${shopName}") { edges { node {
+          returns(first:5) { nodes { name status totalQuantity
+            returnLineItems(first:20) { nodes { __typename ... on ReturnLineItem {
+              quantity returnReason returnReasonNote customerNote
+              fulfillmentLineItem { lineItem { name sku quantity } } } } } } }
+        } } } }`);
+        const rnode = dr.orders.edges[0] && dr.orders.edges[0].node;
+        if (rnode) { shop.returns = rnode.returns; returnsAvailable = true; }
+      } catch (e) { returnsError = e.message; }   // e.g. read_returns scope not granted
+    }
+  }
+
+  // --- SAP: the order (join by NumAtCard = Shopify name, else by DocNum) ---
+  let sapOrder = null;
+  {
+    const req = pool.request();
+    let where;
+    if (numAtCard) { req.input("nac", sql.NVarChar, numAtCard); where = `T0."NumAtCard" = @nac`; }
+    else { req.input("dn", sql.Int, sapDocNum); where = `T0."DocNum" = @dn`; }
+    const r = await req.query(
+      `SELECT TOP 1 T0."DocEntry", T0."DocNum", T0."CardCode", T0."CardName", T0."NumAtCard",
+              T0."DocStatus", T0."U_Paid", T0."DocTotal", T0."DocDate"
+       FROM ORDR T0 WHERE ${where} ORDER BY T0."DocDate" DESC`);
+    sapOrder = r.recordset[0] || null;
+  }
+
+  // --- SAP: AR invoice existence = shipped/collected; date = withdrawal clock + credit ref ---
+  let invoice = null;
+  {
+    const req = pool.request();
+    let where;
+    if (numAtCard) { req.input("nac", sql.NVarChar, numAtCard); where = `T0."NumAtCard" = @nac`; }
+    else if (sapOrder) { req.input("cc", sql.NVarChar, sapOrder.CardCode); req.input("dt", sql.Numeric, sapOrder.DocTotal); where = `T0."CardCode" = @cc AND T0."DocTotal" = @dt`; }
+    else { where = "1=0"; }
+    const r = await req.query(
+      `SELECT TOP 1 T0."DocNum", T0."DocDate", T0."DocTotal" FROM OINV T0 WHERE ${where} ORDER BY T0."DocDate" DESC`);
+    invoice = r.recordset[0] || null;
+  }
+
+  // --- Item facts for the SKUs on the return (fallback: the order's Shopify line SKUs) ---
+  const retLines = [];
+  const shopReturns = (shop && shop.returns && shop.returns.nodes) || [];
+  for (const ret of shopReturns) {
+    for (const li of (ret.returnLineItems && ret.returnLineItems.nodes) || []) {
+      const fl = li.fulfillmentLineItem && li.fulfillmentLineItem.lineItem;
+      retLines.push({
+        return_name: ret.name, return_status: ret.status,
+        sku: (fl && fl.sku) || null, line_name: (fl && fl.name) || null,
+        quantity: li.quantity, reason: li.returnReason || null,
+        reason_note: li.returnReasonNote || null, customer_note: li.customerNote || null,
+      });
+    }
+  }
+  // Order's Shopify line items (always readable) — used for product facts and, when the return
+  // object is unavailable (missing read_returns scope), as the fitment/value context the engine
+  // matches the notification's returned items against.
+  const orderLineSkus = ((shop && shop.lineItems && shop.lineItems.edges) || []).map((e) => e.node.sku).filter(Boolean);
+  const skus = [...new Set([...retLines.map((l) => l.sku), ...orderLineSkus].filter(Boolean))].slice(0, 30);
+
+  let itemsByCode = {};
+  if (skus.length) {
+    const req = pool.request();
+    const ph = skus.map((code, i) => { req.input("s" + i, sql.NVarChar, code); return "@s" + i; });
+    const r = await req.query(
+      `SELECT T0."ItemCode", T0."ItemName", T0."U_Quality", T0."U_ABC", T0."U_Tag_Cat",
+              T0."U_Code_AllMakes", T0."U_Code_BritPart", T0."U_Code_Hotbray", T0."U_WS_LRNo",
+              T0."U_WS_DropShip", T1."Price" AS "WebPrice"
+       FROM OITM T0 LEFT JOIN ITM1 T1 ON T0."ItemCode" = T1."ItemCode" AND T1."PriceList" = 1
+       WHERE T0."ItemCode" IN (${ph.join(",")})`);
+    for (const row of r.recordset) itemsByCode[row.ItemCode] = row;
+  }
+
+  // --- Customer signals (OCRD): VAT, tier, prior credit-note count = return history ---
+  let customer = null;
+  if (sapOrder) {
+    const r = await pool.request().input("cc", sql.NVarChar, sapOrder.CardCode).query(
+      `SELECT TOP 1 T0."CardCode", T0."CardName", T0."LicTradNum", T0."E_Mail",
+              T2."ListName",
+              (SELECT COUNT(*) FROM ORIN X WHERE X."CardCode"=T0."CardCode") AS credit_notes,
+              (SELECT COUNT(*) FROM OINV X WHERE X."CardCode"=T0."CardCode") AS invoices
+       FROM OCRD T0 LEFT JOIN OPLN T2 ON T0."ListNum"=T2."ListNum" WHERE T0."CardCode"=@cc`);
+    customer = r.recordset[0] || null;
+  }
+
+  // --- Derive hints (the model makes the final call) ---
+  const shipped = !!invoice;
+  const clockDate = invoice ? new Date(invoice.DocDate) : (sapOrder ? new Date(sapOrder.DocDate) : null);
+  const daysSince = clockDate ? daysBetween(today, clockDate) : null;
+  const custEmail = (shop && (shop.email || (shop.customer && shop.customer.email))) || (customer && customer.E_Mail) || null;
+  const bizName = (customer && customer.CardName) || (sapOrder && sapOrder.CardName) || (shop && shop.customer && shop.customer.displayName) || "";
+  const biz = businessSignal(bizName, customer && customer.LicTradNum);
+
+  const factLine = (sku, base) => {
+    const it = sku && itemsByCode[sku];
+    return {
+      ...base,
+      customer_code: it ? customerCode(it) : sku,
+      item_name: it ? it.ItemName : (base.line_name || undefined),
+      quality: it ? it.U_Quality : undefined,
+      abc: it ? it.U_ABC : undefined,
+      category: it ? it.U_Tag_Cat : undefined,
+      unit_price_excl_vat: it && it.WebPrice != null ? it.WebPrice : undefined,
+      electrical_hint: it ? electricalHint(it.ItemName, it.U_Tag_Cat) : undefined,
+    };
+  };
+  // The returned lines (reason-bearing) — populated only when the return object is readable.
+  const lines = retLines.map((l) => ({ ...factLine(l.sku, l), who_pays_default: whoPaysForReason(l.reason) }));
+  // All order line items with product facts — always available, and the context the engine matches
+  // the notification's returned items against when the return object itself is not readable.
+  const orderItems = orderLineSkus.map((sku, i) => {
+    const node = ((shop && shop.lineItems && shop.lineItems.edges) || [])[i];
+    return factLine(sku, { sku, line_name: node && node.node && node.node.name, quantity: node && node.node && node.node.quantity });
+  });
+
+  // return_object.present: true = a self-service return exists; false = none (e.g. a direct email);
+  // "unknown" = we could not read it because the read_returns scope is not granted — the engine must
+  // then take the returned items + reason from the notification email and ask the customer the reason.
+  const returnObject = !returnsAvailable
+    ? { present: "unknown", scope_missing: true,
+        note: "Shopify read_returns scope not granted — read the returned items and reason from the notification email; treat who-pays as 'confirm' and ask the customer." }
+    : shopReturns.length
+      ? { present: true, status: shopReturns[0].status, name: shopReturns[0].name }
+      : { present: false };
+
+  return {
+    order_ref: raw,
+    shopify_name: shopName || (sapOrder && sapOrder.NumAtCard) || null,
+    found: !!(sapOrder || (shop && !shop.error)),
+    customer_email: custEmail,                 // the real recipient for a Shopify-notification reply
+    customer_name: bizName || undefined,
+    shopify_order_error: (shop && shop.error) || undefined,
+    returns_available: returnsAvailable,       // false = read_returns scope missing (see return_object)
+    return_object: returnObject,
+    lines,
+    order_items: orderItems,
+    order: sapOrder ? {
+      doc_num: sapOrder.DocNum, doc_status: sapOrder.DocStatus,
+      order_date: sapOrder.DocDate, order_total_incl_vat: sapOrder.DocTotal,
+      payment: PAYMENT_METHOD[String(sapOrder.U_Paid || "").toUpperCase()] || sapOrder.U_Paid,
+      refund_route: refundRoute(sapOrder.U_Paid),
+    } : null,
+    invoice: invoice ? { doc_num: invoice.DocNum, date: invoice.DocDate, total: invoice.DocTotal } : null,
+    shipped,                                    // AR invoice exists = goods shipped/collected
+    days_since_shipped: daysSince,
+    within_14_day_withdrawal: daysSince == null ? null : daysSince <= 14,   // B2C statutory
+    within_goodwill_60: daysSince == null ? null : daysSince <= 60,          // 30 flex to 60
+    customer_signal: biz,                       // model decides B2C vs B2B from this
+    tier: customer ? customer.ListName : undefined,
+    prior_credit_notes: customer ? customer.credit_notes : undefined,
+    prior_invoices: customer ? customer.invoices : undefined,
+    note: "Hints only — confirm electrical + B2C/B2B by judgement. Every system action (decline the Shopify return, create the credit note, refund) is a human to-do; Axle drafts only.",
+  };
+}
+
 // ---------- Entity extraction (part numbers, order numbers) ----------
 function extractEntities(text) {
   const partNumbers = [...new Set((text.match(/\b(?:[A-Z]{2,3}\d{6}[A-Z]?|\d{2}[A-Z]\d{4,5}[A-Z]?)\b/g) || []))];
@@ -451,10 +1218,14 @@ function extractEntities(text) {
 
 module.exports = {
   htmlToText, graphToken, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, getAttachment,
+  getMessageStates, folderIds, folderName,
   getPool, closePool, sapCustomerContext, sapStockPrice,
+  partDossier, customerCode, assembleDossier,
+  partFinder, vinDecode, modelToColumn, rankCandidates, categoryFromTokens, tokenize, shopifyHandles,
   shopifyCustomerContext, shopifyOrderByName,
   myparcelSearch, myparcelTrack, extractEntities, shopifyGraphql,
   extractPhoneNumbers, findCustomerByPhone,
+  returnDossier, whoPaysForReason, businessSignal, electricalHint, refundRoute,
 };
 
 

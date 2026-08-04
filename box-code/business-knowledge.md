@@ -116,6 +116,42 @@
   delivery times are estimates (see policy page). Exception for paid express arriving
   late: see "Warranty claims, missing items & shipping complaints".
 
+## Return-request handling (Shopify self-service + email)
+- The webshop now offers Shopify's self-service "Return items" flow (the published front door
+  in the refund policy). It creates a Shopify Return object and emails a notification into
+  info@ titled "Return requested for order #S...". Customers ALSO still email returns/withdrawals
+  directly. Both are the same job; handle them the same way.
+- ALWAYS call return_dossier FIRST with the order reference. It returns the Shopify Return
+  object (per-line reason + who_pays_default), whether the order shipped (AR invoice) with the
+  14-day-withdrawal / 60-day-goodwill windows, per-item facts, the refund_route, the customer's
+  return history, and the real customer_email.
+- Reason drives who pays return shipping: defect / wrong part / not-as-described (or any error of
+  ours) = WE pay, and ask for photos where damage or a wrong part is claimed; unwanted / changed
+  mind / size = the CUSTOMER pays. A blank or OTHER/UNKNOWN reason (who_pays_default = 'confirm')
+  is the ONLY case where the draft asks the customer to confirm the reason.
+- Electrical judgement: if the item reads as an electrical component (name/category — no SAP flag,
+  use judgement), state the sealed/unused-for-full-refund condition and that a value deduction MAY
+  apply if opened/installed. Propose it; never assert an automatic deduction.
+- B2C vs B2B judgement: use customer_signal (a VAT number present, or a business name marker like
+  Auto/Bedrijf/BV/Service/Garage/Ltd) to decide. Business = no statutory withdrawal right; propose
+  the 15% restocking fee (min €25) unless the item was our error. Borderline → treat as consumer.
+- Refund amount: do NOT commit to an exact refund figure in the customer-facing draft before the
+  return is received and checked. Describe the refund (to the original payment method, after receipt
+  and the credit note) without stating a number — the final amount can depend on the return's
+  condition, which items come back, and any deductions. The exact figure is the salesperson's to set.
+- Processing is INTAKE-ONLY: the Shopify "Return items" flow is just the front door; every real
+  action stays in SAP and is a human to-do. End the investigation with these in
+  questions_for_salesperson: decline/close the Shopify return object; on receipt & check of the
+  goods create the AR credit note; issue the refund via the refund_route. Axle drafts only — it
+  performs no return, credit note, or refund itself.
+- Shopify-notification sub-type: the notification's sender is info@ (our own mailer), NOT the
+  customer. Address the reply to return_dossier.customer_email and never quote the notification
+  back to the customer. (The send path uses the new-outbound recipient flow for these.)
+- If return_dossier reports returns_available=false (Shopify read_returns scope not yet granted),
+  the structured return reason/items can't be read. Take the returned item(s) from the notification
+  email body, use order_items for their product facts, and ask the customer to confirm the reason
+  (who-pays can't be auto-decided). This resolves itself once the scope is added.
+
 ## Pricing & discounts
 - ITM1 PriceList 1 = webshop price in EUR, EXCL. VAT. All prices in SAP and the webshop
   are excl. VAT.

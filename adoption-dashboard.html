@@ -1,0 +1,125 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Axle — Adoption Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{--bg:#0f1419;--card:#1a212b;--line:#2a3441;--ink:#e7edf3;--mut:#8b97a6;--accent:#4f9cf9;--good:#3ecf8e;--warn:#f5a623;--bad:#f56565;--purple:#a78bfa;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 60px}
+  h1{font-size:22px;margin:0 0 2px} h2{font-size:15px;margin:30px 0 12px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:6px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .kpi{font-size:28px;font-weight:700;line-height:1.1} .kpi small{font-size:14px;color:var(--mut);font-weight:500}
+  .lbl{color:var(--mut);font-size:12px;margin-top:4px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px} @media(max-width:840px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  table{width:100%;border-collapse:collapse;font-size:13px} th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)} th{color:var(--mut);font-weight:600}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .pill.good{background:rgba(62,207,142,.15);color:var(--good)} .pill.warn{background:rgba(245,166,35,.15);color:var(--warn)} .pill.bad{background:rgba(245,101,101,.15);color:var(--bad)}
+  .bar{height:9px;border-radius:6px;background:var(--line);overflow:hidden;display:flex}
+  .bar i{display:block;height:100%}
+  canvas{max-height:300px}
+  .foot{color:var(--mut);font-size:12px;margin-top:34px;border-top:1px solid var(--line);padding-top:14px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:6px 0 10px}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
+</style></head><body><div class="wrap">
+<h1>Axle — Adoption Dashboard</h1>
+<div class="sub" id="meta"></div>
+<div class="cards" id="kpis"></div>
+
+<h2>Adoption by user</h2>
+<div class="panel"><table id="userTable"><thead><tr>
+  <th>User</th><th class="num">Axle sends</th><th class="num">Verbatim</th><th>Draft acceptance</th><th class="num">Median match</th><th>Last Axle send</th>
+</tr></thead><tbody></tbody></table>
+<div class="legend" style="margin-top:12px">
+  <span><i class="dot" style="background:var(--good)"></i>Sent verbatim</span>
+  <span><i class="dot" style="background:var(--accent)"></i>Light edit</span>
+  <span><i class="dot" style="background:var(--warn)"></i>Moderate edit</span>
+  <span><i class="dot" style="background:var(--bad)"></i>Heavy rewrite</span>
+</div></div>
+
+<h2>Daily activity — items in vs. replies sent through Axle</h2>
+<div class="grid2">
+  <div class="panel"><div class="sub">info@ (Jack)</div><canvas id="infoChart"></canvas></div>
+  <div class="panel"><div class="sub">drachten@ (Rob/Huub)</div><canvas id="drachChart"></canvas></div>
+</div>
+
+<h2>Where replies are resolved</h2>
+<div class="grid2"><div class="panel"><canvas id="resInfo"></canvas></div><div class="panel"><canvas id="resDrach"></canvas></div></div>
+
+<div class="grid2">
+  <div><h2>Draft edited most by topic</h2><div class="panel"><canvas id="intentChart"></canvas></div></div>
+  <div><h2>Is Axle's confidence trustworthy?</h2><div class="panel"><canvas id="confChart"></canvas>
+    <div class="sub" style="margin-top:10px">% of sends left verbatim, by Axle's self-rated draft confidence. Bars near-equal = the badge carries little signal.</div></div></div>
+</div>
+
+<div class="foot" id="foot"></div>
+</div>
+<script>
+const D = {"meta":{"dbPath":"C:\\Axle\\data\\axle.db (snapshot: axle-20260626-030002.db)","generatedAt":"2026-06-26T07:57:47.326819","windowStart":"2026-06-10 06:45:22","windowEnd":"2026-06-25 14:19:59","totalItems":332,"totalSends":161},"perUser":[{"user":"jack","label":"Jack (info@)","sends":141,"verbatim":47,"light":21,"moderate":31,"heavy":41,"verbatimPct":33,"medianSim":0.7792207792207793,"lastSend":"2026-06-25 14:25:36"},{"user":"drachten","label":"Rob/Huub (drachten@)","sends":11,"verbatim":7,"light":2,"moderate":2,"heavy":0,"verbatimPct":64,"medianSim":0.9944584382871536,"lastSend":"2026-06-19 07:14:33"},{"user":"admin","label":"Brad (admin)","sends":9,"verbatim":7,"light":1,"moderate":1,"heavy":0,"verbatimPct":78,"medianSim":1,"lastSend":"2026-06-20 11:40:19"}],"mailbox":[{"mailbox":"info","label":"info@ (Gouda · Jack/Brendan)","items":243,"viewed":197,"viewedPct":81,"sent":114,"sentPct":47,"resolution":{"done":78,"replied":86,"open":40,"no_action":30,"phone":9}},{"mailbox":"drachten","label":"drachten@ (Rob/Huub)","items":89,"viewed":68,"viewedPct":76,"sent":11,"sentPct":12,"resolution":{"no_action":24,"replied":8,"done":37,"phone":1,"open":19}}],"trend":{"days":["2026-06-10","2026-06-11","2026-06-12","2026-06-13","2026-06-14","2026-06-15","2026-06-16","2026-06-17","2026-06-18","2026-06-19","2026-06-20","2026-06-21","2026-06-22","2026-06-23","2026-06-24","2026-06-25"],"infoNew":[52,15,17,3,3,13,23,23,31,9,2,5,6,14,14,13],"infoSent":[16,9,12,0,1,10,14,15,17,10,1,0,13,7,12,12],"drachNew":[0,4,10,0,3,6,10,11,11,8,3,1,5,6,7,4],"drachSent":[0,1,3,0,0,0,1,4,2,1,0,0,0,0,0,0]},"intents":[{"intent":"b2b_order","n":51,"verbatim":22,"modHeavy":23,"modHeavyPct":45,"verbatimPct":43},{"intent":"order_status","n":40,"verbatim":17,"modHeavy":18,"modHeavyPct":45,"verbatimPct":42},{"intent":"stock_price_enquiry","n":34,"verbatim":10,"modHeavy":15,"modHeavyPct":44,"verbatimPct":29},{"intent":"return_complaint","n":18,"verbatim":6,"modHeavy":11,"modHeavyPct":61,"verbatimPct":33},{"intent":"other","n":9,"verbatim":2,"modHeavy":6,"modHeavyPct":67,"verbatimPct":22},{"intent":"invoice","n":3,"verbatim":1,"modHeavy":1,"modHeavyPct":33,"verbatimPct":33}],"confidence":[{"confidence":"high","n":102,"verbatim":45,"pct":44},{"confidence":"medium","n":56,"verbatim":15,"pct":27},{"confidence":"low","n":3,"verbatim":1,"pct":33}]};
+const C = {ink:'#e7edf3',mut:'#8b97a6',line:'#2a3441',accent:'#4f9cf9',good:'#3ecf8e',warn:'#f5a623',bad:'#f56565',purple:'#a78bfa'};
+Chart.defaults.color = C.mut; Chart.defaults.borderColor = C.line; Chart.defaults.font.family='-apple-system,Segoe UI,Roboto,sans-serif';
+const fmtDate = s => s ? new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
+const daysAgo = s => s ? Math.round((Date.now()-new Date(s))/864e5) : null;
+
+document.getElementById('meta').textContent =
+  'Window ' + fmtDate(D.meta.windowStart) + ' – ' + fmtDate(D.meta.windowEnd) +
+  ' · generated ' + new Date(D.meta.generatedAt).toLocaleString('en-GB') + ' · ' + D.meta.dbPath;
+const info = D.mailbox.find(m=>m.mailbox==='info')||{}, drach = D.mailbox.find(m=>m.mailbox==='drachten')||{};
+const allGraded = D.perUser.reduce((a,u)=>a+u.verbatim+u.light+u.moderate+u.heavy,0);
+const allVerb = D.perUser.reduce((a,u)=>a+u.verbatim,0);
+const kpis = [
+  {k:D.meta.totalSends, s:'', l:'Replies sent via Axle'},
+  {k:allGraded?Math.round(100*allVerb/allGraded):0, s:'%', l:'Sent verbatim (no edit)'},
+  {k:info.sentPct, s:'%', l:'info@ items replied via Axle'},
+  {k:drach.sentPct, s:'%', l:'drachten@ items replied via Axle'},
+];
+document.getElementById('kpis').innerHTML = kpis.map(x=>
+  '<div class="card"><div class="kpi">'+x.k+'<small>'+x.s+'</small></div><div class="lbl">'+x.l+'</div></div>').join('');
+
+const acc = u => { const t=u.verbatim+u.light+u.moderate+u.heavy||1; const seg=(n,c)=>n?'<i style="width:'+(100*n/t)+'%;background:'+c+'"></i>':'';
+  return '<div class="bar">'+seg(u.verbatim,C.good)+seg(u.light,C.accent)+seg(u.moderate,C.warn)+seg(u.heavy,C.bad)+'</div>'; };
+const staleness = d => { const a=daysAgo(d); if(a==null) return '<span class="pill bad">never</span>';
+  return fmtDate(d)+' '+(a>=3?'<span class="pill bad">'+a+'d ago</span>':a>=1?'<span class="pill warn">'+a+'d ago</span>':'<span class="pill good">today</span>'); };
+document.querySelector('#userTable tbody').innerHTML = D.perUser.filter(u=>u.sends>0||u.user!=='admin').map(u=>
+  '<tr><td>'+u.label+'</td><td class="num">'+u.sends+'</td><td class="num">'+u.verbatimPct+'%</td><td style="min-width:170px">'+acc(u)+'</td>'+
+  '<td class="num">'+(u.medianSim!=null?Math.round(u.medianSim*100)+'%':'—')+'</td><td>'+staleness(u.lastSend)+'</td></tr>').join('');
+
+function trendChart(id, newArr, sentArr, color){
+  new Chart(document.getElementById(id),{type:'bar',
+    data:{labels:D.trend.days.map(d=>d.slice(5)),datasets:[
+      {label:'Items in',data:newArr,backgroundColor:C.line,borderRadius:3},
+      {label:'Sent via Axle',data:sentArr,backgroundColor:color,borderRadius:3}]},
+    options:{plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}}});
+}
+trendChart('infoChart', D.trend.infoNew, D.trend.infoSent, C.good);
+trendChart('drachChart', D.trend.drachNew, D.trend.drachSent, C.warn);
+
+const RES_COLORS = {replied:C.good, done:C.accent, phone:C.purple, no_action:C.mut, open:C.warn};
+function resChart(id, mb){
+  const r = mb.resolution||{}; const keys=Object.keys(r);
+  new Chart(document.getElementById(id),{type:'doughnut',
+    data:{labels:keys.map(k=>({replied:'Replied via Axle',done:'Closed (sent elsewhere)',phone:'Phone',no_action:'No reply needed',open:'Still open'}[k]||k)),
+      datasets:[{data:keys.map(k=>r[k]),backgroundColor:keys.map(k=>RES_COLORS[k]||C.mut),borderWidth:0}]},
+    options:{cutout:'58%',plugins:{legend:{position:'right',labels:{boxWidth:12}},title:{display:true,text:mb.label,color:C.ink}}}});
+}
+resChart('resInfo', info); resChart('resDrach', drach);
+
+new Chart(document.getElementById('intentChart'),{type:'bar',
+  data:{labels:D.intents.map(i=>i.intent),datasets:[
+    {label:'Verbatim %',data:D.intents.map(i=>i.verbatimPct),backgroundColor:C.good,borderRadius:3},
+    {label:'Moderate+heavy edit %',data:D.intents.map(i=>i.modHeavyPct),backgroundColor:C.bad,borderRadius:3}]},
+  options:{indexAxis:'y',plugins:{legend:{position:'bottom'}},scales:{x:{beginAtZero:true,max:100}}}});
+
+new Chart(document.getElementById('confChart'),{type:'bar',
+  data:{labels:D.confidence.map(c=>c.confidence+' (n='+c.n+')'),datasets:[
+    {label:'Sent verbatim %',data:D.confidence.map(c=>c.pct),backgroundColor:D.confidence.map(c=>c.confidence==='high'?C.good:c.confidence==='medium'?C.warn:C.bad),borderRadius:3}]},
+  options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,title:{display:true,text:'% verbatim'}}}}});
+
+document.getElementById('foot').innerHTML =
+  'Verbatim = sent text ≥97% identical to Axle\'s AI draft · Light ≥80% · Moderate ≥45% · Heavy &lt;45%. '+
+  'Drachten figures cover the shared Rob/Huub login. Regenerate by running <code>node adoption-report.js</code> on the box against the live DB.';
+</script></body></html>

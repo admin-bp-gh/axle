@@ -9,14 +9,28 @@ const TR = require("../translate.js");
 const SCEN = require("../scenarios.js");
 const SAPDOC = require("../sap-doc-pdf.js");       // render a referenced SAP document to its Boyum print PDF (read-only)
 const DOCSUGGEST = require("../doc-suggest.js");   // Auto-attach: resolve + scope-filter referenced documents (read-only)
+const CUSTSUM = require("../customer-summary.js"); // FR-0002: read-only customer at-a-glance + detail
+const RSET = require("../recipient-set.js");       // the single definition of an item's known addresses
 const { db, audit } = require("../db.js");
 const { esc, t, page, linkify, splitQuoted, fmtSize, renderAttachments, renderMail,
         fmtDateTime, statusWithRes, intentLabel, kindLabel, langDisplay, ownerLabel,
         ownerChoices, chipMenu, renderTimeline, workPanes, shell, lazyQueue } = require("../views/ui.js");
 const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
-        isContactFormItem, saveWorkInputs, addAttachment } = require("./shared.js");
+        isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment } = require("./shared.js");
 
-module.exports = function mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND }) {
+// Resolver-backed address lookups, built once. Best-effort by contract (see recipient-set.js).
+const RSET_DEPS = RSET.defaultDeps();
+
+module.exports = function mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND }) {
+
+// A proposed subject for a return-request reply (NEW outbound, no "Re:"), order-ref-aware and in the
+// customer's language (work_items.language). Deterministic default; the salesperson can edit it.
+function returnSubject(rn, orderRef, draftLang) {
+  const nl = String(draftLang || "").toLowerCase() === "nl";
+  const ref = orderRef || (rn && rn.parsed && rn.parsed.orderRef) || "";
+  if (nl) return `Je retouraanvraag${ref ? " " + ref : ""}`;
+  return `Your return request${ref ? " " + ref : ""}`;
+}
 
 // A proposed subject for a contact-form reply (a NEW outbound, so no "Re:"). Order-ref-aware,
 // in the customer's language. Deterministic default; the salesperson can edit it before sending.
@@ -41,11 +55,16 @@ function contactFormSubject(cf, draftLang) {
 // adds the inbox hint + model hint; until then the cache keeps repeat views and auto-refresh cheap.
 const _suggCache = new Map();   // key -> { suggestions }
 async function computeItemSuggestions(w) {
-  if (!w || w.origin === "compose" || isContactFormItem(w) || w.injection_flag) return { suggestions: [] };
-  // Prefer the ingest-time stored result (instant; computed once when the email arrived).
+  if (!w || isContactFormItem(w) || w.injection_flag) return { suggestions: [] };
+  // Prefer the stored result (instant): computed at ingest for inbound, at draft time for compose
+  // (FR-0004 - the compose branch of runRedraft scopes it to the resolved compose customer).
   if (w.doc_suggestions_json != null) {
     try { return { suggestions: JSON.parse(w.doc_suggestions_json) || [] }; } catch (e) { /* fall through to lazy compute */ }
   }
+  // The lazy fallback below resolves customer scope from the SENDER, so it is INBOUND-only. A compose
+  // item has no inbound sender; its suggestions are computed from the compose customer at draft time,
+  // so when none are stored there are simply none to show.
+  if (w.origin === "compose") return { suggestions: [] };
   // Lazy fallback (older items ingested before this feature, or a transient ingest error): compute
   // once and cache per (item, latest inbound message). Same deterministic, read-only path as ingest.
   if (!w.sender_email || !w.email_text) return { suggestions: [] };
@@ -75,15 +94,26 @@ function suggestionsPanel(w, suggestions, lang) {
     const money = (d.docTotal != null ? d.docTotal : "") + (d.docCur ? " " + d.docCur : "");
     return `${esc(String(d.type))} ${esc(String(d.docNum))} &middot; ${esc(d.cardName || d.cardCode || "")} &middot; ${esc(String(money))}${date ? " &middot; " + esc(date) : ""}`;
   };
-  // A hidden form posting the resolved doc to /attach-doc. Keyed by DocNum (deterministic) +
-  // DocEntry (so the route picks exactly this document from its own resolved set).
+  // A read-only Preview link: opens the rendered document PDF in a new tab (GET /preview-doc),
+  // staging nothing. The route re-resolves the number deterministically and validates the DocEntry
+  // is in its own set, exactly like attach-doc, so a hand-crafted query can't render an arbitrary doc.
+  const previewLink = (d) => {
+    const qs = `doctype=${encodeURIComponent(docType(d.objectId))}&docnum=${encodeURIComponent(String(d.docNum))}&docentry=${encodeURIComponent(String(d.docEntry))}`;
+    return `<a class="preview-doc" href="/item/${w.id}/preview-doc?${qs}" target="_blank" rel="noopener" title="${esc(t(lang, "sugg_preview_title"))}">${esc(t(lang, "sugg_preview"))}</a>`;
+  };
+  // One suggested document on a row: the Attach button (posts the resolved doc to the proven
+  // /attach-doc route, keyed by DocNum + DocEntry) plus the Preview link beside it. This panel
+  // still renders/stages nothing itself.
   const addForm = (d, label, cls) => `
-    <form method="post" action="/item/${w.id}/attach-doc" style="margin:3px 0">
-      <input type="hidden" name="doctype" value="${esc(docType(d.objectId))}">
-      <input type="hidden" name="docnum" value="${esc(String(d.docNum))}">
-      <input type="hidden" name="docentry" value="${esc(String(d.docEntry))}">
-      <button class="${cls}">${esc(label)} &mdash; ${fmtDoc(d)}</button>
-    </form>`;
+    <div class="suggdoc">
+      <form method="post" action="/item/${w.id}/attach-doc">
+        <input type="hidden" name="doctype" value="${esc(docType(d.objectId))}">
+        <input type="hidden" name="docnum" value="${esc(String(d.docNum))}">
+        <input type="hidden" name="docentry" value="${esc(String(d.docEntry))}">
+        <button class="${cls}">${esc(label)} &mdash; ${fmtDoc(d)}</button>
+      </form>
+      ${previewLink(d)}
+    </div>`;
 
   const inScope = suggestions.filter((s) => s.status === "in_scope" || s.status === "ambiguous");
   const offScope = suggestions.filter((s) => s.status === "out_of_scope");
@@ -108,6 +138,86 @@ function suggestionsPanel(w, suggestions, lang) {
       ${inHtml}${offHtml}`;
 }
 
+// --- FR-0002: at-a-glance customer summary + detail modal (READ-ONLY) --------------------
+// Resolve the item's customer CardCode on the TRUSTED side only: compose_customer for a compose
+// item, else the inbound sender via customerByEmail. Never derived from email content, so this can
+// only ever read the email's own customer. Contact-form items (sender = Shopify's mailer) get none.
+async function itemCardCode(w) {
+  let cc = null; try { cc = JSON.parse(w.compose_customer || "null"); } catch (e) { cc = null; }
+  if (cc && cc.cardCode) return cc.cardCode;
+  if (w.origin !== "compose" && !isContactFormItem(w) && !isReturnNotificationItem(w) && w.sender_email) {
+    try { const m = await SAPDOC.customerByEmail(w.sender_email); if (m && m.cardCode) return m.cardCode; }
+    catch (e) { /* unknown sender -> no card */ }
+  }
+  return null;
+}
+
+// Compact money for the card/modal. EUR -> "€1,234.56"; any other currency is prefixed.
+function fmtMoney(n, cur) {
+  const v = (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (cur && cur !== "EUR") ? `${esc(cur)} ${v}` : `€${v}`;
+}
+
+// The at-a-glance customer card for the context pane (s = summary from customer-summary.js, or null).
+// "View full customer" opens the detail dialog and htmx-loads /customer-modal into it.
+function customerCard(s, lang, itemId) {
+  if (!s) return "";
+  const chip = (label, val) => `<div class="cuschip"><p class="cuslbl">${esc(label)}</p><p class="cusval">${val}</p></div>`;
+  const tier = s.tier ? esc(s.tier) : "&mdash;";
+  const orders = `${s.openOrders} <span class="muted">&middot;</span> ${fmtMoney(s.openOrdersVal, s.currency)}`;
+  const invs = `${s.openInvoices} <span class="muted">&middot;</span> ${fmtMoney(s.openInvOutstanding, s.currency)}`;
+  const sub = [s.cardCode, s.country, s.group].filter(Boolean).map(esc).join(" &middot; ");
+  const frozen = s.frozen ? ` <span class="st-warn">${esc(t(lang, "cust_frozen"))}</span>` : "";
+  return `<div class="box cuscard">
+      <div class="boxhead"><h3>${esc(t(lang, "cust_card_title"))}</h3></div>
+      <p class="cusname">${esc(s.cardName || s.cardCode)}${frozen}</p>
+      <p class="muted cussub">${sub}</p>
+      <div class="cusgrid">
+        ${chip(t(lang, "cust_tier"), tier)}
+        ${chip(t(lang, "cust_open_orders"), orders)}
+        ${chip(t(lang, "cust_open_invoices"), invs)}
+      </div>
+      <button type="button" class="mini cusbtn" aria-haspopup="dialog"
+        hx-get="/item/${itemId}/customer-modal" hx-target="#cusModalBody" hx-swap="innerHTML"
+        onclick="var d=document.getElementById('cusModal'); if(d&&d.showModal) d.showModal();">${esc(t(lang, "cust_view_full"))}</button>
+      <dialog id="cusModal" class="cusdialog" aria-label="${esc(t(lang, "cust_detail_title"))}">
+        <form method="dialog" class="cusx"><button class="cusxbtn" aria-label="${esc(t(lang, "cust_close"))}">&times;</button></form>
+        <div id="cusModalBody"><p class="muted"><span class="spin"></span> ${esc(t(lang, "cust_loading"))}</p></div>
+        <script>(function(){var d=document.getElementById('cusModal');if(d&&!d._wired){d._wired=1;d.addEventListener('click',function(e){if(e.target===d)d.close();});}})();</script>
+      </dialog>
+    </div>`;
+}
+
+// The detail-modal body (loaded into #cusModalBody by the /customer-modal route). d = detail().
+function customerModalBody(d, lang) {
+  const s = d.summary;
+  const stat = (label, val) => `<div class="cusstat"><p class="cuslbl">${esc(label)}</p><p class="cusval">${esc(val)}</p></div>`;
+  const statusPill = (open, openLbl, doneLbl, extra) =>
+    open ? `<span class="st-warn">${esc(openLbl)}${extra ? " " + esc(extra) : ""}</span>` : `<span class="st-ok">${esc(doneLbl)}</span>`;
+  const ordRows = d.orders.length ? d.orders.map((o) =>
+    `<tr><td>${esc(String(o.docNum))}</td><td>${esc(o.docDate || "")}</td><td class="num">${fmtMoney(o.total, s.currency)}</td>
+       <td>${statusPill(o.open, t(lang, "cust_open"), t(lang, "cust_closed"))}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="muted">${esc(t(lang, "cust_none"))}</td></tr>`;
+  const invRows = d.invoices.length ? d.invoices.map((i) =>
+    `<tr><td>${esc(String(i.docNum))}</td><td>${esc(i.docDate || "")}</td><td class="num">${fmtMoney(i.total, s.currency)}</td>
+       <td>${statusPill(i.open, t(lang, "cust_unpaid"), t(lang, "cust_paid"), i.open ? fmtMoney(i.outstanding, s.currency) : "")}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="muted">${esc(t(lang, "cust_none"))}</td></tr>`;
+  const sub = [s.cardCode, s.country, s.group].filter(Boolean).map(esc).join(" &middot; ");
+  return `<h3 class="cusmodttl">${esc(s.cardName || s.cardCode)}${s.frozen ? ` <span class="st-warn">${esc(t(lang, "cust_frozen"))}</span>` : ""}</h3>
+    <p class="muted cussub">${sub}${s.tier ? " &middot; " + esc(s.tier) : ""}</p>
+    <div class="cusstats">
+      ${stat(t(lang, "cust_lifetime"), fmtMoney(d.stats.lifetimeInv, s.currency))}
+      ${stat(t(lang, "cust_12m"), fmtMoney(d.stats.inv12m, s.currency))}
+      ${stat(t(lang, "cust_balance"), fmtMoney(s.balance, s.currency))}
+      ${stat(t(lang, "cust_since"), d.stats.firstInv || "—")}
+      ${stat(t(lang, "cust_last_order"), d.stats.lastOrder || "—")}
+    </div>
+    <h4 class="cusmh">${esc(t(lang, "cust_recent_orders"))}</h4>
+    <table class="custbl"><thead><tr><th>${esc(t(lang, "col_doc"))}</th><th>${esc(t(lang, "col_date"))}</th><th class="num">${esc(t(lang, "col_total"))}</th><th>${esc(t(lang, "col_status"))}</th></tr></thead><tbody>${ordRows}</tbody></table>
+    <h4 class="cusmh">${esc(t(lang, "cust_recent_invoices"))}</h4>
+    <table class="custbl"><thead><tr><th>${esc(t(lang, "col_doc"))}</th><th>${esc(t(lang, "col_date"))}</th><th class="num">${esc(t(lang, "col_total"))}</th><th>${esc(t(lang, "col_status"))}</th></tr></thead><tbody>${invRows}</tbody></table>`;
+}
+
 app.get("/item/:id", async (req, res) => {
   const lang = req.user.lang;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
@@ -120,12 +230,19 @@ app.get("/item/:id", async (req, res) => {
   audit(req.user.tailscale_login, "view_item", w.id, `lang=${lang}`);
   const isCompose = w.origin === "compose";   // a proactively-composed outbound item (no inbound email)
   const isContactForm = isContactFormItem(w);  // webshop contact-form msg: real recipient is in the body, not the sender
+  const isRN = isReturnNotificationItem(w);    // Shopify "Return items" notification: reply goes to the order's customer
 
   // Contact-form enrichment (from ingest): parsed customer + candidate addresses. Parsed once
   // here so both the work form (subject) and the customer header below can use it.
   let cf = null;
   if (isContactForm) { try { cf = JSON.parse(w.contact_form_json || "null"); } catch (e) { cf = null; } }
   const cfSubjectDefault = isContactForm ? contactFormSubject(cf, w.language || lang) : "";
+
+  // Return-notification enrichment (from ingest): parsed order ref + resolved customer + candidate
+  // addresses. Same shape as the contact form so the header renders the same way.
+  let rn = null;
+  if (isRN) { try { rn = JSON.parse(w.return_json || "null"); } catch (e) { rn = null; } }
+  const rnSubjectDefault = isRN ? returnSubject(rn, rn && rn.parsed && rn.parsed.orderRef, w.language || lang) : "";
 
   // AI reference drafts (source='ai'); human-sent drafts are kept separately for the audit
   // trail and must not be shown as "the AI draft".
@@ -144,7 +261,8 @@ app.get("/item/:id", async (req, res) => {
   // recipient - allowed only when action #4 is enabled AND a recipient has been confirmed.
   const cfCanSend = isContactForm && ACTION_CONTACTFORM_SEND && !!w.recipient;
   const composeCanSend = isCompose && ACTION_COMPOSE_SEND && !!w.recipient;
-  const canSend = editable && !w.injection_flag && (!isCompose || composeCanSend) && (!isContactForm || cfCanSend);
+  const rnCanSend = isRN && ACTION_RETURN_SEND && !!w.recipient;
+  const canSend = editable && !w.injection_flag && (!isCompose || composeCanSend) && (!isContactForm || cfCanSend) && (!isRN || rnCanSend);
   // The editable reply: the human's saved edit if any, else the AI full draft, else the holding reply.
   const replyText = w.draft_edit != null ? w.draft_edit : (full ? full.body : (interim ? interim.body : ""));
   const atts = db.prepare("SELECT id, name, content_type, size FROM draft_attachments WHERE work_item_id = ? ORDER BY id").all(w.id);
@@ -154,6 +272,31 @@ app.get("/item/:id", async (req, res) => {
   // route). Skipped for compose/contact-form/injection-flagged items inside the helper. Step 1
   // (F11): rendered inside the combined "SAP documents" card below, not as its own box.
   const suggHtml = editable ? suggestionsPanel(w, (await computeItemSuggestions(w)).suggestions, lang) : "";
+
+  // FR-0002: at-a-glance customer summary (read-only; 3-min cached). Shown whenever the item resolves
+  // to a SAP customer (inbound sender or the compose customer). Wrapped so SAP slowness/errors can
+  // never break the item page.
+  let custHtml = "";
+  let custName = "";   // used to name the customer in the typed-recipient send confirm
+  try {
+    const card = await itemCardCode(w);
+    if (card) {
+      const s = await CUSTSUM.summarise(card);
+      custHtml = customerCard(s, lang, w.id);
+      custName = (s && s.name) || "";
+    }
+  } catch (e) { audit("system", "cust_summary_error", w.id, String(e.message || e).slice(0, 150)); }
+
+  // The recipient control's option set: the thread sender plus whatever the deterministic resolver
+  // holds for THIS item's customer. Best-effort — recipient-set swallows a SAP failure, so a slow
+  // or dead SAP costs a radio option, never the page. Not computed for items that can't be edited,
+  // and never for an injection-flagged item (which must not be offered a redirect UI at all).
+  const kind = itemKind(w);
+  let knownAddrs = [];
+  if (editable && !w.injection_flag) {
+    try { knownAddrs = await RSET.knownAddressesFor(w, kind, RSET_DEPS); }
+    catch (e) { audit("system", "recipient_set_error", w.id, String(e.message || e).slice(0, 150)); }
+  }
 
   // --- On-view translation into the viewer's language (cached -> inline; uncached
   // -> ASYNC). UX round (2026-06-11): translating inline on first view stalled the
@@ -255,9 +398,9 @@ app.get("/item/:id", async (req, res) => {
   // for contact-form/compose lives at the top of the card (it is part of the send).
   const isEdited = w.draft_edit != null && (full ? w.draft_edit !== full.body : (interim ? w.draft_edit !== interim.body : w.draft_edit !== ""));
   const aiSeed = full || interim;
-  const subjectField = (isContactForm || isCompose)
+  const subjectField = (isContactForm || isCompose || isRN)
     ? `<p class="sublabel">${esc(t(lang, "cf_subject"))} <span class="muted">&mdash; ${esc(t(lang, "cf_subject_hint"))}</span></p>
-       <input class="cfsubj" name="${isContactForm ? "cf_subject" : "compose_subject"}" value="${esc(isContactForm ? cfSubjectDefault : (w.subject || ""))}">`
+       <input class="cfsubj" name="${isContactForm ? "cf_subject" : isRN ? "return_subject" : "compose_subject"}" value="${esc(isContactForm ? cfSubjectDefault : isRN ? rnSubjectDefault : (w.subject || ""))}">`
     : "";
   const replyTools = [
     isEdited ? `<span class="badge edited">${esc(t(lang, "edited_badge"))}</span>` : "",
@@ -296,7 +439,7 @@ app.get("/item/:id", async (req, res) => {
   // --- combined "SAP documents" card (F11): suggested documents (one-click attach via
   // the proven /attach-doc route) + the manual attach-by-number form, together. Not for
   // contact-form items (/attach-doc refuses them, as before).
-  const sapDocsCard = (editable && !isContactForm) ? `<div class="box">
+  const sapDocsCard = (editable && !isContactForm && !isRN) ? `<div class="box">
       <div class="boxhead"><h3>${esc(t(lang, "sap_docs"))}</h3></div>
       ${suggHtml}${suggHtml ? `<div class="subdiv"></div>` : ""}
       <p class="sublabel">${esc(t(lang, "attach_manual"))}</p>
@@ -318,28 +461,98 @@ app.get("/item/:id", async (req, res) => {
   // --- sticky action bar (F9): Send (confirm-click, same route + guard), Save,
   // Save & redraft, and the close actions in an overflow menu whose tooltips are
   // visible descriptions. Buttons submit the work form via form=; routes unchanged.
-  const sendTo = (isContactForm || isCompose) ? (w.recipient || "") : w.sender_email;
-  const sendConfirm = t(lang, "send_confirm").replace("{to}", sendTo)
+  // The recipient control (editable send recipient, 2026-07-10). One control for all four item
+  // kinds, living IN the send button: the sticky action bar is guaranteed to be on screen at the
+  // moment of sending, whereas a To: field 400px up the page is not. The amber "changed" pill is
+  // the whole reason it lives here.
+  //
+  // The typed address is NEVER pre-filled from the email body, a tool result or any model output —
+  // the input starts empty, every time. The model can never place an address in front of the
+  // salesperson to click. The radios come only from knownAddressesFor().
+  const sendTo = RSET.activeRecipient(w, kind);
+  const redirected = RSET.isRedirected(w, kind);
+  const typedTo = RSET.norm(w.recipient_source) === "typed";
+
+  // A typed address gets a stronger confirm that names the customer it is NOT on file for. The
+  // customer name comes from the trusted SAP summary, never from the email.
+  const sendConfirm = (typedTo
+      ? t(lang, "recip_typed_confirm").replace("{to}", sendTo).replace("{customer}", custName || t(lang, "recip_this_customer"))
+      : t(lang, "send_confirm").replace("{to}", sendTo))
     + (atts.length ? " (" + t(lang, "with_atts").replace("{n}", atts.length) + ")" : "");
+
+  const srcLabel = { sender: t(lang, "recip_from_sender"), onfile: t(lang, "recip_on_file"),
+                     form: t(lang, "recip_from_form"), typed: t(lang, "recip_typed") };
+
+  // Two forms, deliberately: the radios post mode=known, the free-text input posts mode=typed. One
+  // form with both would collide on the `addr` field name and would need JS to disambiguate. This
+  // way the control works with scripting off, and each path hits its own screen at the route.
+  // A typed override is NOT a radio option. Rendering it as a checked-but-disabled radio (as this
+  // first did) meant the radio group submitted nothing, so "Use address" posted an empty addr and
+  // the route rejected it - a dead end with a confusing error. It belongs above the list, as a
+  // read-only statement of where the reply is currently going. Only resolver-produced addresses
+  // are pickable, which is also exactly what pickKnown() will accept.
+  const pickable = knownAddrs.filter((e) => e.source !== "typed");
+  const typedEntry = knownAddrs.find((e) => e.source === "typed");
+  const checkedAddr = pickable.some((e) => e.addr === sendTo) ? sendTo : (pickable[0] || {}).addr;
+
+  const recipPop = (editable && !w.injection_flag) ? `
+    <details class="menu recip-pop">
+      <summary class="btn send-caret" title="${esc(t(lang, "recip_change"))}" aria-label="${esc(t(lang, "recip_change"))}">&#9662;</summary>
+      <div class="menu-list">
+        ${typedEntry ? `<p class="recip-current muted">${esc(t(lang, "recip_current"))}: <b>${esc(typedEntry.addr)}</b> &mdash; ${esc(srcLabel.typed)}</p>` : ""}
+        <form method="post" action="/item/${w.id}/recipient" class="recip-known">
+          <input type="hidden" name="mode" value="known">
+          ${pickable.map((e) => `<label class="cfopt"><input type="radio" name="addr" value="${esc(e.addr)}" ${e.addr === checkedAddr ? "checked" : ""}> ${esc(e.addr)} <span class="muted">&mdash; ${esc(srcLabel[e.source] || e.source)}</span></label>`).join("")}
+          ${pickable.length ? `<p><button class="mini primary" name="use" value="1">${esc(t(lang, "recip_use"))}</button></p>` : ""}
+        </form>
+        <div class="subdiv"></div>
+        <details class="recip-other">
+          <summary class="muted">${esc(t(lang, "recip_other"))}</summary>
+          <form method="post" action="/item/${w.id}/recipient">
+            <input type="hidden" name="mode" value="typed">
+            <input name="addr" type="email" autocomplete="off" spellcheck="false" placeholder="name@company.nl" required>
+            <button class="mini primary" name="use" value="1">${esc(t(lang, "recip_use"))}</button>
+          </form>
+        </details>
+      </div>
+    </details>` : "";
+
+  const changedPill = redirected ? `<span class="recip-pill" title="${esc(t(lang, "recip_changed_title"))}">${esc(t(lang, "recip_changed_pill"))}</span>` : "";
+
+  // No confirmed recipient yet on a new-outbound item: the button becomes "Confirm recipient" and
+  // opens the same popover. One place recipients are decided, in every state.
+  const needsRecipient = (isContactForm || isCompose || isRN) && !w.recipient;
+
   const sendBtn = canSend
-    ? `<button class="send" form="workform" formaction="/item/${w.id}/send" formnovalidate onclick="return confirm('${esc(sendConfirm)}');">${esc(t(lang, "send_reply_to"))} ${esc(sendTo)}</button>`
+    ? `<span class="send-split">
+         <button class="send send-stack" form="workform" formaction="/item/${w.id}/send" formnovalidate data-confirm="${esc(sendConfirm)}" title="${esc(t(lang, "send_reply_to"))} ${esc(sendTo)}"><span class="send-now">${esc(t(lang, "send_now"))}</span><span class="send-to">${esc(sendTo)}</span></button>
+         ${recipPop}
+       </span>${changedPill}`
     : w.injection_flag ? `<span class="note">${esc(t(lang, "send_disabled_inj"))}</span>`
+    : needsRecipient && recipPop
+      ? `<span class="send-split"><span class="btn send-stack recip-needed"><span class="send-now">${esc(t(lang, "recip_confirm_btn"))}</span><span class="send-to">${esc(t(lang, "recip_none_yet"))}</span></span>${recipPop}</span>`
     : isContactForm ? `<span class="note">${esc(t(lang, w.recipient ? "cf_send_not_enabled" : "cf_confirm_first"))}</span>`
+    : isRN ? `<span class="note">${esc(t(lang, w.recipient ? "cf_send_not_enabled" : "cf_confirm_first"))}</span>`
     : isCompose ? `<span class="note">${esc(t(lang, "compose_draft_only"))}</span>` : "";
+  // Close the item: "Mark done" is the everyday close, so it's a visible button in the bar
+  // (grouped on the right alongside the overflow, which keeps the rarer closes). Posts to the
+  // same /status route as the old menu item — no route or safety change.
+  const markDoneBtn = `<form method="post" action="/item/${w.id}/status"><button name="to" value="done" title="${esc(t(lang, "done_tip"))}">${esc(t(lang, "mark_done"))}</button></form>`;
   const closeMenu = `<details class="menu"><summary class="btn" title="${esc(t(lang, "more_actions"))}">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary><div class="menu-list">
-      <form method="post" action="/item/${w.id}/status"><button name="to" value="done"><b>${esc(t(lang, "mark_done"))}</b><span>${esc(t(lang, "done_tip"))}</span></button></form>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="phone"><b>${esc(t(lang, "mark_phone"))}</b><span>${esc(t(lang, "phone_tip"))}</span></button></form>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="archived"><b>${esc(t(lang, "archive"))}</b><span>${esc(t(lang, "archive_tip"))}</span></button></form>
       ${!isCompose ? `<form method="get" action="/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, "block_tip"))}</span></button></form>` : ""}
     </div></details>`;
+  // Bar: left cluster works the reply (Send / Save / Save & redraft — the redraft note is now the
+  // button's tooltip, so the bar no longer wraps on it); right cluster closes the item.
   const actionBar = busy ? "" : ["done", "archived"].includes(w.status)
     ? `<div class="actionbar"><form method="post" action="/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
     : `<div class="actionbar">
         ${sendBtn}
         <button form="workform" name="action" value="save">${esc(t(lang, "save"))}</button>
-        <button form="workform" class="primary" name="action" value="redraft">${esc(t(lang, "save_redraft"))}</button>
-        <span class="note">${esc(t(lang, "redraft_hint"))}</span>
+        <button form="workform" class="primary" name="action" value="redraft" title="${esc(t(lang, "redraft_hint"))}">${esc(t(lang, "save_redraft"))}</button>
         <span class="spacer"></span>
+        ${markDoneBtn}
         ${closeMenu}
       </div>`;
 
@@ -383,7 +596,6 @@ app.get("/item/:id", async (req, res) => {
     const p = (cf && cf.parsed) || {};
     const rv = (cf && cf.resolved) || {};
     const cands = (cf && cf.candidateAddresses) || [];
-    const formAddr = String(p.email || "").toLowerCase();
     const who = [
       p.name || rv.name || "",
       rv.matched && rv.cardCode ? rv.cardCode : "",
@@ -395,23 +607,50 @@ app.get("/item/:id", async (req, res) => {
       : `<p class="muted">${esc(t(lang, "cf_not_matched"))}</p>`;
     const orderLine = p.orderRef ? `<p class="muted">${esc(t(lang, "cf_order"))}: ${esc(p.orderRef)}</p>` : "";
     const phoneLine = p.phone ? `<p class="muted">&#128222; ${esc(p.phone)}</p>` : "";
-    const addrTag = (a) => a.toLowerCase() === formAddr ? t(lang, "cf_from_form") : t(lang, "cf_on_file");
-    const pickerForm = editable && cands.length
-      ? `<form method="post" action="/item/${w.id}/contactform-recipient" class="cfpick">
-           <p class="muted">${esc(t(lang, "cf_pick"))}</p>
-           ${cands.map((a, i) => `<label class="cfopt"><input type="radio" name="addr" value="${esc(a)}" ${(w.recipient ? w.recipient.toLowerCase() === a.toLowerCase() : i === 0) ? "checked" : ""}> ${esc(a)} <span class="muted">(${esc(addrTag(a))})</span></label>`).join("")}
-           <p><button class="primary" name="confirm" value="1">${esc(t(lang, "cf_confirm_to"))}</button></p>
-         </form>`
-      : "";
+    // The radio picker that used to live here moved into the Send button's recipient popover
+    // (2026-07-10) — one recipient control, in the one place guaranteed to be on screen when the
+    // salesperson sends. This card keeps the customer identity and match lines; the To line is now
+    // a read-only display of the code-held recipient.
     const toState = w.recipient
-      ? `<p><b>${esc(t(lang, "compose_to"))}:</b> ${esc(w.recipient)} <span class="chip s-ready">&#10003; ${esc(t(lang, "cf_to_confirmed"))}</span></p>
-         ${editable && cands.length ? `<details><summary class="muted">${esc(t(lang, "cf_change"))}</summary>${pickerForm}</details>` : ""}`
-      : (cands.length ? pickerForm : `<p class="muted">${esc(t(lang, "cf_no_address"))}</p>`);
+      ? `<p><b>${esc(t(lang, "compose_to"))}:</b> ${esc(w.recipient)} <span class="chip s-ready">&#10003; ${esc(t(lang, "cf_to_confirmed"))}</span></p>`
+      : (cands.length ? `<p class="muted">${esc(t(lang, "recip_confirm_hint"))}</p>` : `<p class="muted">${esc(t(lang, "cf_no_address"))}</p>`);
     contactFormHeader = `
       <div class="box">
         <div class="boxhead"><h3>${esc(t(lang, "cf_customer_label"))}</h3></div>
         ${who ? `<p>${who}</p>` : ""}
         ${matchLine}${orderLine}${phoneLine}
+        ${toState}
+      </div>`;
+  }
+
+  // Return-notification items: the Shopify "Return items" mailer's sender is our own info@, so the
+  // real recipient is the order's customer — resolved deterministically at ingest and code-held in
+  // w.recipient (auto-set when a single address, else pickable here). Mirrors the contact-form header;
+  // nothing here is model-derived. Send stays off until allow-list action AXLE_ACTION_RETURN_SEND.
+  let returnHeader = "";
+  if (isRN) {
+    const p = (rn && rn.parsed) || {};
+    const rv = (rn && rn.resolved) || {};
+    const cands = (rn && rn.candidateAddresses) || [];
+    const who = [
+      rv.name || p.name || "",
+      rv.matched && rv.cardCode ? rv.cardCode : "",
+      rv.country || "",
+      rv.frozen ? t(lang, "compose_frozen") : "",
+    ].filter(Boolean).map(esc).join(" &middot; ");
+    const matchLine = rv.matched
+      ? `<p class="muted">${esc(t(lang, "cf_matched"))}${rv.name ? ` — ${esc(rv.name)}` : ""}</p>`
+      : `<p class="muted">${esc(t(lang, "cf_not_matched"))}</p>`;
+    const orderLine = p.orderRef ? `<p class="muted">${esc(t(lang, "cf_order"))}: ${esc(p.orderRef)}</p>` : "";
+    // Radio picker moved into the Send button's recipient popover (2026-07-10), as above.
+    const toState = w.recipient
+      ? `<p><b>${esc(t(lang, "compose_to"))}:</b> ${esc(w.recipient)} <span class="chip s-ready">&#10003; ${esc(t(lang, "cf_to_confirmed"))}</span></p>`
+      : (cands.length ? `<p class="muted">${esc(t(lang, "recip_confirm_hint"))}</p>` : `<p class="muted">${esc(t(lang, "cf_no_address"))}</p>`);
+    returnHeader = `
+      <div class="box">
+        <div class="boxhead"><h3>${esc(t(lang, "cf_customer_label"))}</h3></div>
+        ${who ? `<p>${who}</p>` : ""}
+        ${matchLine}${orderLine}
         ${toState}
       </div>`;
   }
@@ -431,7 +670,7 @@ app.get("/item/:id", async (req, res) => {
     ${w.caller_info ? `<p class="muted">&#128222; ${esc(w.caller_info)}</p>` : ""}
     ${busy ? `<div class="banner busy">${esc(t(lang, "investigating_banner"))}</div>` : ""}
 
-    ${isCompose ? composeHeader : (isContactForm ? contactFormHeader : "") + `<div class="box">
+    ${isCompose ? composeHeader : (isContactForm ? contactFormHeader : isRN ? returnHeader : "") + `<div class="box">
       <div class="boxhead"><h3>${esc(t(lang, "customer_email"))}</h3>
         <span><input id="mq" type="search" placeholder="${esc(t(lang, "search_in_email"))}" autocomplete="off"><span class="qcount" id="mqcount"></span></span></div>
       <div id="mailwrap">${renderTimeline(w, lang, emailTr, emailTrPending)}${renderAttachments(w)}</div>
@@ -658,6 +897,7 @@ app.get("/item/:id", async (req, res) => {
     </script>`;
 
   const context = `
+    ${custHtml}
     ${sapDocsCard}
     <div class="box"><details><summary>${esc(t(lang, "what_checked"))}</summary><pre class="mail">${esc(w.brief_md || t(lang, "none_paren"))}</pre></details></div>`;
   const panes = workPanes(center, context, { back: t(lang, "back_inbox") });
@@ -843,7 +1083,7 @@ app.post("/item/:id/attach-doc", async (req, res) => {
   const small = (html, code) => res.status(code || 200).send(page(t(lang, "attach_doc_title"), req.user,
     `<div class="box"><h3>${esc(t(lang, "attach_doc_title"))}</h3>${html}${back}</div>`));
 
-  if (isContactFormItem(w)) { audit(login, "attach_doc_refused", w.id, "contact-form item"); return small(`<p>${esc(t(lang, "attach_doc_compose_only"))}</p>`, 400); }
+  if (isContactFormItem(w) || isReturnNotificationItem(w)) { audit(login, "attach_doc_refused", w.id, "new-outbound item"); return small(`<p>${esc(t(lang, "attach_doc_compose_only"))}</p>`, 400); }
 
   const type = String(req.body.doctype || "order").toLowerCase();
   const num = String(req.body.docnum || "").trim();
@@ -906,6 +1146,87 @@ app.post("/item/:id/attach-doc", async (req, res) => {
   const override = !(itemCard && itemCard === doc.cardCode);
   audit(login, "doc_pdf_attached", w.id, `${doc.type} ${doc.docNum} DocEntry ${doc.docEntry} cust ${doc.cardCode || "?"} ${r.bytes}b${override ? " SCOPE-OVERRIDE" : ""}`);
   res.redirect("/item/" + w.id);
+});
+
+// Preview the Boyum print PDF of a referenced SAP document in a new browser tab (READ-ONLY).
+// FR-0003: lets the salesperson SEE a suggested document before deciding to attach it - it stages
+// nothing and sends nothing. The DocEntry is resolved deterministically from the typed number and
+// validated to be IN the resolver's own set (an out-of-set DocEntry is rejected), exactly like
+// attach-doc, so a hand-crafted query can never render an arbitrary document. The PDF is served
+// inline with nosniff. Previewing does NOT cross any new boundary: the same person can already
+// render+stage any resolvable document via attach-doc; this is a strictly less-committal view of it.
+app.get("/item/:id/preview-doc", async (req, res) => {
+  const lang = req.user.lang;
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
+  const back = `<p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`;
+  const small = (html, code) => res.status(code || 200).send(page(t(lang, "attach_doc_title"), req.user,
+    `<div class="box"><h3>${esc(t(lang, "sugg_preview"))}</h3>${html}${back}</div>`));
+
+  const type = String(req.query.doctype || "order").toLowerCase();
+  const num = String(req.query.docnum || "").trim();
+  if (!SAPDOC.DOC_TYPES[type] || !num) return small(`<p>${esc(t(lang, "attach_doc_none"))}</p>`, 400);
+
+  let resolved;
+  try { resolved = await SAPDOC.resolveDocument(type, num); }
+  catch (e) { audit(login, "preview_doc_error", w.id, e.message.slice(0, 180)); return small(`<p>${esc(t(lang, "attach_doc_render_failed"))}</p>`, 502); }
+  if (!resolved.ok || !resolved.candidates.length) { audit(login, "preview_doc_notfound", w.id, `${type} ${num}`); return small(`<p>${esc(t(lang, "attach_doc_none"))}</p>`, 404); }
+
+  // Pick the document: the unique match, or the candidate whose DocEntry is in the resolver's set.
+  let doc;
+  const pick = parseInt(req.query.docentry, 10);
+  if (resolved.candidates.length === 1) doc = resolved.candidates[0];
+  else if (Number.isInteger(pick)) {
+    doc = resolved.candidates.find((c) => c.docEntry === pick);
+    if (!doc) { audit(login, "preview_doc_pick_rejected", w.id, `entry ${pick} not in set`); return small(`<p>${esc(t(lang, "attach_doc_none"))}</p>`, 400); }
+  } else {
+    audit(login, "preview_doc_ambiguous", w.id, `${type} ${num}`);
+    return small(`<p>${esc(t(lang, "attach_doc_ambiguous"))}</p>`, 400);
+  }
+
+  // Scope is recorded for the audit only - preview never crosses the attach boundary, so it does
+  // not block on customer scope (attach still does, via /attach-doc's scope-warn + confirm).
+  let cc = null; try { cc = JSON.parse(w.compose_customer || "null"); } catch (e) { cc = null; }
+  let itemCard = (cc && cc.cardCode) || "";
+  if (w.origin !== "compose" && !itemCard && w.sender_email) {
+    try { const m = await SAPDOC.customerByEmail(w.sender_email); if (m && m.cardCode) itemCard = m.cardCode; }
+    catch (e) { /* scope note best-effort */ }
+  }
+  const offScope = !(itemCard && itemCard === doc.cardCode);
+
+  let r;
+  try { r = await SAPDOC.renderPdf(doc.objectId, doc.docEntry); }
+  catch (e) { audit(login, "preview_doc_error", w.id, e.message.slice(0, 180)); return small(`<p>${esc(t(lang, "attach_doc_render_failed"))}</p>`, 502); }
+  if (!r.ok) { audit(login, "preview_doc_render_failed", w.id, String(r.error).slice(0, 180)); return small(`<p>${esc(t(lang, "attach_doc_render_failed"))}</p>`, 502); }
+
+  const filename = SAPDOC.docTypeInfo(type).prefix + "-" + doc.docNum + ".pdf";
+  audit(login, "doc_pdf_previewed", w.id, `${doc.type} ${doc.docNum} DocEntry ${doc.docEntry} cust ${doc.cardCode || "?"} ${r.bytes}b${offScope ? " OUT-OF-SCOPE" : ""}`);
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${filename}"`,
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.send(r.buffer);
+});
+
+// FR-0002: customer detail-modal body (READ-ONLY). Returns the inner HTML htmx loads into the
+// dialog when the salesperson clicks "View full customer". The CardCode is resolved server-side
+// from the item (compose_customer or the inbound sender) - never from a client-supplied value - so
+// this only ever exposes the email's own customer. Read-only SAP via customer-summary.js.
+app.get("/item/:id/customer-modal", async (req, res) => {
+  const lang = req.user.lang;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(`<p class="muted">${esc(t(lang, "not_found"))}</p>`);
+  let card = null;
+  try { card = await itemCardCode(w); } catch (e) { card = null; }
+  if (!card) return res.send(`<p class="muted">${esc(t(lang, "cust_no_customer"))}</p>`);
+  let d;
+  try { d = await CUSTSUM.detail(card); }
+  catch (e) { audit(req.user.tailscale_login, "customer_detail_error", w.id, String(e.message || e).slice(0, 150)); return res.send(`<p class="muted">${esc(t(lang, "cust_load_error"))}</p>`); }
+  if (!d) return res.send(`<p class="muted">${esc(t(lang, "cust_no_customer"))}</p>`);
+  audit(req.user.tailscale_login, "customer_detail_viewed", w.id, `${d.summary.cardCode} ${d.summary.cardName || ""}`.slice(0, 120));
+  res.send(customerModalBody(d, lang));
 });
 
 // Status changes: done / phone (= done, resolved without email) / archived / reopen.

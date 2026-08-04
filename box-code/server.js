@@ -14,21 +14,24 @@
 // startup + identity/CSRF middleware AND the safety-path routes unmoved: /compose +
 // /compose/resolve and /item/:id/contactform-recipient (recipients pass the
 // pickRecipient gate here) and /item/:id/send (allow-list checks + send-guard).
-require("dotenv").config({ path: "C:\\Axle\\secrets\\.env", quiet: true });
+require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 const express = require("express");
 const SG = require("./send-guard.js");
 const SEND = require("./send.js");
 const RESOLVE = require("./resolve-customer.js");   // Compose: deterministic read-only customer resolver
+const RSET = require("./recipient-set.js");         // the single definition of an item's known addresses
 const COMPOSE = require("./compose.js");            // Compose: compose-mode engine (draft-only)
 const SCEN = require("./scenarios.js");             // Compose: seeded quick-start scenario library
 const crypto = require("crypto");                   // synthetic conversation keys
 const { db, audit } = require("./db.js");
+const SPROCKET_STORE = require("./sprocket-store.js");   // for the admin Requests unread badge
 const { esc, t, page, langOK, workPanes } = require("./views/ui.js");
 const { MAILBOX_OF, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, runRedraft, markReadSafe,
-        isContactFormItem, saveWorkInputs, defaultMailbox } = require("./routes/shared.js");
+        isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, defaultMailbox } = require("./routes/shared.js");
 const mountInbox = require("./routes/inbox.js");
 const mountItem = require("./routes/item.js");
 const mountAdmin = require("./routes/admin.js");
+const mountSprocket = require("./routes/sprocket.js"); // Sprocket: read-only/log-only in-app helper
 
 const PORT = 8484;
 const BIND_IP = "127.0.0.1";
@@ -43,6 +46,12 @@ const ACTION_CONTACTFORM_SEND = process.env.AXLE_ACTION_CONTACTFORM_SEND === "on
 // at Gate D by setting AXLE_ACTION_COMPOSE_SEND=on in the box .env and restarting. Until then a
 // compose item drafts and holds only: no Send button, and /item/:id/send refuses it at the route.
 const ACTION_COMPOSE_SEND = process.env.AXLE_ACTION_COMPOSE_SEND === "on";
+
+// Allow-list action — "send reply to a Shopify return-request customer". OFF by default; Brad
+// enables it by setting AXLE_ACTION_RETURN_SEND=on in the box .env and restarting. Until then a
+// return-notification item drafts and holds only: no Send button, and /item/:id/send refuses it at
+// the route. Like the contact form, a send is a NEW outbound to the code-held customer recipient.
+const ACTION_RETURN_SEND = process.env.AXLE_ACTION_RETURN_SEND === "on";
 
 // Recover items stuck in 'investigating' after a crash/restart mid-redraft.
 const stuck = db.prepare("UPDATE work_items SET status = 'awaiting_input', updated_at = datetime('now') WHERE status = 'investigating'").run();
@@ -80,6 +89,12 @@ app.use((req, res, next) => {
   }
   req.user = user;
   req.user.lang = langOK(getCookie(req, "axle_lang")); // per-browser UI language (header toggle)
+  // Unread-requests badge: count un-triaged (status 'new') Sprocket feature requests, for admins
+  // only (only they see the Requests link). Cheap file read; never let it break a page render.
+  if (req.user.role === "admin") {
+    try { req.user.sprocketNew = SPROCKET_STORE.loadRequests().filter((r) => r.status === "new").length; }
+    catch (e) { req.user.sprocketNew = 0; }
+  }
   next();
 });
 
@@ -177,11 +192,20 @@ app.post("/compose", async (req, res) => {
   const mailbox = ["info", "drachten"].includes(req.body.mailbox) ? req.body.mailbox : defaultMailbox(req.user);
   const pickCard = String(req.body.pick_card || "").trim();
   const pickAddr = String(req.body.pick_addr || "").trim().toLowerCase();
+  const mode = req.body.mode === "send" ? "send" : "draft";          // "draft" = let Axle write it; "send" = verbatim send-now
+  const composeSubject = String(req.body.subject || "").trim().slice(0, 200);
 
   const fail = (msg) => res.status(400).send(page(t(lang, "compose_failed"), req.user,
     `<p><b>${esc(t(lang, "compose_failed"))}:</b> ${esc(msg)}</p><p><a href="&#47;">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
 
   if (!who || !instruction) return fail(t(lang, "compose_need_who_instr"));
+
+  // "Send now" (verbatim) preconditions: action #3 must be enabled, and a subject is required. The
+  // send-guard also enforces a non-empty subject, but failing here keeps it a clean 400 (no orphan item).
+  if (mode === "send") {
+    if (!ACTION_COMPOSE_SEND) return fail(t(lang, "compose_send_blocked"));
+    if (!composeSubject) return fail(t(lang, "compose_need_subject"));
+  }
 
   // Resolve deterministically (read-only). The modal already showed this to the salesperson;
   // we re-resolve server-side so the recipient is authoritative, never a posted free-text value.
@@ -215,13 +239,17 @@ app.post("/compose", async (req, res) => {
   // produced by runRedraft's compose branch, which rebuilds everything from the stored item - the
   // sanitized customer carries NO address, and the recipient stays code-held in `recipient`.
   const modelCustomer = COMPOSE.sanitizeCustomerForModel(chosen.customer);
-  const subject = scenarioKey ? SCEN.byKey(scenarioKey).label_en : "New email";   // provisional; the draft proposes the final one
+  // Provisional subject: an AI Draft lets the model propose the final subject; a verbatim "Send now"
+  // uses the salesperson's typed subject as authoritative (required + validated above).
+  const subject = composeSubject || (scenarioKey ? SCEN.byKey(scenarioKey).label_en : "New email");
+  const initialStatus = mode === "send" ? "ready" : "investigating";   // send-now skips the research/draft cycle
+  // recipient_source='onfile': this address came from pickRecipient against the resolver's own set.
   const itemId = db.prepare(
-    "INSERT INTO work_items (mailbox, conversation_key, sender_email, sender_name, subject, language, intent, priority, status, origin, compose_instruction, compose_customer, recipient, scenario, owner) " +
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'investigating', 'compose', ?, ?, ?, ?, ?)"
+    "INSERT INTO work_items (mailbox, conversation_key, sender_email, sender_name, subject, language, intent, priority, status, origin, compose_instruction, compose_customer, recipient, recipient_source, scenario, owner) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'compose', ?, ?, ?, 'onfile', ?, ?)"
   ).run(
     mailbox, composeConvKey(), recipient, chosen.customer.name || chosen.customer.contactName || recipient,
-    subject, language, scenarioKey, 2, instruction, JSON.stringify(modelCustomer), recipient, scenarioKey,
+    subject, language, scenarioKey, 2, initialStatus, instruction, JSON.stringify(modelCustomer), recipient, scenarioKey,
     req.user.owner_label || req.user.display_name
   ).lastInsertRowid;
 
@@ -237,57 +265,118 @@ app.post("/compose", async (req, res) => {
       .run(itemId, String(names[i] || "attachment").slice(0, 200), String(ctypes[i] || "application/octet-stream").slice(0, 100), size, b64, login);
   }
 
+  // Verbatim "Send now": the typed text IS the email. No research, no AI draft - hand the stored item
+  // straight to the shared sender, which re-applies action #3, the code-held recipient and every
+  // send-guard check, then sends. (req.body.reply = body; req.body.compose_subject = human subject.)
+  if (mode === "send") {
+    audit(login, "compose_created", itemId,
+      `mode=send via=${chosen.matched_via} mailbox=${mailbox}@ lang=${language} atts=${atts} (verbatim send-now)`);
+    req.body.reply = instruction;
+    req.body.compose_subject = subject;
+    const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
+    return sendWorkItem(req, res, w);
+  }
+
   audit(login, "compose_created", itemId,
-    `via=${chosen.matched_via} mailbox=${mailbox}@ lang=${language} scenario=${scenarioKey || "-"} atts=${atts} (drafting in background)`);
+    `mode=draft via=${chosen.matched_via} mailbox=${mailbox}@ lang=${language} scenario=${scenarioKey || "-"} atts=${atts} (drafting in background)`);
   setImmediate(() => runRedraft(itemId, login));   // research + draft happen off the request path
   res.redirect("/item/" + itemId);
 });
 
-mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND });
+mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND });
 
-// Confirm the contact-form reply recipient (Step 3 of the contact-form build). The candidate
-// set was built deterministically at ingest (the parsed form address + any SAP/Shopify addresses)
-// and stored on the item. The posted address is honoured ONLY if pickRecipient finds it in that
-// set — a tampered or out-of-set value is rejected with no fallback, so a recipient the resolver
-// never produced can't get through. The chosen address is code-held in w.recipient. This sets a
-// recipient only; it NEVER sends (allow-list action #4 is still off — that's Step 4's gate).
-app.post("/item/:id/contactform-recipient", (req, res) => {
+// ---- the recipient control (editable send recipient, 2026-07-10) ------------------------------
+//
+// ONE route now sets work_items.recipient for all four item kinds. It is the ONLY writer of that
+// column and of recipient_source, and it is reachable only by a signed-in human over Tailscale.
+//
+//   mode=known -> the address must be one this item's resolver produced (recipient-set + pickKnown).
+//                 Out-of-set is REJECTED with no fallback, exactly as before.
+//   mode=typed -> a free-text address, screened by send-guard.acceptTypedRecipient (one address, no
+//                 comma/semicolon/angle-bracket/whitespace). This is the new capability, and it is
+//                 the ONLY way an address the resolver never produced can reach the To line.
+//
+// Refused outright when the item is injection-flagged (a hostile email must never get a redirect
+// UI at all) or already done/archived. Picking the item's own default clears the override instead
+// of storing it, so `to_source=sender` keeps meaning "we replied to whoever wrote to us".
+//
+// The model has no route here: this is a POST from the item page, and nothing in an email body,
+// tool result or draft can issue it.
+//
+// itemKind and the address set both come from shared modules, so this route, the item page that
+// renders the radios, and the send path can never disagree about what is a known address.
+const RSET_DEPS = RSET.defaultDeps();
+const knownAddresses = (w) => RSET.knownAddressesFor(w, itemKind(w), RSET_DEPS);
+
+async function setRecipient(req, res) {
   const lang = req.user.lang;
   const login = req.user.tailscale_login;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
-  if (!isContactFormItem(w)) {
-    return res.status(400).send(page(t(lang, "send_refused"), req.user,
-      `<p>${esc(t(lang, "send_refused"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
-  }
-  let cf = null;
-  try { cf = JSON.parse(w.contact_form_json || "null"); } catch (e) { cf = null; }
-  const cands = (cf && cf.candidateAddresses) || [];
-  const picked = String(req.body.addr || "").trim().toLowerCase();
 
-  // pickRecipient: returns the address only if it is one the resolver produced; else "".
-  const recipient = RESOLVE.pickRecipient(cands, picked);
-  if (!recipient) {
-    audit(login, "contactform_recipient_rejected", w.id, `picked=${picked.slice(0, 80)} not in candidate set`);
+  const refuse = (msgKey, auditAction, auditDetail) => {
+    audit(login, auditAction, w.id, auditDetail);
     return res.status(400).send(page(t(lang, "send_refused"), req.user,
-      `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_recipient_rejected"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+      `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, msgKey))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+  };
+
+  // An injection-flagged item can never send; it must not be able to acquire a recipient either.
+  if (w.injection_flag) return refuse("cf_recipient_rejected", "recipient_refused", "injection-flagged item");
+  if (w.status === "done" || w.status === "archived") return refuse("cf_recipient_rejected", "recipient_refused", `item ${w.status}`);
+
+  const kind = itemKind(w);
+  const mode = req.body.mode === "typed" ? "typed" : "known";
+  const posted = String(req.body.addr || "");
+  const oldTo = w.recipient || "";
+
+  let recipient = "", source = "";
+  if (mode === "known") {
+    recipient = RSET.pickKnown(await knownAddresses(w), posted);
+    if (!recipient) return refuse("cf_recipient_rejected", "recipient_rejected", `mode=known picked=${posted.slice(0, 80)} not in known set`);
+    source = "onfile";
+  } else {
+    recipient = SG.acceptTypedRecipient(posted);
+    if (!recipient) return refuse("recip_bad_address", "recipient_rejected", `mode=typed picked=${posted.slice(0, 80)} failed the address screen`);
+    source = "typed";
   }
-  db.prepare("UPDATE work_items SET recipient = ?, updated_at = datetime('now') WHERE id = ?").run(recipient, w.id);
-  audit(login, "contactform_recipient_set", w.id, `to=${recipient}`);
+
+  // Choosing the item's own default is a RESET, not an override: store no recipient, so the send
+  // path falls back to the thread sender and the audit row still reads to_source=sender. Only a
+  // reply has such a default; compose/contact-form/return need a stored recipient to send at all.
+  if (kind === "reply" && recipient === RSET.defaultRecipient(w, "reply")) {
+    db.prepare("UPDATE work_items SET recipient = NULL, recipient_source = NULL, updated_at = datetime('now') WHERE id = ?").run(w.id);
+    if (oldTo) audit(login, "recipient_cleared", w.id, `from=${oldTo} to=<thread sender> mode=${mode}`);
+    return res.redirect("/item/" + w.id);
+  }
+
+  db.prepare("UPDATE work_items SET recipient = ?, recipient_source = ?, updated_at = datetime('now') WHERE id = ?").run(recipient, source, w.id);
+  audit(login, "recipient_set", w.id, `from=${oldTo || "<thread sender>"} to=${recipient} mode=${mode}`);
   res.redirect("/item/" + w.id);
-});
+}
+
+app.post("/item/:id/recipient", setRecipient);
+
+// Thin aliases, kept for ONE release so a tab left open on the old radio card doesn't 404 mid-edit.
+// Both old forms could only post an in-set address, which is exactly mode=known. Delete next deploy.
+const knownOnly = (req, res) => { req.body.mode = "known"; return setRecipient(req, res); };
+app.post("/item/:id/contactform-recipient", knownOnly);
+app.post("/item/:id/return-recipient", knownOnly);
 
 // Send the approved reply (allow-list action #1). The salesperson can edit the reply and
 // send at any time; deterministic guardrails (send-guard) re-validate the FINAL body - an
-// injection-flagged item can never send, recipient is hard-locked to the sender, every URL
-// must be allowlisted. Both the AI draft (drafts, source='ai') and the actual sent text
-// (sends.body + a source='human' draft) are kept for the self-improvement layer. De-dup is
-// on (work_item_id, body_sha256): a double-click of the identical body can't send twice.
-app.post("/item/:id/send", async (req, res) => {
+// injection-flagged item can never send, the recipient is the code-held address a HUMAN chose
+// (never the model, never the email body), every URL must be allowlisted. Both the AI draft
+// (drafts, source='ai') and the actual sent text (sends.body + a source='human' draft) are kept
+// for the self-improvement layer. De-dup is on (work_item_id, to_addr, body_sha256): a
+// double-click of the identical body to the SAME address can't send twice, but the same body
+// may deliberately be sent on to a SECOND address (the "forward it to their colleague" case).
+// Shared outbound send, used by BOTH the reply Send button (POST /item/:id/send) and the compose
+// "Send now" fast path. The caller loads + 404-checks the work item; this owns every gate and guard
+// (action #3/#4 allow-list, code-held recipient, send-guard URL/injection validation, dedup) and the
+// delivery itself. The body sent is req.body.reply; a new-outbound subject is req.body.compose_subject.
+async function sendWorkItem(req, res, w) {
   const lang = req.user.lang;
   const login = req.user.tailscale_login;
-  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
-  if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
 
   // Allow-list action #3 ("send new / composed email"). While AXLE_ACTION_COMPOSE_SEND is OFF a
   // compose item drafts and holds only - refuse at the route, not merely by hiding the button. When
@@ -326,6 +415,23 @@ app.post("/item/:id/send", async (req, res) => {
     }
   }
 
+  // Return-notification: like the contact form, a send is a NEW outbound to the code-held customer
+  // recipient - governed by allow-list action AXLE_ACTION_RETURN_SEND. While OFF, refuse at the
+  // route (not just a hidden button). When ON, a recipient must have been confirmed/auto-set first.
+  const isRN = isReturnNotificationItem(w);
+  if (isRN) {
+    if (!ACTION_RETURN_SEND) {
+      audit(login, "return_send_blocked", w.id, "return-send action disabled (draft-only)");
+      return res.status(403).send(page(t(lang, "send_refused"), req.user,
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_send_not_enabled"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+    }
+    if (!w.recipient) {
+      audit(login, "return_send_no_recipient", w.id, "no confirmed recipient");
+      return res.status(400).send(page(t(lang, "send_refused"), req.user,
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_confirm_first"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+    }
+  }
+
   saveWorkInputs(w, req.body, login);                 // persist the edited reply + any answers/feedback
   const body = String(req.body.reply != null ? req.body.reply : (w.draft_edit || ""));
 
@@ -342,6 +448,7 @@ app.post("/item/:id/send", async (req, res) => {
     // Everything else: in-thread reply hard-locked to the sender. Both re-validate the FINAL body.
     payload = isComposeItem ? SG.assembleNewOutboundSend(w, body, req.body.compose_subject, attRows)
             : isCF ? SG.assembleNewOutboundSend(w, body, req.body.cf_subject, attRows)
+            : isRN ? SG.assembleNewOutboundSend(w, body, req.body.return_subject, attRows)
             : SG.assembleSend(w, body, attRows);
   } catch (e) {
     audit(login, "send_refused", w.id, e.message.slice(0, 200));
@@ -349,8 +456,10 @@ app.post("/item/:id/send", async (req, res) => {
       `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(e.message)}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   }
 
-  // De-dup an identical body for this item (double-click / refresh).
-  if (db.prepare("SELECT 1 FROM sends WHERE work_item_id = ? AND body_sha256 = ?").get(w.id, payload.sha256)) {
+  // De-dup an identical body sent to the SAME address for this item (double-click / refresh).
+  // Keyed on to_addr as well as the body hash: re-sending the same text to a DIFFERENT address is
+  // a legitimate, deliberate act (the editable-recipient feature), and must not be swallowed here.
+  if (db.prepare("SELECT 1 FROM sends WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ?").get(w.id, payload.to, payload.sha256)) {
     return res.redirect("/item/" + w.id);
   }
 
@@ -369,7 +478,8 @@ app.post("/item/:id/send", async (req, res) => {
   const humanDraftId = db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body, source, edited_by) VALUES (?, ?, 0, ?, 'human', ?)")
     .run(w.id, ver, body, login).lastInsertRowid;
 
-  // Reserve a pending send; UNIQUE(work_item_id, body_sha256) rejects a race double-send.
+  // Reserve a pending send; UNIQUE(work_item_id, to_addr, body_sha256) rejects a race double-send
+  // to the same address, while still permitting the same body to a second, different address.
   try {
     db.prepare("INSERT INTO sends (work_item_id, draft_id, source_draft_id, to_addr, subject, body_sha256, body, attachments_json, status, sent_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
       .run(w.id, humanDraftId, aiSrc ? aiSrc.id : null, payload.to, payload.subject, payload.sha256, body, attMeta.length ? JSON.stringify(attMeta) : null, login);
@@ -381,27 +491,44 @@ app.post("/item/:id/send", async (req, res) => {
   try {
     // Contact-form is a fresh email (no thread); originalMessageId=null so send.js threads nothing.
     const r = await SEND.sendReply({
-      mailbox: MAILBOX_OF[w.mailbox], originalMessageId: (isCF || isComposeItem) ? null : w.latest_message_id,
+      mailbox: MAILBOX_OF[w.mailbox], originalMessageId: (isCF || isComposeItem || isRN) ? null : w.latest_message_id,
       to: payload.to, subject: payload.subject, html: payload.html, attachments: graphAtts,
     });
-    db.prepare("UPDATE sends SET status = 'sent', graph_message_id = ? WHERE work_item_id = ? AND body_sha256 = ?").run(r.sentId || "sent", w.id, payload.sha256);
+    // Scoped by to_addr as well: the row just reserved is the (item, address, body) triple, and an
+    // earlier send of the SAME body to a DIFFERENT address must not be touched by this update.
+    db.prepare("UPDATE sends SET status = 'sent', graph_message_id = ? WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ?").run(r.sentId || "sent", w.id, payload.to, payload.sha256);
     db.prepare("UPDATE work_items SET status = 'done', resolution = 'replied', draft_edit = NULL, updated_at = datetime('now') WHERE id = ?").run(w.id);
     db.prepare("DELETE FROM draft_attachments WHERE work_item_id = ?").run(w.id); // bytes no longer needed; metadata kept in sends
     const edited = aiSrc ? String(aiSrc.body) !== body : true;
+    // Where the To came from. Read from the stored column, never re-derived here: the send path must
+    // not depend on a live SAP read. NULL means no override -> we replied to whoever wrote to us.
+    // A NULL alongside a set recipient can only be a pre-migration row, and every one of those was
+    // resolver-produced (compose / contact-form / return), hence the 'onfile' default.
+    const toSource = !w.recipient ? "sender" : (w.recipient_source || "onfile");
     audit(login, "email_sent", w.id,
-      `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : "reply"} to=${payload.to} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
+      `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
     if (!isComposeItem) await markReadSafe(login, w);
     res.redirect("/item/" + w.id);
   } catch (e) {
-    db.prepare("DELETE FROM sends WHERE work_item_id = ? AND body_sha256 = ? AND status = 'pending'").run(w.id, payload.sha256);
+    // Same scoping as the success path: roll back only the row this request reserved.
+    db.prepare("DELETE FROM sends WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ? AND status = 'pending'").run(w.id, payload.to, payload.sha256);
     db.prepare("DELETE FROM drafts WHERE id = ?").run(humanDraftId);   // remove the speculative human draft on failure
     audit(login, "send_failed", w.id, e.message.slice(0, 200));
     res.status(502).send(page("Send failed", req.user,
       `<p><b>${esc(t(lang, "send_failed"))}:</b> ${esc(e.message)}</p><p>${esc(t(lang, "send_failed_note"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   }
+}
+
+// Reply Send button: load + 404-check the item, then delegate to the shared sender.
+app.post("/item/:id/send", async (req, res) => {
+  const lang = req.user.lang;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
+  return sendWorkItem(req, res, w);
 });
 
 mountAdmin(app);
+mountSprocket(app);   // Sprocket helper endpoint (POST /sprocket/ask) — read-only/log-only
 
 // Last-resort error handler. Express 5 routes sync throws AND rejected async handlers
 // here; without it they became default 500s that htmx silently ignores — a failed

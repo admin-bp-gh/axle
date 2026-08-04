@@ -9,11 +9,14 @@ const { markReadSafe } = require("./shared.js");
 module.exports = function mountAdmin(app) {
 
 // ---- Block sender (Axle-only suppression, reversible) -------------------------------------
-// GET = a confirm page: choose address-only vs whole-domain, with a SAP-customer check so a
-// real customer isn't blocked by accident. POST = insert the block, archive this item
+// GET = a confirm page showing the ONE address that will be blocked, with a SAP-customer check so
+// a real customer isn't blocked by accident. POST = insert the block, archive this item
 // (resolution no_action) and mark the inbound read. The pattern is derived in code from the
 // item's STORED sender address - never from typed input. Blocks are global (info@ +
 // drachten@); the mail still arrives in Outlook (no mailbox write). Everything is audited.
+//
+// Single addresses ONLY since 2026-07-27 — see the POST handler for why the whole-domain option
+// was removed.
 app.get("/item/:id/block", async (req, res) => {
   const lang = req.user.lang;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
@@ -43,8 +46,7 @@ app.get("/item/:id/block", async (req, res) => {
       <p class="muted">${esc(t(lang, "block_explain"))}</p>
       ${sapNote}
       <form method="post" action="/item/${w.id}/block">
-        <p><label><input type="radio" name="kind" value="address" checked> ${esc(t(lang, "block_addr_opt"))} (${esc(addr)})</label><br>
-           <label><input type="radio" name="kind" value="domain"> ${esc(t(lang, "block_dom_opt"))} (@${esc(domain)})</label></p>
+        <p><b>${esc(t(lang, "block_addr_opt"))}:</b> ${esc(addr)}</p>
         <button class="primary">${esc(t(lang, "block_confirm_btn"))}</button>
         <a href="/item/${w.id}" style="margin-left:10px">${esc(t(lang, "block_back"))}</a>
       </form>
@@ -58,8 +60,17 @@ app.post("/item/:id/block", async (req, res) => {
   const addr = String(w.sender_email || "").trim().toLowerCase();
   const domain = addr.split("@")[1] || "";
   if (!addr || !domain) return res.redirect("/item/" + w.id);
-  const kind = req.body.kind === "domain" ? "domain" : "address";
-  const pattern = (kind === "domain" ? "@" + domain : addr).slice(0, 200);
+  // Whole-domain blocking was REMOVED on 2026-07-27 (Brad's call). Two mis-clicks on the old
+  // "the whole domain" option — '@gmail.com' and '@shopify.com' — silently swallowed 13 days of
+  // consumer customer email and 4 weeks of webshop contact-form messages, with no trace anywhere
+  // anyone looks. The blast radius of the option was wildly out of proportion to its usefulness,
+  // so only single addresses can be blocked now. `kind` is no longer read from the request at all.
+  //
+  // Pre-existing domain rows still MATCH in isBlockedSender (they are all legitimate
+  // single-organisation domains — marketing senders, spam domains); they simply cannot be created
+  // any more, and remain removable on the Blocked page.
+  const kind = "address";
+  const pattern = addr.slice(0, 200);
   db.prepare("INSERT OR IGNORE INTO sender_blocks (pattern, kind, reason, added_by, work_item_id) VALUES (?, ?, 'unwanted sender', ?, ?)")
     .run(pattern, kind, req.user.tailscale_login, w.id);
   db.prepare("UPDATE work_items SET status = 'archived', resolution = 'no_action', updated_at = datetime('now') WHERE id = ?").run(w.id);

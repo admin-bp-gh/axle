@@ -55,10 +55,11 @@ const STRINGS = {
     archive_tip: "No action was needed (FYI / noise)",
     block_tip: "Stop future emails from this sender appearing in Axle",
     res_replied: "replied", res_done: "completed", res_phone: "by phone", res_no_action: "no action needed",
+    res_outlook: "handled in Outlook",
     nav_blocks: "Blocked",
     block_sender: "Block sender", block_title: "Block this sender",
     block_explain: "Future emails from this sender will no longer appear in Axle. They still arrive in the shared mailbox in Outlook. The block applies to both info@ and drachten@, and can be undone at any time on the Blocked page.",
-    block_addr_opt: "Only this address", block_dom_opt: "The whole domain",
+    block_addr_opt: "Address to block",
     block_sap_warn: "Careful - this address matches a SAP customer:",
     block_sap_none: "No SAP customer matches this address.",
     block_sap_unknown: "Could not check SAP for this address.",
@@ -66,7 +67,7 @@ const STRINGS = {
     blocks_title: "Blocked senders", blocks_none: "No blocked senders.", unblock: "Unblock",
     blocks_explain: "Emails from these senders are ignored by Axle (they still arrive in Outlook). Anyone on the team can unblock; every change is audited.",
     col_sender_b: "Sender", col_kind_b: "Scope", col_by_b: "Blocked by", col_when_b: "When", col_item_b: "From item",
-    copy_draft: "Copy draft", copied: "Copied to clipboard", send_reply_to: "Send reply to",
+    copy_draft: "Copy draft", copied: "Copied to clipboard", send_reply_to: "Send reply to", send_now: "Send now",
     send_confirm: "Send this reply to {to}?\\n\\nThe customer will receive it. The draft is sent exactly as shown.",
     sent_to: "Sent to", on_word: "on",
     send_disabled_inj: "Sending disabled: this item is flagged as possible injection.",
@@ -91,9 +92,12 @@ const STRINGS = {
     compose_who: "Who is this customer?", compose_who_ph: "Customer code, email, order #, invoice # or name",
     compose_find: "Find customer", compose_finding: "Looking up…",
     compose_scenario: "Quick start (optional)", compose_instruction: "What should the email say?",
-    compose_instruction_ph: "Tell Axle in plain language what to write. Axle researches the facts and drafts it.",
+    compose_instruction_ph: "Two ways to work: tell Axle in plain language what to write and it researches the facts and drafts it (use Draft) — or just write the email yourself and send it as-is (use Send now).",
+    compose_subject: "Subject", compose_subject_ph: "Subject line (needed to send now)",
     compose_language: "Language", compose_lang_auto: "Auto", compose_from: "Send from",
-    compose_create: "Draft this email", compose_creating: "Drafting…", compose_cancel: "Cancel",
+    compose_create: "Draft", compose_send_now: "Send now", compose_creating: "Drafting…", compose_sending: "Sending…", compose_cancel: "Cancel",
+    compose_need_subject: "Add a subject line to send now.",
+    compose_send_confirm: "Send this email now to {to}?",
     compose_recipient: "Recipient", compose_to: "To", compose_pick_address: "Pick the address to use:",
     compose_pick_customer: "More than one match — pick the customer:",
     compose_not_found: "No customer found — check the identifier.",
@@ -120,7 +124,13 @@ const STRINGS = {
     suggest_close_chip: "No reply needed?", suggest_close_title: "Axle suggests no email reply is needed. Review it and mark it Done if you agree — nothing closes automatically.",
     sugg_add: "Attach", sugg_ref: "mentioned as", sugg_pick: "Several documents share this number — pick one:",
     sugg_other_cust: "Different customer — review before attaching", sugg_other_cust_hint: "These numbers were in the email but resolve to another customer's document. Attaching one needs an explicit confirm.",
-    sugg_review: "Review",
+    sugg_review: "Review", sugg_preview: "Preview", sugg_preview_title: "Open the document PDF in a new tab — nothing is attached.",
+    cust_card_title: "Customer", cust_tier: "Discount tier", cust_open_orders: "Open orders", cust_open_invoices: "Open invoices",
+    cust_view_full: "View full customer", cust_detail_title: "Customer overview", cust_close: "Close", cust_loading: "Loading…",
+    cust_lifetime: "Lifetime invoiced", cust_12m: "Last 12 months", cust_balance: "Account balance", cust_since: "Customer since", cust_last_order: "Last order",
+    cust_recent_orders: "Recent orders", cust_recent_invoices: "Recent invoices", cust_no_customer: "Not a known SAP customer.", cust_load_error: "Could not load customer details.",
+    cust_frozen: "On hold", cust_open: "Open", cust_closed: "Closed", cust_paid: "Paid", cust_unpaid: "Unpaid", cust_none: "None",
+    col_doc: "Doc", col_date: "Date", col_total: "Total", col_status: "Status",
     contactform_chip: "Contact form", contactform_draft_only: "Contact-form message — the customer's address is in the body, not the sender. Reply via Compose or Outlook; in-thread Send is disabled.",
     contactform_send_blocked: "In-thread Send is disabled for contact-form messages (the sender is Shopify's mailer, not the customer). Use Compose or Outlook.",
     cf_customer_label: "Contact-form customer", cf_pick: "Choose the address to reply to:",
@@ -129,6 +139,14 @@ const STRINGS = {
     cf_no_address: "No usable customer address was found in this message — it can't be answered here yet.",
     cf_matched: "Matched in SAP", cf_not_matched: "No SAP match — replying to the address from the form.",
     cf_order: "Order", cf_recipient_rejected: "That address is not one of the resolved options — pick one of the listed addresses.",
+    recip_bad_address: "That isn't a single valid email address. Enter one address, with no commas, semicolons or angle brackets.",
+    recip_change: "Change recipient", recip_other: "Other address…", recip_use: "Use address",
+    recip_from_sender: "sender", recip_on_file: "on file", recip_from_form: "from form", recip_typed: "typed",
+    recip_typed_confirm: "{to} is not one of {customer}'s known addresses. Send there anyway?",
+    recip_changed_pill: "changed", recip_changed_title: "This reply is going somewhere other than the default address.",
+    recip_current: "Currently sending to", recip_confirm_btn: "Confirm recipient", recip_none_yet: "no recipient yet",
+    recip_confirm_hint: "Choose the recipient in the Send button below before this can be sent.",
+    recip_this_customer: "this customer",
     cf_send_not_enabled: "Recipient confirmed. Sending contact-form replies isn't enabled yet (action #4 off).",
     cf_confirm_first: "Confirm the recipient above before this can be sent.",
     cf_subject: "Subject", cf_subject_hint: "This is a new email to the customer — set the subject they'll see.",
@@ -146,6 +164,27 @@ const STRINGS = {
     filter_btn: "Filter",
     sort_label: "Sort",
     sort_needs: "Needs me first", sort_new: "Newest first", sort_old: "Oldest first", sort_prio: "Priority first",
+    // Sprocket — the in-app helper (floating cog + chat panel)
+    sprocket_tagline: "Axle helper",
+    sprocket_open: "Open Sprocket, the Axle helper",
+    sprocket_close: "Close",
+    sprocket_greeting: "Hi, I'm Sprocket — your Axle helper. Ask me how to do anything in Axle.",
+    sprocket_ph: "How do I…?",
+    sprocket_send: "Send",
+    sprocket_thinking: "Sprocket's looking that up…",
+    sprocket_error: "Sorry — something went wrong. Please try again.",
+    sprocket_dupe_note: "Good news — someone else has asked for this too, so I've added your vote to it.",
+    sprocket_dupe_note_self: "Looks like this matches one you've already logged — I've kept it on the existing request rather than adding a duplicate.",
+    sprocket_requests_nav: "Requests",
+    sprocket_new_badge: "New, un-reviewed requests",
+    sprocket_requests_title: "Feature requests",
+    sprocket_requests_hint: "Captured by Sprocket. The .jsonl / .md files on the box are the source of truth — edit status and notes there.",
+    sprocket_no_requests: "No requests yet.",
+    sprocket_votes: "vote(s)",
+    sprocket_f_today: "Today", sprocket_f_freq: "Frequency", sprocket_f_impact: "Impact",
+    sprocket_f_example: "Example", sprocket_f_also: "Also asked by", sprocket_f_notes: "Notes",
+    sprocket_status_new: "New", sprocket_status_approved: "Approved", sprocket_status_in_progress: "In progress",
+    sprocket_status_done: "Done", sprocket_status_declined: "Declined",
   },
   nl: {
     inbox: "Postvak", audit: "Audit",
@@ -187,10 +226,11 @@ const STRINGS = {
     archive_tip: "Geen actie nodig (ter info / ruis)",
     block_tip: "Toekomstige e-mails van deze afzender niet meer in Axle tonen",
     res_replied: "beantwoord", res_done: "afgerond", res_phone: "telefonisch", res_no_action: "geen actie nodig",
+    res_outlook: "afgehandeld in Outlook",
     nav_blocks: "Geblokkeerd",
     block_sender: "Blokkeer afzender", block_title: "Deze afzender blokkeren",
     block_explain: "Toekomstige e-mails van deze afzender verschijnen niet meer in Axle. Ze komen nog wel aan in de gedeelde mailbox in Outlook. De blokkade geldt voor info@ en drachten@, en is altijd terug te draaien op de pagina Geblokkeerd.",
-    block_addr_opt: "Alleen dit adres", block_dom_opt: "Het hele domein",
+    block_addr_opt: "Te blokkeren adres",
     block_sap_warn: "Let op - dit adres hoort bij een SAP-klant:",
     block_sap_none: "Geen SAP-klant met dit adres.",
     block_sap_unknown: "Kon SAP niet controleren voor dit adres.",
@@ -198,7 +238,7 @@ const STRINGS = {
     blocks_title: "Geblokkeerde afzenders", blocks_none: "Geen geblokkeerde afzenders.", unblock: "Deblokkeer",
     blocks_explain: "E-mails van deze afzenders worden door Axle genegeerd (ze komen nog wel aan in Outlook). Iedereen in het team kan deblokkeren; elke wijziging wordt gelogd.",
     col_sender_b: "Afzender", col_kind_b: "Bereik", col_by_b: "Geblokkeerd door", col_when_b: "Wanneer", col_item_b: "Uit item",
-    copy_draft: "Kopieer concept", copied: "Gekopieerd", send_reply_to: "Verstuur antwoord naar",
+    copy_draft: "Kopieer concept", copied: "Gekopieerd", send_reply_to: "Verstuur antwoord naar", send_now: "Nu versturen",
     send_confirm: "Dit antwoord versturen naar {to}?\\n\\nDe klant ontvangt het. Het concept wordt exact zo verstuurd als getoond.",
     sent_to: "Verstuurd naar", on_word: "op",
     send_disabled_inj: "Versturen uitgeschakeld: dit item is gemarkeerd als mogelijke injectie.",
@@ -223,9 +263,12 @@ const STRINGS = {
     compose_who: "Welke klant is dit?", compose_who_ph: "Klantcode, e-mail, order #, factuur # of naam",
     compose_find: "Klant zoeken", compose_finding: "Opzoeken…",
     compose_scenario: "Snelstart (optioneel)", compose_instruction: "Wat moet de e-mail zeggen?",
-    compose_instruction_ph: "Vertel Axle in gewone taal wat het moet schrijven. Axle zoekt de feiten op en stelt het op.",
+    compose_instruction_ph: "Twee manieren: vertel Axle in gewone taal wat het moet schrijven — Axle zoekt de feiten op en stelt het op (gebruik Concept) — of schrijf de e-mail zelf en verstuur hem zoals hij is (gebruik Nu versturen).",
+    compose_subject: "Onderwerp", compose_subject_ph: "Onderwerpregel (nodig om nu te versturen)",
     compose_language: "Taal", compose_lang_auto: "Auto", compose_from: "Verzenden vanaf",
-    compose_create: "Concept opstellen", compose_creating: "Opstellen…", compose_cancel: "Annuleren",
+    compose_create: "Concept", compose_send_now: "Nu versturen", compose_creating: "Opstellen…", compose_sending: "Versturen…", compose_cancel: "Annuleren",
+    compose_need_subject: "Voeg een onderwerpregel toe om nu te versturen.",
+    compose_send_confirm: "Deze e-mail nu versturen naar {to}?",
     compose_recipient: "Ontvanger", compose_to: "Aan", compose_pick_address: "Kies het te gebruiken adres:",
     compose_pick_customer: "Meerdere matches — kies de klant:",
     compose_not_found: "Geen klant gevonden — controleer de gegevens.",
@@ -252,7 +295,13 @@ const STRINGS = {
     suggest_close_chip: "Geen antwoord nodig?", suggest_close_title: "Axle stelt voor dat geen e-mailantwoord nodig is. Beoordeel het item en markeer het als gereed als u het ermee eens bent — er wordt niets automatisch gesloten.",
     sugg_add: "Bijvoegen", sugg_ref: "genoemd als", sugg_pick: "Meerdere documenten met dit nummer — kies er een:",
     sugg_other_cust: "Andere klant — controleer voor bijvoegen", sugg_other_cust_hint: "Deze nummers stonden in de e-mail maar horen bij het document van een andere klant. Bijvoegen vereist een expliciete bevestiging.",
-    sugg_review: "Bekijken",
+    sugg_review: "Bekijken", sugg_preview: "Voorbeeld", sugg_preview_title: "Open de document-PDF in een nieuw tabblad — er wordt niets bijgevoegd.",
+    cust_card_title: "Klant", cust_tier: "Kortingsniveau", cust_open_orders: "Openstaande orders", cust_open_invoices: "Openstaande facturen",
+    cust_view_full: "Volledige klant bekijken", cust_detail_title: "Klantoverzicht", cust_close: "Sluiten", cust_loading: "Laden…",
+    cust_lifetime: "Totaal gefactureerd", cust_12m: "Laatste 12 maanden", cust_balance: "Accountsaldo", cust_since: "Klant sinds", cust_last_order: "Laatste order",
+    cust_recent_orders: "Recente orders", cust_recent_invoices: "Recente facturen", cust_no_customer: "Geen bekende SAP-klant.", cust_load_error: "Kon klantgegevens niet laden.",
+    cust_frozen: "Geblokkeerd", cust_open: "Open", cust_closed: "Afgesloten", cust_paid: "Betaald", cust_unpaid: "Onbetaald", cust_none: "Geen",
+    col_doc: "Doc", col_date: "Datum", col_total: "Totaal", col_status: "Status",
     contactform_chip: "Contactformulier", contactform_draft_only: "Contactformulier-bericht — het e-mailadres van de klant staat in de tekst, niet bij de afzender. Beantwoord via Opstellen of Outlook; verzenden in thread is uitgeschakeld.",
     contactform_send_blocked: "Verzenden in thread is uitgeschakeld voor contactformulier-berichten (de afzender is de mailer van Shopify, niet de klant). Gebruik Opstellen of Outlook.",
     cf_customer_label: "Contactformulier-klant", cf_pick: "Kies het adres om op te antwoorden:",
@@ -261,6 +310,14 @@ const STRINGS = {
     cf_no_address: "Geen bruikbaar klantadres gevonden in dit bericht — kan hier nog niet beantwoord worden.",
     cf_matched: "Gekoppeld in SAP", cf_not_matched: "Geen SAP-koppeling — antwoord naar het adres uit het formulier.",
     cf_order: "Order", cf_recipient_rejected: "Dat adres is geen van de gevonden opties — kies een van de getoonde adressen.",
+    recip_bad_address: "Dat is geen geldig e-mailadres. Vul één adres in, zonder komma's, puntkomma's of punthaken.",
+    recip_change: "Ontvanger wijzigen", recip_other: "Ander adres…", recip_use: "Adres gebruiken",
+    recip_from_sender: "afzender", recip_on_file: "bekend adres", recip_from_form: "uit formulier", recip_typed: "ingetypt",
+    recip_typed_confirm: "{to} is geen bekend adres van {customer}. Toch daarheen versturen?",
+    recip_changed_pill: "gewijzigd", recip_changed_title: "Dit antwoord gaat naar een ander adres dan het standaardadres.",
+    recip_current: "Wordt nu verstuurd naar", recip_confirm_btn: "Ontvanger bevestigen", recip_none_yet: "nog geen ontvanger",
+    recip_confirm_hint: "Kies hieronder in de Verstuur-knop de ontvanger voordat dit verstuurd kan worden.",
+    recip_this_customer: "deze klant",
     cf_send_not_enabled: "Ontvanger bevestigd. Versturen van contactformulier-antwoorden is nog niet ingeschakeld (actie #4 uit).",
     cf_confirm_first: "Bevestig eerst de ontvanger hierboven voordat dit verstuurd kan worden.",
     cf_subject: "Onderwerp", cf_subject_hint: "Dit is een nieuwe e-mail aan de klant — stel het onderwerp in dat de klant ziet.",
@@ -278,6 +335,27 @@ const STRINGS = {
     filter_btn: "Filter",
     sort_label: "Sorteren",
     sort_needs: "Actie eerst", sort_new: "Nieuwste eerst", sort_old: "Oudste eerst", sort_prio: "Prioriteit eerst",
+    // Sprocket — de in-app hulp (zwevende tandwielknop + chatvenster)
+    sprocket_tagline: "Axle-hulp",
+    sprocket_open: "Open Sprocket, de Axle-hulp",
+    sprocket_close: "Sluiten",
+    sprocket_greeting: "Hoi, ik ben Sprocket — je Axle-hulp. Vraag me hoe je iets in Axle doet.",
+    sprocket_ph: "Hoe doe ik…?",
+    sprocket_send: "Versturen",
+    sprocket_thinking: "Sprocket zoekt het even op…",
+    sprocket_error: "Sorry — er ging iets mis. Probeer het opnieuw.",
+    sprocket_dupe_note: "Goed nieuws — iemand anders heeft hier ook om gevraagd, dus ik heb jouw stem eraan toegevoegd.",
+    sprocket_dupe_note_self: "Dit lijkt op een verzoek dat je al hebt ingediend — ik heb het bij het bestaande verzoek gehouden in plaats van een duplicaat aan te maken.",
+    sprocket_requests_nav: "Verzoeken",
+    sprocket_new_badge: "Nieuwe, nog niet bekeken verzoeken",
+    sprocket_requests_title: "Functieverzoeken",
+    sprocket_requests_hint: "Vastgelegd door Sprocket. De .jsonl / .md-bestanden op de box zijn leidend — pas status en notities daar aan.",
+    sprocket_no_requests: "Nog geen verzoeken.",
+    sprocket_votes: "stem(men)",
+    sprocket_f_today: "Nu", sprocket_f_freq: "Frequentie", sprocket_f_impact: "Impact",
+    sprocket_f_example: "Voorbeeld", sprocket_f_also: "Ook gevraagd door", sprocket_f_notes: "Notities",
+    sprocket_status_new: "Nieuw", sprocket_status_approved: "Goedgekeurd", sprocket_status_in_progress: "In behandeling",
+    sprocket_status_done: "Klaar", sprocket_status_declined: "Afgewezen",
   },
 };
 const t = (lang, k) => (STRINGS[lang] && STRINGS[lang][k] != null) ? STRINGS[lang][k]
@@ -506,9 +584,72 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
 }
 // -------------------------------------------------------------------------------
 
+// --- Sprocket: the in-app helper widget -----------------------------------------
+// A floating circular cog button fixed bottom-right on EVERY page (it sits outside
+// #workpane, so htmx swaps never touch it). Click toggles a small chat panel that POSTs
+// to /sprocket/ask and renders the answer. Self-contained: markup + a single IIFE here,
+// styles in components.css. Read-only/log-only — the panel only asks Sprocket questions.
+// All rendered text goes in via textContent in the script (never innerHTML), so a model
+// answer can't inject markup; the greeting/labels below are esc()'d for the HTML context.
+const SP_COG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+function sprocketWidget(lang) {
+  const S = JSON.stringify({ thinking: t(lang, "sprocket_thinking"), error: t(lang, "sprocket_error") });
+  return `<div id="sprocket" class="sprocket" data-open="0">
+  <button type="button" class="sprocket-fab" id="sprocketFab" aria-label="${esc(t(lang, "sprocket_open"))}" aria-expanded="false">${SP_COG}</button>
+  <section class="sprocket-panel" id="sprocketPanel" role="dialog" aria-label="Sprocket" hidden>
+    <header class="sp-head"><span class="sp-title">${SP_COG}<span>Sprocket</span><span class="sp-tag">${esc(t(lang, "sprocket_tagline"))}</span></span>
+      <button type="button" class="sp-close" id="sprocketClose" aria-label="${esc(t(lang, "sprocket_close"))}">&times;</button></header>
+    <div class="sp-log" id="sprocketLog" aria-live="polite"><div class="sp-msg sp-bot">${esc(t(lang, "sprocket_greeting"))}</div></div>
+    <form class="sp-input" id="sprocketForm">
+      <textarea id="sprocketQ" rows="1" placeholder="${esc(t(lang, "sprocket_ph"))}" aria-label="${esc(t(lang, "sprocket_ph"))}"></textarea>
+      <button type="submit" class="sp-send" id="sprocketSend" aria-label="${esc(t(lang, "sprocket_send"))}">&#9654;</button>
+    </form>
+  </section>
+</div>
+<script>
+(function () {
+  var root = document.getElementById("sprocket"); if (!root) return;
+  var S = ${S};
+  var fab = document.getElementById("sprocketFab"), panel = document.getElementById("sprocketPanel"),
+      form = document.getElementById("sprocketForm"), input = document.getElementById("sprocketQ"),
+      log = document.getElementById("sprocketLog"), send = document.getElementById("sprocketSend"),
+      closeBtn = document.getElementById("sprocketClose");
+  var busy = false;
+  function open(o) { panel.hidden = !o; root.setAttribute("data-open", o ? "1" : "0"); fab.setAttribute("aria-expanded", o ? "true" : "false"); if (o) setTimeout(function () { input.focus(); }, 0); }
+  fab.addEventListener("click", function () { open(panel.hidden); });
+  closeBtn.addEventListener("click", function () { open(false); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) open(false); });
+  function addMsg(who, text) { var d = document.createElement("div"); d.className = "sp-msg " + (who === "you" ? "sp-you" : "sp-bot"); d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; }
+  function grow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 120) + "px"; }
+  input.addEventListener("input", grow);
+  input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+  form.addEventListener("submit", function (e) {
+    e.preventDefault(); if (busy) return;
+    var q = input.value.trim(); if (!q) return;
+    // Build the transcript so far (everything already in the log, minus any pending bubble) so the
+    // intake can be multi-turn — the server stays stateless and the client holds the conversation.
+    var prior = [];
+    log.querySelectorAll(".sp-msg").forEach(function (el) {
+      if (el.classList.contains("sp-pending")) return;
+      prior.push({ role: el.classList.contains("sp-you") ? "you" : "bot", text: el.textContent });
+    });
+    addMsg("you", q); input.value = ""; grow();
+    busy = true; send.disabled = true;
+    var pend = addMsg("bot", S.thinking); pend.classList.add("sp-pending");
+    fetch("/sprocket/ask", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ q: q, history: JSON.stringify(prior) }) })
+      .then(function (r) { return r.json().catch(function () { return { error: S.error }; }); })
+      .then(function (d) { pend.classList.remove("sp-pending"); pend.textContent = (d && d.answer) ? d.answer : (d && d.error) ? d.error : S.error; })
+      .catch(function () { pend.classList.remove("sp-pending"); pend.textContent = S.error; })
+      .finally(function () { busy = false; send.disabled = false; log.scrollTop = log.scrollHeight; input.focus(); });
+  });
+})();
+</script>`;
+}
+// -------------------------------------------------------------------------------
+
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris1";
+const ASSET_V = "polaris12";
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -527,9 +668,10 @@ ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
 <script src="/assets/htmx.min.js?v=${ASSET_V}" defer></script>
 </head><body${isShell ? ' class="appshell"' : ""}>
-<header><span class="brand">Axle</span><a href="/">${esc(t(lang, "inbox"))}</a><a href="/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="/audit">${esc(t(lang, "audit"))}</a>` : ""}
+<header><span class="brand">Axle</span><a href="/">${esc(t(lang, "inbox"))}</a><a href="/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="/audit">${esc(t(lang, "audit"))}</a><a href="/sprocket/requests">${esc(t(lang, "sprocket_requests_nav"))}${user.sprocketNew ? ` <span class="hbadge" title="${esc(t(lang, "sprocket_new_badge"))}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : ""}
 <span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span></header>
 <main${isShell ? ' class="wide"' : ""}>${body}</main>
+${sprocketWidget(lang)}
 <script>
 // Close any open chip/action menu on an outside click (presentation only).
 document.addEventListener("click", function (e) {
@@ -537,6 +679,50 @@ document.addEventListener("click", function (e) {
     if (!d.contains(e.target)) d.removeAttribute("open");
   });
 });
+// Pop-up menu placement (presentation only). The chip/action/filter menus are <details>
+// lists that live INSIDE the overflow:auto panes, so a list opening near a pane edge gets
+// clipped by the pane — which is why the action-bar "More actions" menu hid behind the
+// queue when the bar wrapped and stranded its button on the left. Fix: when a menu opens,
+// position its list with position:fixed (which escapes the panes' overflow), anchored to
+// its summary, flipped above/below for room and CLAMPED into the viewport so it can never
+// be clipped or run off-screen. z-index lifts it over the Sprocket cog too. Without JS the
+// menus still open exactly as before (this only relocates an already-open list).
+(function () {
+  var GAP = 6, PAD = 8, openEl = null;
+  function listOf(d) { return d.querySelector(".menu-list, .chipmenu-list"); }
+  function place(d) {
+    var s = d.querySelector("summary"), l = listOf(d);
+    if (!s || !l) return;
+    l.style.position = "fixed"; l.style.margin = "0";
+    l.style.maxWidth = "calc(100vw - " + (PAD * 2) + "px)";
+    l.style.maxHeight = "calc(100vh - " + (PAD * 2) + "px)";
+    l.style.overflowY = "auto";
+    var r = s.getBoundingClientRect(), w = l.offsetWidth, h = l.offsetHeight;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    // Action overflow menus open upward; filter (.down) and chip menus open downward.
+    var up = d.classList.contains("menu") && !d.classList.contains("down");
+    var top = up ? r.top - GAP - h : r.bottom + GAP;
+    if (up && top < PAD) top = r.bottom + GAP;              // no room above -> drop below
+    else if (!up && top + h > vh - PAD) top = r.top - GAP - h; // no room below -> flip above
+    top = Math.max(PAD, Math.min(top, vh - PAD - h));
+    var left = Math.max(PAD, Math.min(r.left, vw - PAD - w)); // anchor to button, clamp in
+    l.style.top = top + "px"; l.style.left = left + "px";
+    l.style.right = "auto"; l.style.bottom = "auto"; l.style.zIndex = "80";
+  }
+  function clear(d) {
+    var l = listOf(d); if (!l) return;
+    ["position", "margin", "maxWidth", "maxHeight", "overflowY", "top", "left", "right", "bottom", "zIndex"]
+      .forEach(function (k) { l.style[k] = ""; });
+  }
+  document.addEventListener("toggle", function (e) {
+    var d = e.target;
+    if (!d || !d.matches || !d.matches("details.menu, details.chipmenu")) return;
+    if (d.open) { openEl = d; place(d); } else { if (openEl === d) openEl = null; clear(d); }
+  }, true);
+  function reflow() { if (openEl && openEl.open) place(openEl); }
+  window.addEventListener("resize", reflow);
+  window.addEventListener("scroll", reflow, true);
+})();
 // htmx failure surface: by default htmx silently ignores error responses, network
 // failures and timeouts — a failed queue-click looked like "nothing happened". When a
 // request TARGETED AT THE WORK PANES fails, show the server's pane-shaped error if we
@@ -601,6 +787,51 @@ document.addEventListener("click", function (e) {
     document.querySelectorAll(".ax-loading").forEach(function (el) { el.classList.remove("ax-loading"); });
   });
 })();
+// (4) FR-0001: draggable splitter for the queue / work boundary. Sets --queue-w on .shell and
+// persists it per browser (localStorage); double-click resets to the responsive default; arrow
+// keys nudge when the handle is focused. Desktop only (the handle is hidden in the mobile layout).
+(function () {
+  var KEY = "axleQueueW", MIN = 220, MAX = 560;
+  function shellEl() { return document.querySelector(".shell"); }
+  function setW(px) { var s = shellEl(); if (s) s.style.setProperty("--queue-w", px + "px"); }
+  function clampW(px) { return Math.max(MIN, Math.min(MAX, Math.round(px))); }
+  function curW() { var s = shellEl(); return s ? (parseInt(getComputedStyle(s).gridTemplateColumns, 10) || 320) : 320; }
+  function save() { try { localStorage.setItem(KEY, curW()); } catch (e) {} }
+  try { var v = parseInt(localStorage.getItem(KEY), 10); if (v) setW(clampW(v)); } catch (e) {}
+  var split = document.getElementById("paneSplit");
+  if (!split) return;
+  var dragging = false;
+  function moveTo(clientX) { var s = shellEl(); if (!s) return; setW(clampW(clientX - s.getBoundingClientRect().left)); }
+  split.addEventListener("pointerdown", function (e) { dragging = true; try { split.setPointerCapture(e.pointerId); } catch (x) {} document.body.classList.add("ax-resizing"); e.preventDefault(); });
+  split.addEventListener("pointermove", function (e) { if (dragging) moveTo(e.clientX); });
+  function stop(e) { if (!dragging) return; dragging = false; try { split.releasePointerCapture(e.pointerId); } catch (x) {} document.body.classList.remove("ax-resizing"); save(); }
+  split.addEventListener("pointerup", stop);
+  split.addEventListener("pointercancel", stop);
+  split.addEventListener("dblclick", function () { var s = shellEl(); if (s) s.style.removeProperty("--queue-w"); try { localStorage.removeItem(KEY); } catch (x) {} });
+  split.addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    setW(clampW(curW() + (e.key === "ArrowLeft" ? -16 : 16))); save(); e.preventDefault();
+  });
+})();
+
+// Send confirmation. The prompt text lives in the button's data-confirm attribute and is read as
+// DATA, never compiled as JavaScript source.
+//
+// It used to be an inline onclick="return confirm('...')". Interpolating a translated string into
+// JS source inside an HTML attribute is a trap: HTML-escaping turns ' into &#39;, the parser
+// decodes it back to a bare ' BEFORE the JS is compiled, and the string literal ends early. The
+// handler then throws a SyntaxError, silently, and the button submits WITH NO CONFIRMATION. Any
+// apostrophe would do it - a customer named "Jan's Garage", or the English recipient warning.
+// Read via dataset, the same text can contain quotes, backslashes, anything, and stays inert.
+//
+// Capture phase so it runs before the form submits; cancelling the click cancels the submit.
+(function () {
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("button.send[data-confirm]") : null;
+    if (!btn) return;
+    if (!window.confirm(btn.dataset.confirm)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+})();
 </script>
 </body></html>`;
 }
@@ -612,13 +843,15 @@ document.addEventListener("click", function (e) {
 // throughout; without JS every queue card is a plain link and the page still works.
 const workPanes = (centerHtml, contextHtml, opts) => {
   const back = opts && opts.back;   // mobile Back bar label; also marks this as a real item view
-  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/">${esc(back)}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
+  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/" onclick="if(window.history.length>1){history.back();return false;}">${esc(back)}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
 <aside class="pane-context">${contextHtml}</aside>`;
 };
 
 // queueHtml is either the inline-rendered queue (GET /) or lazyQueue() below.
 const shell = (queueHtml, panesHtml) =>
-  `<div class="shell"><aside class="pane-queue" id="queuepane">${queueHtml}</aside><div class="workpanes" id="workpane">${panesHtml}</div></div>`;
+  `<div class="shell"><aside class="pane-queue" id="queuepane">${queueHtml}</aside>` +
+  `<div class="pane-split" id="paneSplit" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize panels" title="Drag to resize · double-click to reset"></div>` +
+  `<div class="workpanes" id="workpane">${panesHtml}</div></div>`;
 
 // Lazy queue stub for item deep links: htmx fills it from GET /queue after load, so
 // a plain GET /item/:id keeps exactly its old side effects (no inbox audit row, no

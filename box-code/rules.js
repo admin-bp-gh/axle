@@ -4,6 +4,11 @@
 // then every present field needs at least one hit. First match by ascending priority wins.
 // Phase 2: matched actions are LOGGED ONLY, never executed.
 
+// Gouda info@ sales is one shared queue: Jack and Brendan both work it (each user's
+// owner_label = "Sales(Gouda)"). A single owner label keeps their "mine" inboxes identical
+// and survives staffing changes. Purchasing (Tom) and Drachten keep their own labels.
+const SALES_GOUDA = "Sales(Gouda)";
+
 const noise = [
   { id: "noise_postnl", priority: 10, senderDomain: ["edm.postnl.nl"], action: "archive" },
   { id: "noise_trustedshops", priority: 10, senderDomain: ["etrusted.com"], action: "archive" },
@@ -16,26 +21,30 @@ const noise = [
 const voicemail = { id: "voicemail", priority: 10, senderAddress: ["voicemail@hipservice.nl"], action: "categorise", tags: ["Voicemail"] };
 
 const customer = [
-  { id: "customer_invoice_reply", priority: 18, subjectContains: ["budget parts bv | invoice"], owner: "Jack", tags: ["Invoice Reply"], draft: true },
-  { id: "customer_order_reply", priority: 18, subjectContains: ["budget parts | klantorder"], owner: "Jack", tags: ["Order Reply"], draft: true },
-  { id: "shopify_form", priority: 40, requireAll: true, senderAddress: ["mailer@shopify.com"], subjectContains: ["klantbericht", "customer message"], owner: "Jack", draft: true },
-  { id: "customer_cancellation", priority: 45, subjectContains: ["cancel", "annuleren", "refund", "annulering"], owner: "Jack", tags: ["Cancellation"], draft: true },
-  { id: "customer_tracking", priority: 46, subjectContains: ["tracking", "niet ontvangen", "bezorging", "where is my order", "delivery"], owner: "Jack", tags: ["Tracking"], draft: true },
-  { id: "customer_return", priority: 47, subjectContains: ["return", "retour", "wrong", "verkeerd", "uitwisselen", "complaint", "klacht"], owner: "Jack", tags: ["Return"], draft: true },
+  { id: "customer_invoice_reply", priority: 18, subjectContains: ["budget parts bv | invoice"], owner: SALES_GOUDA, tags: ["Invoice Reply"], draft: true },
+  { id: "customer_order_reply", priority: 18, subjectContains: ["budget parts | klantorder"], owner: SALES_GOUDA, tags: ["Order Reply"], draft: true },
+  { id: "shopify_form", priority: 40, requireAll: true, senderAddress: ["mailer@shopify.com"], subjectContains: ["klantbericht", "customer message"], owner: SALES_GOUDA, draft: true },
+  { id: "customer_cancellation", priority: 45, subjectContains: ["cancel", "annuleren", "refund", "annulering"], owner: SALES_GOUDA, tags: ["Cancellation"], draft: true },
+  { id: "customer_tracking", priority: 46, subjectContains: ["tracking", "niet ontvangen", "bezorging", "where is my order", "delivery"], owner: SALES_GOUDA, tags: ["Tracking"], draft: true },
+  // Shopify self-service "Return items" notification: sender is our own info@, but the mailer's
+  // subject is exact. Higher priority than customer_return so it is tagged distinctly. newOutbound
+  // marks it for the new-outbound recipient flow (reply goes to the order's customer, not info@).
+  { id: "shopify_return_request", priority: 44, subjectContains: ["return requested for order"], owner: SALES_GOUDA, tags: ["Return"], draft: true, newOutbound: true },
+  { id: "customer_return", priority: 47, subjectContains: ["return", "retour", "wrong", "verkeerd", "uitwisselen", "complaint", "klacht"], owner: SALES_GOUDA, tags: ["Return"], draft: true },
 ];
 
 const infoRules = [
   ...noise,
-  { ...voicemail, owner: "Jack" },
+  { ...voicemail, owner: SALES_GOUDA },
   { id: "supplier_invoice", priority: 20, senderAddress: ["facturen@myparcel.nl", "nethbil@fedex.com"], subjectContains: ["factuur", "invoice"], owner: "Tom", tags: ["Invoice"] },
   { id: "warranty_warp", priority: 21, requireAll: true, senderAddress: ["psp@allmakes.co.uk"], subjectContains: ["WARP"], owner: "Tom", tags: ["Warranty"] },
   { id: "supplier_order", priority: 22, requireAll: true, senderDomain: ["allmakes.co.uk", "allmakespsp.com"], subjectContains: ["order", "acknowledgement", "back order"], owner: "Tom" },
   { id: "supplier_news", priority: 23, senderAddress: ["marketing@allmakes.co.uk", "sales@hotbray.net"], action: "archive", owner: "Tom", tags: ["Supplier News"] },
   { id: "supplier_direct", priority: 25, senderDomain: ["tuffplusautolighting.com", "breeland.nl"], owner: "Tom" },
   { id: "admin_forward", priority: 30, requireAll: true, senderAddress: ["admin@budget-parts.nl"], subjectContains: ["FW:"], owner: null, llmSubRoute: true },
-  { id: "b2b_known", priority: 35, senderDomain: ["sve-automotive.nl", "komplot.be"], owner: "Brendan", tags: ["B2B"], draft: true },
+  { id: "b2b_known", priority: 35, senderDomain: ["sve-automotive.nl", "komplot.be"], owner: SALES_GOUDA, tags: ["B2B"], draft: true },
   ...customer,
-  { id: "catch_all", priority: 100, catchAll: true, owner: "Jack", draft: true },
+  { id: "catch_all", priority: 100, catchAll: true, owner: SALES_GOUDA, draft: true },
 ];
 
 const drachtenRules = [

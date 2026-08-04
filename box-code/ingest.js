@@ -18,13 +18,15 @@
 //   currently-unread messages (ignoring the watermark/date), then sets the watermark to
 //   "now" so the normal "new since last sync" run takes over cleanly afterwards. Used to
 //   populate a newly-onboarded mailbox's queue (e.g. drachten@) with just the open mail.
-require("dotenv").config({ path: "C:\\Axle\\secrets\\.env", quiet: true });
+require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 const Anthropic = require("@anthropic-ai/sdk");
 const rulesets = require("./rules.js");
 const C = require("./connectors.js");
 const E = require("./engine.js");
 const CF = require("./contact-form.js");
+const RN = require("./return-note.js");
 const DS = require("./doc-suggest.js");
+const OUTLOOK = require("./outlook-close.js");   // Outlook -> Axle: close what was handled in Outlook
 const { db, audit, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 
 const arg0 = process.argv[2];
@@ -99,7 +101,7 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (!rule || rule.action === "archive" || rule.action === "junk") return { skip: "noise" };
 
   const existing = db
-    .prepare("SELECT id, latest_message_id FROM work_items WHERE mailbox = ? AND conversation_key = ?")
+    .prepare("SELECT id, latest_message_id, sender_email, recipient, origin FROM work_items WHERE mailbox = ? AND conversation_key = ?")
     .get(boxName, key);
   if (existing && existing.latest_message_id === email.id) return { skip: "unchanged" };
 
@@ -127,6 +129,25 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (existing) {
     itemId = existing.id;
     audit("system", "item_reopened", itemId, `new inbound ${email.id.slice(0, 24)}`);
+
+    // RE-OPEN RULE (editable send recipient, 2026-07-10). A recipient override was confirmed by a
+    // human against ONE correspondent. If a DIFFERENT person now writes into the same conversation,
+    // that confirmation does not carry over: drop it, so the reply defaults back to whoever wrote
+    // last rather than silently going to the address the previous correspondent was redirected to.
+    //
+    // Note we compare against the INCOMING address: sender_email is written once, at item creation,
+    // and is deliberately not updated on re-open (assembleSend's fallback stays the original
+    // correspondent). So a changed sender is detected here, not by watching the column.
+    //
+    // Compose items are excluded: they have no inbound sender to deviate from, and clearing their
+    // recipient would leave them un-sendable.
+    const incoming = String((email.from && email.from.address) || "").trim().toLowerCase();
+    const known = String(existing.sender_email || "").trim().toLowerCase();
+    if (existing.origin !== "compose" && existing.recipient && incoming && known && incoming !== known) {
+      db.prepare("UPDATE work_items SET recipient = NULL, recipient_source = NULL WHERE id = ?").run(itemId);
+      audit("system", "recipient_cleared", itemId,
+        `correspondent changed ${known} -> ${incoming}; dropped confirmed recipient ${existing.recipient}`);
+    }
   } else {
     itemId = db.prepare(
       "INSERT INTO work_items (mailbox, conversation_key, sender_email, sender_name, subject, email_text, email_received) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -163,6 +184,26 @@ async function processThread(anthropic, key, msgs, ctx) {
         `matched=${cf.resolved.matched} via=${cf.resolved.matched_via} cands=${cf.candidateAddresses.length} order=${cf.parsed.orderRef || "-"} src=${cf.source}`);
     } catch (e) {
       audit("system", "contactform_enrich_error", itemId, e.message.slice(0, 150));
+    }
+  }
+
+  // Return-notification enrichment: the Shopify "Return items" mailer's sender is our own info@,
+  // so resolve the order's customer (deterministic resolver, byShopifyOrder) and store the candidate
+  // address set. When exactly one address results, code-hold it as the recipient now (new-outbound
+  // send stays gated behind allow-list action AXLE_ACTION_RETURN_SEND). READ-ONLY; never sends.
+  const isReturnNotification = rule.id === "shopify_return_request";
+  if (isReturnNotification) {
+    try {
+      const rn = await RN.buildReturnNotification(email, MAILBOX);
+      db.prepare("UPDATE work_items SET return_json = ? WHERE id = ?").run(JSON.stringify(rn), itemId);
+      if (rn.defaultRecipient) {
+        db.prepare("UPDATE work_items SET recipient = ? WHERE id = ? AND (recipient IS NULL OR recipient = '')")
+          .run(rn.defaultRecipient, itemId);
+      }
+      audit("system", "return_note_enriched", itemId,
+        `order=${rn.parsed.orderRef || "-"} matched=${rn.resolved.matched} cands=${rn.candidateAddresses.length} default=${rn.defaultRecipient || "-"}`);
+    } catch (e) {
+      audit("system", "return_note_enrich_error", itemId, e.message.slice(0, 150));
     }
   }
 
@@ -281,6 +322,24 @@ async function runBox(anthropic, boxName, opts = {}) {
 async function runBoxes(boxes, opts = {}) {
   const anthropic = opts.anthropic || new Anthropic();
   for (const boxName of boxes) await runBox(anthropic, boxName, { unreadSeed: !!opts.unreadSeed });
+
+  // Outlook -> Axle reconciliation: anything the team handled in Outlook (i.e. marked read there)
+  // drops off Axle's Open list. Deliberately runs AFTER ingest: a new inbound on an existing thread
+  // re-opens the item with a NEW, unread message id, so the reconciliation then correctly leaves it
+  // open. Skipped during the one-time unread seed, where "read" is exactly what we just filtered out.
+  // Gated by the allow-list action AXLE_ACTION_OUTLOOK_CLOSE; no-op when it is off.
+  if (!opts.unreadSeed) {
+    const reports = await OUTLOOK.reconcileBoxes(boxes);
+    for (const r of reports) {
+      if (r.error) console.log(`Outlook-close ${r.box}: ERROR ${r.error}`);
+      else if (r.skipped) console.log(`Outlook-close ${r.box}: skipped (${r.skipped})`);
+      else console.log(
+        `Outlook-close ${r.box}: watching ${r.folders} folder(s), checked ${r.checked}, ` +
+        `closed ${r.closed} (read ${r.read}, moved ${r.moved}, deleted ${r.gone}), ` +
+        `still open ${r.open}, unknown ${r.unknown}` +
+        (r.folders === 0 ? "  [!] folder lookup failed — 'moved' rule skipped this run" : ""));
+    }
+  }
 }
 
 module.exports = { runBoxes };

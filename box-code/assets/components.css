@@ -102,8 +102,13 @@ button.primary { background: var(--brand); color: #fff; border-color: var(--bran
 button.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
 /* Send is the primary action -> near-black brand (Polaris). Green is reserved for
    the brand mark + success tone, never a primary button. */
-button.send { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
-button.send:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+button.send { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.send:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+/* Stacked Send: "Send now" with the recipient address in small text below — keeps the button
+   narrow while the address stays visible (the full address is also the button's title tooltip). */
+button.send.send-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.15; padding-top: 6px; padding-bottom: 6px; }
+button.send.send-stack .send-now { font-weight: 600; }
+button.send.send-stack .send-to { font-size: var(--fs-xs); font-weight: 400; opacity: .85; max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.mini { font-size: var(--fs-xs); padding: 3px 9px; }
 button.warn { border-color: var(--warn-fg); color: var(--warn-fg); }
 button.warn:hover { background: var(--warn-bg); }
@@ -152,6 +157,38 @@ ul.qs li:last-child { border-bottom: none; }
 .suggrow { padding: 3px 0; font-size: var(--fs-base); }
 .suggrow .muted { font-size: var(--fs-sm); }
 .attdoc { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+/* a suggested document: the Attach button (form) and its Preview link sit on one line */
+.suggdoc { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin: 3px 0; }
+.suggdoc form { margin: 0; }
+a.preview-doc { font-size: var(--fs-xs); padding: 3px 9px; border: 1px solid var(--border-2);
+  border-radius: var(--r-ctl); color: var(--ink); text-decoration: none; white-space: nowrap; background: var(--surface); }
+a.preview-doc:hover { background: var(--surface-2); }
+
+/* ---------- customer summary + detail modal (FR-0002) ---------- */
+.cuscard .cusname { font-weight: 500; font-size: var(--fs-md); margin: 0; }
+.cuscard .cussub { font-size: var(--fs-sm); margin: 2px 0 10px; }
+.cusgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.cuschip { background: var(--surface-2); border-radius: var(--r-ctl); padding: 8px 10px; }
+.cuslbl { font-size: var(--fs-xs); color: var(--muted); margin: 0 0 2px; }
+.cusval { font-size: var(--fs-base); font-weight: 500; margin: 0; }
+.cusbtn { margin-top: 10px; }
+.st-warn, .st-ok { font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-chip); white-space: nowrap; }
+.st-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.st-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.cusdialog { width: min(640px, 92vw); max-height: 86vh; overflow: auto; border: 0.5px solid var(--border-2);
+  border-radius: var(--r-card); padding: 22px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow-modal); }
+.cusdialog::backdrop { background: rgba(0, 0, 0, .45); }
+.cusx { text-align: right; margin: -8px -6px 4px 0; }
+.cusxbtn { border: none; background: transparent; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.cusxbtn:hover { color: var(--ink); }
+.cusmodttl { margin: 0; font-size: var(--fs-lg); }
+.cusstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--s2); margin: 14px 0 18px; }
+.cusstat { background: var(--surface-2); border-radius: var(--r-ctl); padding: 10px 12px; }
+.cusmh { margin: 16px 0 6px; font-size: var(--fs-base); }
+.custbl { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
+.custbl th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 0.5px solid var(--border); padding: 5px 8px; }
+.custbl td { border-bottom: 0.5px solid var(--border-sub); padding: 5px 8px; }
+.custbl .num { text-align: right; }
 
 /* ---------- contact-form recipient picker ---------- */
 .cfopt { display: block; margin: 4px 0; font-size: var(--fs-base); }
@@ -176,6 +213,49 @@ details.menu[open] > summary.btn { border-color: var(--brand); }
 .menu-list button:hover { background: var(--surface-2); }
 .menu-list button b { display: block; font-weight: 600; }
 .menu-list button span { display: block; font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }
+
+/* ---------- recipient control (split Send button + popover) ----------
+   The recipient lives IN the send button because the sticky action bar is guaranteed to be on
+   screen at the moment of sending. .recip-pop is a details.menu, so it inherits the shared
+   positioner (page() in views/ui.js) that escapes the panes' overflow clipping and opens upward. */
+.send-split { display: inline-flex; align-items: stretch; }
+.send-split button.send.send-stack { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.send-caret { display: inline-flex !important; align-items: center; padding: 0 8px !important;
+  border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px;
+  background: var(--accent) !important; border: 1px solid var(--accent) !important; color: #fff;
+  border-left-color: rgba(255,255,255,.35) !important; }
+.send-caret:hover { background: var(--accent-strong) !important; border-color: var(--accent-strong) !important; }
+.recip-pop[open] > summary.send-caret { background: var(--accent-strong) !important; }
+
+/* A new-outbound item with no recipient yet: same shape, but inert until one is chosen. */
+.recip-needed { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  line-height: 1.15; padding: 6px 14px; border-radius: var(--r-ctl) 0 0 var(--r-ctl);
+  border: 1px solid var(--border-2); background: var(--surface-2); color: var(--ink-2); cursor: default; }
+.recip-needed .send-to { font-size: var(--fs-xs); color: var(--muted); }
+
+/* The popover's own controls must not inherit .menu-list's full-width borderless button reset.
+   That reset (`background: none`) ties on specificity with `button.primary` and, being later in
+   the file, wins — which left the primary button white-on-white. Both colours are restated here. */
+.recip-pop .menu-list { min-width: 320px; padding: var(--s2); }
+.recip-pop .menu-list button.mini { display: inline-block; width: auto; text-align: center;
+  border: 1px solid var(--border-2); border-radius: var(--r-ctl); padding: 4px 10px;
+  background: var(--surface); color: var(--ink); }
+.recip-pop .menu-list button.mini.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.recip-pop .menu-list button.mini.primary:hover { background: var(--ink); }
+.recip-pop .cfopt { display: block; padding: 5px 4px; cursor: pointer; }
+/* Where the reply is going right now, when that is a typed address. A statement, not an option. */
+.recip-pop .recip-current { margin: 0 0 var(--s2); padding: 0 4px; font-size: var(--fs-xs); }
+.recip-pop .subdiv { border-top: 1px solid var(--border); margin: var(--s2) 0; }
+.recip-other > summary { cursor: pointer; font-size: var(--fs-xs); padding: 2px 4px; }
+.recip-other form { display: flex; gap: 6px; margin-top: var(--s2) !important; }
+.recip-other input[type=email] { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border-2);
+  border-radius: var(--r-ctl); font-size: var(--fs-sm); }
+
+/* The amber pill: the reply is going somewhere other than the default address. Sits beside the
+   button, in the one place the operator is already looking when they click Send. */
+.recip-pill { align-self: center; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  font-size: var(--fs-xs); font-weight: 600; background: var(--warn-bg); color: var(--warn-fg);
+  border: 1px solid var(--warn-fg); white-space: nowrap; }
 
 /* ---------- compose button + modal ---------- */
 .compose-open { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 600; }
@@ -229,13 +309,18 @@ details.menu[open] > summary.btn { border-color: var(--brand); }
 body.appshell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 body.appshell header { flex: none; }
 main.wide { flex: 1 1 auto; min-height: 0; max-width: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.shell { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: clamp(290px, 22vw, 380px) minmax(0, 1fr); }
+.shell { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: var(--queue-w, clamp(290px, 22vw, 380px)) 6px minmax(0, 1fr); }
+/* FR-0001: draggable queue/work boundary (width persisted per browser; double-click resets). */
+.pane-split { cursor: col-resize; background: transparent; touch-action: none; }
+.pane-split:hover, body.ax-resizing .pane-split { background: var(--border-2); }
+.pane-split:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: -2px; }
+body.ax-resizing { cursor: col-resize; user-select: none; }
 .pane-queue { min-height: 0; overflow-y: auto; background: var(--surface); border-right: 1px solid var(--border-2); display: flex; flex-direction: column; }
 .workpanes { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(250px, 19vw, 340px); }
 .pane-center { min-height: 0; min-width: 0; overflow-y: auto; }
 .pane-center .pane-inner { padding: var(--s3) var(--s4) var(--s5); max-width: 920px; margin: 0 auto; }
 .pane-context { min-height: 0; overflow-y: auto; border-left: 1px solid var(--border); background: var(--bg); padding: var(--s3); }
-.pane-context:empty { padding: 0; }
+.pane-context:empty { padding: 0; border: 0; background: transparent; }
 .backrow { margin: 0 0 var(--s1); font-size: var(--fs-sm); }
 .empty-state { display: flex; align-items: center; justify-content: center; height: 60vh; }
 .queue-lazy { padding: var(--s3); }
@@ -346,6 +431,7 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   body.appshell { height: auto; overflow: auto; display: block; }
   main.wide { display: block; }
   .shell { display: block; min-height: 0; }
+  .pane-split { display: none; }
   .pane-queue { max-height: none; border-right: none; }
   .workpanes { display: block; }
   .pane-center, .pane-context { overflow: visible; }
@@ -371,3 +457,57 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   header { gap: var(--s3); flex-wrap: wrap; }
   header a, .langtoggle a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 4px; }
 }
+
+/* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------
+   Fixed bottom-right on every page; z-index above modals so the helper is always
+   reachable. The panel is a small flex column: header / scrolling log / input row. */
+.sprocket { position: fixed; right: 20px; bottom: 20px; z-index: 60; }
+.sprocket-fab { width: 52px; height: 52px; min-height: 0; padding: 0; border: none; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; box-shadow: var(--shadow-pop); cursor: pointer; }
+.sprocket-fab:hover { background: var(--accent-strong); }
+.sprocket-fab:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+.sprocket-fab svg { width: 24px; height: 24px; }
+.sprocket-panel { position: absolute; right: 0; bottom: 64px; width: 340px; max-width: calc(100vw - 32px);
+  height: min(70vh, 560px); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-card); box-shadow: var(--shadow-modal); }
+/* The panel toggles via the [hidden] attribute; this beats the display:flex above so close/open
+   (X button and the cog) actually hide it. Without it the panel can never be dismissed. */
+.sprocket-panel[hidden] { display: none; }
+.sp-head { flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 10px var(--s3); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.sp-title { display: flex; align-items: center; gap: var(--s2); font-weight: 600; color: var(--ink); }
+.sp-title svg { width: 18px; height: 18px; color: var(--accent); }
+.sp-tag { font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
+.sp-close { min-height: 0; border: none; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.sp-close:hover { color: var(--ink); }
+.sp-log { flex: 1 1 auto; overflow-y: auto; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+.sp-msg { max-width: 85%; padding: 8px 11px; border-radius: var(--r-ctl); font-size: var(--fs-base);
+  line-height: var(--lh); white-space: pre-wrap; word-wrap: break-word; }
+.sp-bot { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); }
+.sp-you { align-self: flex-end; background: var(--accent-soft); color: var(--ink); }
+.sp-pending { color: var(--muted); font-style: italic; }
+.sp-input { flex: none; display: flex; align-items: flex-end; gap: var(--s2);
+  padding: var(--s2) var(--s3) var(--s3); border-top: 1px solid var(--border); }
+.sp-input textarea { flex: 1 1 auto; resize: none; font-family: inherit; font-size: var(--fs-base); line-height: var(--lh);
+  padding: 8px 10px; border: 1px solid var(--border-2); border-radius: var(--r-ctl); max-height: 120px; background: var(--surface); }
+.sp-input textarea:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; border-color: var(--accent-ring); }
+.sp-send { flex: none; width: 38px; height: 38px; min-height: 0; padding: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-ctl); background: var(--brand); color: #fff; border: 1px solid var(--brand); cursor: pointer; }
+.sp-send:hover { background: var(--brand-hover); }
+.sp-send:disabled { opacity: .5; cursor: default; }
+@media (max-width: 600px) {
+  .sprocket { right: 14px; bottom: 14px; }
+  .sprocket-panel { width: calc(100vw - 28px); height: min(75vh, 560px); }
+}
+
+/* Sprocket: unread-requests count badge on the header "Requests" link */
+.hbadge { display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 3px; border-radius: 9px;
+  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; line-height: 16px;
+  text-align: center; vertical-align: middle; }
+
+/* Sprocket feature-request review (admin, read-only) */
+.sr-card { margin: var(--s2) 0; }
+.sr-head { font-size: var(--fs-md); margin-bottom: 4px; }
+.sr-meta { font-size: var(--fs-xs); margin-bottom: var(--s2); }
+.sr-f { margin: 2px 0; font-size: var(--fs-base); }

@@ -161,7 +161,8 @@ async function buildQueuePane(req, opts) {
     not_found: t(lang, "compose_not_found"), guest: t(lang, "compose_guest"), frozen: t(lang, "compose_frozen"),
     finding: t(lang, "compose_finding"), need_instr: t(lang, "compose_need_who_instr"), need_pick: t(lang, "compose_need_pick"),
     no_att: t(lang, "no_attachments"), remove: t(lang, "remove"), file_big: t(lang, "file_too_big"),
-    att_total: t(lang, "attach_total"), creating: t(lang, "compose_creating"),
+    att_total: t(lang, "attach_total"), creating: t(lang, "compose_creating"), sending: t(lang, "compose_sending"),
+    need_subject: t(lang, "compose_need_subject"), send_confirm: t(lang, "compose_send_confirm"),
   });
   const composeUi = `
     <div id="composeModal" class="modal" style="display:none" role="dialog" aria-modal="true">
@@ -180,6 +181,8 @@ async function buildQueuePane(req, opts) {
           <label class="fld"><span>${esc(t(lang, "compose_scenario"))}</span>
             <div class="chips" id="scenchips">${scenChipsHtml}</div></label>
           <input type="hidden" name="scenario" id="scenario">
+          <label class="fld"><span>${esc(t(lang, "compose_subject"))}</span>
+            <input type="text" name="subject" id="csubject" placeholder="${esc(t(lang, "compose_subject_ph"))}"></label>
           <label class="fld"><span>${esc(t(lang, "compose_instruction"))}</span>
             <div id="instrEditor" class="instr-editor" contenteditable="true" role="textbox" aria-multiline="true" data-ph="${esc(t(lang, "compose_instruction_ph"))}"></div>
             <textarea name="instruction" id="instruction" style="display:none"></textarea></label>
@@ -203,10 +206,12 @@ async function buildQueuePane(req, opts) {
               <input type="file" id="cmpFile" multiple>
             </div></label>
           <div id="cmpAttHidden"></div>
+          <input type="hidden" name="mode" id="composeMode" value="draft">
           <div class="modal-foot">${!ACTION_COMPOSE_SEND ? `<span class="muted">${esc(t(lang, "compose_draft_only"))}</span>` : ""}
             <span class="spacer"></span>
             <button type="button" id="composeCancel">${esc(t(lang, "compose_cancel"))}</button>
-            <button type="submit" class="primary" id="composeSubmit">${esc(t(lang, "compose_create"))}</button>
+            <button type="submit" class="${ACTION_COMPOSE_SEND ? "" : "primary"}" id="composeSubmit">${esc(t(lang, "compose_create"))}</button>
+            ${ACTION_COMPOSE_SEND ? `<button type="submit" class="send" id="composeSendBtn">${esc(t(lang, "compose_send_now"))}</button>` : ""}
           </div>
         </form>
       </div>
@@ -388,17 +393,31 @@ async function buildQueuePane(req, opts) {
         }));
       });
 
-      // Submit: require an instruction and a confirmed recipient; inject staged attachments.
+      // Two ways to submit: "Draft" hands the box to Axle to research + write; "Send now" treats
+      // the box as the finished email and sends it verbatim. The clicked button sets the mode the
+      // server branches on (the server re-validates and re-applies every send guardrail regardless).
+      var submitMode = "draft";
+      $("composeSubmit").addEventListener("click", function () { submitMode = "draft"; $("composeMode").value = "draft"; });
+      var sendNowBtn = $("composeSendBtn");
+      if (sendNowBtn) sendNowBtn.addEventListener("click", function () { submitMode = "send"; $("composeMode").value = "send"; });
+
+      // Submit: always need a body and a confirmed recipient; "Send now" also needs a subject and
+      // an explicit confirm (the customer receives it exactly as written). Inject staged attachments.
       $("composeForm").addEventListener("submit", function (e) {
         syncInstr();
         if (!$("instruction").value.trim()) { e.preventDefault(); alert(L.need_instr); return; }
         if (!$("pick_addr").value) { e.preventDefault(); alert(L.need_pick); return; }
+        if (submitMode === "send") {
+          if (!$("csubject").value.trim()) { e.preventDefault(); $("csubject").focus(); alert(L.need_subject); return; }
+          if (!confirm(L.send_confirm.replace("{to}", $("pick_addr").value))) { e.preventDefault(); return; }
+        }
         var hid = $("cmpAttHidden"); hid.innerHTML = "";
         staged.forEach(function (f) {
           function add(n, v) { var i = document.createElement("input"); i.type = "hidden"; i.name = n; i.value = v; hid.appendChild(i); }
           add("att_name", f.name); add("att_ctype", f.ctype); add("att_data", f.b64);
         });
-        $("composeSubmit").textContent = L.creating;
+        if (submitMode === "send" && sendNowBtn) sendNowBtn.textContent = L.sending;
+        else $("composeSubmit").textContent = L.creating;
       });
     })();
     </script>`;

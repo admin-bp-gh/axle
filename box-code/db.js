@@ -1,8 +1,9 @@
 // db.js — SQLite data layer for the Axle team tool.
 // One work item per conversation (mailbox + conversation_key). All UI actions audit-logged.
 const Database = require("better-sqlite3");
+const path = require("path");
 
-const DB_PATH = process.env.AXLE_DB || "C:\\Axle\\data\\axle.db";
+const DB_PATH = process.env.AXLE_DB || path.join(__dirname, "..", "data", "axle.db");
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL"); // safe concurrent reads while writing
 
@@ -141,11 +142,32 @@ ensureColumn("work_items", "compose_customer", "TEXT");    // JSON: resolved cus
 ensureColumn("work_items", "recipient", "TEXT");           // resolved + confirmed To address (compose)
 ensureColumn("work_items", "scenario", "TEXT");            // optional scenario key
 
+// Editable send recipient (2026-07-10). Provenance of work_items.recipient, written ONLY by the
+// route that sets it (POST /item/:id/recipient and its two legacy aliases), read at send time to
+// stamp `to_source` into the email_sent audit row.
+//
+//   NULL     -> no override; the reply goes to the thread sender      -> to_source=sender
+//   'onfile' -> a human picked an address the RESOLVER produced       -> to_source=onfile
+//   'typed'  -> a human typed a free-text address                     -> to_source=typed
+//
+// Why a stored column rather than re-deriving the address set at send time: for an inbound reply
+// the "known addresses" set only exists via a live SAP read, and the send path must never depend
+// on SAP being up. The route that sets the recipient already knows the mode, so it records it.
+// NULL defaults to 'onfile' at read time, which is correct for every recipient that predates this
+// column (all of them were resolver-produced: compose, contact-form, return).
+ensureColumn("work_items", "recipient_source", "TEXT");    // NULL | 'onfile' | 'typed'
+
 // Contact-form reply (session 8): enrichment for a webshop contact-form item. JSON holding the
 // deterministically-parsed form fields, the resolved customer summary, the candidate address set
 // and the form-typed default recipient. The recipient is NOT set here — it is human-confirmed in
 // the UI (then code-held in work_items.recipient, reusing the compose column) before any send.
 ensureColumn("work_items", "contact_form_json", "TEXT");
+
+// Return-request notification (Shopify self-service "Return items"): JSON holding the parsed order
+// reference, the resolver's customer summary and the candidate address set (from the order, via the
+// deterministic resolver). Like the contact form, the recipient is code-held in work_items.recipient
+// (auto-set when there is a single address, else human-confirmed) before any send.
+ensureColumn("work_items", "return_json", "TEXT");
 
 // Auto-attach (suggested documents): cached result of the read-only resolve+scope filter computed
 // at ingest — the SAP documents this inbound email references and that belong to its customer.
@@ -214,10 +236,23 @@ function isBlockedSender(addr) {
 // advances it to the newest message seen, so a run only ever processes mail new since last sync.
 ensureColumn("sync_state", "watermarks", "TEXT");
 
-// Send de-duplication: one send per (item, exact body). Blocks a double-click/refresh from
-// emailing the customer twice, while still allowing a deliberately different edited resend.
-// Wrapped: a pre-existing duplicate (shouldn't occur) must never crash startup.
-try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_item_body ON sends(work_item_id, body_sha256)"); }
+// Send de-duplication: one send per (item, RECIPIENT, exact body). Blocks a double-click or
+// refresh from emailing the SAME address twice, while allowing (a) a deliberately different
+// edited resend and (b) the SAME body sent on to a SECOND address - the "reply to the customer,
+// then forward the same text to their colleague" case the editable-recipient feature invites.
+//
+// Migration (2026-07-10, editable send recipient): the index used to be keyed
+// (work_item_id, body_sha256), which silently SWALLOWED that second send - the user got a
+// redirect, no email and no error. CREATE ... IF NOT EXISTS cannot widen an existing index, so
+// the old one is dropped BY NAME first; the new key gets its own name so the state is
+// unambiguous. Widening a unique key is strictly more permissive, so the rebuild can never fail
+// on rows that already exist. Idempotent: after the first run the DROP is a no-op.
+//
+// NOTE the reverse is NOT true - reverting to the narrow index will FAIL once a body has gone to
+// two addresses. That is what the catch is for: the index is skipped and sendWorkItem's own
+// pre-check still guards the duplicate.
+db.exec("DROP INDEX IF EXISTS idx_sends_item_body");
+try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_item_to_body ON sends(work_item_id, to_addr, body_sha256)"); }
 catch (e) { /* legacy duplicate rows present - skip the index, code still pre-checks */ }
 
 function audit(user, action, workItemId = null, detail = null) {

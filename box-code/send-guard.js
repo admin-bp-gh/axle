@@ -5,8 +5,27 @@
 // hostile email that slipped past the model still cannot send to a third party, leak a
 // link, or be altered between approval and send.
 //
+// RECIPIENT MODEL (changed 2026-07-10, "editable send recipient"). Until this date the reply
+// recipient was HARD-LOCKED to the work item's sender address. It no longer is: a salesperson
+// may redirect a reply to another address (a customer's work address, a colleague at the same
+// account, a corrected contact-form typo). The guarantee that replaced the hard lock is:
+//
+//     A HUMAN, AND ONLY A HUMAN, MAY REDIRECT A REPLY - deliberately, visibly, and in the
+//     audit log. No model output, no email body, and no tool result can set the recipient.
+//
+// What still holds that up, in code rather than in prompt text:
+//   * the To can only come from workItem.recipient (written solely by POST /item/:id/recipient,
+//     from either the resolver's own address set or a human's keystrokes) or, absent that, the
+//     thread's sender_email. The model has no route to either;
+//   * whatever the source, the final address is re-screened HERE by acceptTypedRecipient:
+//     one address, no comma/semicolon/angle-bracket/whitespace, so no multi-recipient
+//     smuggling and no display-name injection can reach Graph;
+//   * an injection-flagged item can NEVER send, whatever the recipient.
+// The residual risk is a hostile email socially-engineering a salesperson into typing an
+// address. No code stops that; the send confirm is the mitigation and the audit is detection.
+//
 // Invariants enforced:
-//   * recipient is HARD-LOCKED to the work item's sender address (one To, no CC/BCC);
+//   * exactly ONE recipient, screened as above (one To, never any CC/BCC);
 //   * every URL in the body is on the domain allowlist (else the send is refused);
 //   * the body is sent verbatim - the SHA-256 ties the approved text to what goes out;
 //   * HTML is generated from the escaped plain text, so href always equals its visible
@@ -28,6 +47,30 @@ function urlAllowed(u) { try { return hostAllowed(new URL(u).host); } catch { re
 
 const URL_RE = /https?:\/\/[^\s)<>"']+/gi;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ---- recipient screening -------------------------------------------------------------------
+// The single gate every outbound To passes through, whether it came from the resolver's address
+// set, a human's typing, or the inbound thread's sender. Returns the clean address, or "" - it
+// never throws and never "fixes up" a bad address.
+//
+// The character screen is the load-bearing part. EMAIL_RE alone is not enough: "a@b.nl,cd.nl"
+// satisfies it (one @, no whitespace) and would hand Graph a header it may read as two
+// recipients. So , ; < > and any internal whitespace are rejected outright. That kills
+// multi-recipient smuggling ("jan@dekker4x4.nl, attacker@evil.com") and display-name injection
+// ("Jan <attacker@evil.com>") at the only place it matters - just before the send.
+//
+// Leading/trailing whitespace is TRIMMED, not rejected: a pasted address routinely carries it,
+// and once trimmed it is exactly the address the human meant. Internal whitespace is still fatal.
+// 254 chars is the RFC 5321 maximum for a forward-path address.
+const ADDR_FORBIDDEN_RE = /[,;<>\s]/;
+const MAX_ADDR_LEN = 254;
+function acceptTypedRecipient(addr) {
+  const a = String(addr == null ? "" : addr).trim();
+  if (!a || a.length > MAX_ADDR_LEN) return "";
+  if (ADDR_FORBIDDEN_RE.test(a)) return "";
+  const lower = a.toLowerCase();
+  return EMAIL_RE.test(lower) ? lower : "";
+}
 
 // Strip trailing punctuation a writer might butt against a URL (".", ",", ")", etc.).
 function cleanUrl(u) { return u.replace(/[).,;:!?'"]+$/, ""); }
@@ -157,16 +200,21 @@ function quotedHistory(workItem) {
 // The body is whatever the salesperson chose to send (AI draft, edited, or hand-written) -
 // it is passed in explicitly and sent verbatim; the sha256 ties the approved text to what
 // goes out. The body is validated here in code regardless of who wrote it: an injection-
-// flagged item can NEVER send, the recipient is hard-locked to the original sender, the body
-// must be non-empty, and every URL must be on the domain allowlist. We deliberately do NOT
-// require a particular item status - the salesperson may send at any time (e.g. a holding
-// reply while questions are still open), the one hard exception being a flagged item.
+// flagged item can NEVER send, the body must be non-empty, and every URL must be on the domain
+// allowlist. We deliberately do NOT require a particular item status - the salesperson may send
+// at any time (e.g. a holding reply while questions are still open), the one hard exception
+// being a flagged item.
+//
+// The recipient DEFAULTS to the thread's sender - the overwhelmingly common case, and what you
+// get when nobody touches the control. A human-confirmed workItem.recipient overrides it (see
+// the RECIPIENT MODEL note at the top of this file). Either way the final address is screened
+// by acceptTypedRecipient before it can reach Graph.
 function assembleSend(workItem, body, stagedAtts = []) {
   if (!workItem) throw new Error("refused: no work item");
   if (workItem.injection_flag) throw new Error("refused: item is flagged as possible injection - resolve before sending");
 
-  const to = String(workItem.sender_email || "").trim().toLowerCase();
-  if (!EMAIL_RE.test(to)) throw new Error("refused: work item has no valid sender address to reply to");
+  const to = acceptTypedRecipient(workItem.recipient || workItem.sender_email);
+  if (!to) throw new Error("refused: work item has no valid recipient address to reply to");
 
   const text = String(body == null ? "" : body);
   if (!text.trim()) throw new Error("refused: reply body is empty");
@@ -179,7 +227,7 @@ function assembleSend(workItem, body, stagedAtts = []) {
 
   return {
     workItemId: workItem.id,
-    to,                                   // single recipient, hard-locked to the sender
+    to,                                   // single screened recipient: w.recipient, else the sender
     cc: [], bcc: [],                      // never any CC/BCC
     subject: replySubject(workItem.subject),
     text,                                              // verbatim plain text (our reply, tokens included)
@@ -201,10 +249,12 @@ function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
   if (!workItem) throw new Error("refused: no work item");
   if (workItem.injection_flag) throw new Error("refused: item is flagged as possible injection - resolve before sending");
 
-  // Recipient is the code-held, human-confirmed address (set only via pickRecipient at the
-  // route) - never the Shopify-mailer sender, never anything the model or body produced.
-  const to = String(workItem.recipient || "").trim().toLowerCase();
-  if (!EMAIL_RE.test(to)) throw new Error("refused: no confirmed recipient - confirm the contact-form recipient first");
+  // Recipient is the code-held, human-confirmed address (set only via POST /item/:id/recipient,
+  // from the resolver's set or a human's typing) - never the Shopify-mailer sender, never
+  // anything the model or the email body produced. There is no sender fallback here: a new
+  // outbound with no confirmed recipient must refuse rather than guess.
+  const to = acceptTypedRecipient(workItem.recipient);
+  if (!to) throw new Error("refused: no confirmed recipient - confirm the recipient first");
 
   const subj = String(subject == null ? "" : subject).trim().slice(0, 200);
   if (!subj) throw new Error("refused: subject is empty");
@@ -232,7 +282,7 @@ function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
 const assembleContactFormSend = assembleNewOutboundSend;
 
 module.exports = {
-  URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256,
+  URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256, acceptTypedRecipient,
   escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend,
   assembleNewOutboundSend, assembleContactFormSend,
   findImageTokens, applyInlineImages, contentIdFor,

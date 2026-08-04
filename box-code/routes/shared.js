@@ -97,6 +97,22 @@ async function runRedraft(itemId, login) {
       const subj = (result.subject || "").trim();
       db.prepare("UPDATE work_items SET injection_flag = ?, subject = COALESCE(NULLIF(?, ''), subject), updated_at = datetime('now') WHERE id = ?")
         .run(result.injection_suspected ? 1 : 0, subj, itemId);
+      // FR-0004: suggested documents for a COMPOSE item (read-only; the SAME deterministic resolve +
+      // customer-scope gate as inbound). Scope = the resolved compose customer's card; the references
+      // are extracted from the salesperson's instruction + the produced draft text. Skipped when
+      // injection is suspected. A compose to an unknown/guest customer (no card) yields only
+      // out-of-scope (explicit-confirm) suggestions, never a silent one-click - exactly like an
+      // unknown inbound sender. The attach route already scopes compose items via compose_customer.
+      try {
+        if (!result.injection_suspected) {
+          const scope = { cardCode: (customer && customer.cardCode) || "", cardName: (customer && customer.name) || "" };
+          const refText = [taskPrompt, result.draft || "", result.interim_draft || ""].join("\n");
+          const sugg = await DOCSUGGEST.buildSuggestions(refText, scope, { extraRefs: result.referenced_documents || [] });
+          db.prepare("UPDATE work_items SET doc_suggestions_json = ? WHERE id = ?").run(JSON.stringify(sugg), itemId);
+        } else {
+          db.prepare("UPDATE work_items SET doc_suggestions_json = NULL WHERE id = ?").run(itemId);
+        }
+      } catch (e) { audit(login, "suggest_error", itemId, String(e.message || e).slice(0, 150)); }
       audit(login, "compose_redraft_done", itemId, `status=${status} v=${ver} tools=${toolLog.length} inj=${result.injection_suspected ? 1 : 0}`);
       return;
     }
@@ -164,6 +180,24 @@ function isContactFormItem(w) {
   return w.rule_id === "shopify_form" || (w.sender_email || "").toLowerCase() === "mailer@shopify.com";
 }
 
+// A Shopify self-service "Return items" notification ("Return requested for order #S..."). Like
+// the contact form, the thread sender is our own info@ mailer, NOT the customer — so a reply is a
+// NEW outbound to the code-held, resolver-produced customer address, never an in-thread reply to
+// info@. Detection is on the dedicated rule id set at ingest.
+function isReturnNotificationItem(w) {
+  return w.rule_id === "shopify_return_request";
+}
+
+// The item's kind, as recipient-set.js understands it. Defined ONCE here because the recipient
+// route, the item page and the send path must all classify an item identically — a compose item
+// that looked like a "reply" to one of them would get the wrong address set.
+function itemKind(w) {
+  if (w.origin === "compose") return "compose";
+  if (isContactFormItem(w)) return "contactform";
+  if (isReturnNotificationItem(w)) return "return";
+  return "reply";
+}
+
 // Persist the editable inputs shared by /work and /send: feedback (the ONE consolidated
 // response box - answers to Axle's questions plus any guidance) and the edited reply
 // (draft_edit). TRUSTED staff input. Per-question answer_<id> fields were removed in the
@@ -202,5 +236,5 @@ function addAttachment(w, body, login, lang) {
 module.exports = {
   MAILBOX_OF, anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL,
   persistResult, runRedraft, markReadSafe, defaultMailbox,
-  isContactFormItem, saveWorkInputs, addAttachment,
+  isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
 };

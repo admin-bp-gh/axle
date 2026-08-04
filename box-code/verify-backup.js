@@ -15,7 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const LIVE       = process.argv[3] || process.env.AXLE_DB         || "C:\\Axle\\data\\axle.db";
+const LIVE       = process.argv[3] || process.env.AXLE_DB         || path.join(__dirname, "..", "data", "axle.db");
 const BACKUP_DIR = process.env.AXLE_BACKUP_DIR                    || "C:\\Admin\\Projects\\Axle\\Backups";
 const NAME_RE = /^axle-\d{8}-\d{6}\.db$/;
 

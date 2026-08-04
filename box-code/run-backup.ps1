@@ -1,10 +1,11 @@
 # run-backup.ps1 - invoked by the "Axle Backup" scheduled task (runs as the `axle` account).
-# Tiny on purpose: all backup logic lives in backup-db.js. This just runs the script with
-# node (resolved on PATH, same as run-server.ps1) and records a wrapper-level failure if
-# node itself can't start. backup-db.js does its own per-run OK/FAIL logging otherwise.
+# Paths derive from $PSScriptRoot (the app folder); the backup log sits in the sibling ..\logs.
+# Tiny on purpose: all backup logic lives in backup-db.js. This just runs the script with node
+# (resolved on PATH, same as run-server.ps1) and records a wrapper-level failure if node itself
+# can't start. backup-db.js does its own per-run OK/FAIL logging otherwise.
 $ErrorActionPreference = "Stop"
-$app = "C:\Axle\app"
-$log = "C:\Axle\logs\backup.log"
+$app = $PSScriptRoot
+$log = Join-Path (Split-Path $app -Parent) "logs\backup.log"
 try {
   & node "$app\backup-db.js"
   exit $LASTEXITCODE

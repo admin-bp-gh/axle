@@ -34,8 +34,8 @@ const DOC_TYPES = {
 
 // 64-bit Windows PowerShell 5.1 (NOT pwsh 7 - Crystal is a .NET Framework component).
 const PS = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
-const RENDER_PS1 = "C:\\Axle\\render\\render-doc.ps1";
-const OUT_DIR = "C:\\Axle\\render\\out";
+const RENDER_PS1 = process.env.AXLE_RENDER_PS1 || path.join(__dirname, "..", "render", "render-doc.ps1");
+const OUT_DIR = process.env.AXLE_RENDER_OUT || path.join(__dirname, "..", "render", "out");
 
 function docTypeInfo(type) {
   const t = DOC_TYPES[String(type || "order").toLowerCase()];

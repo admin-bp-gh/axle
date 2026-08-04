@@ -5,7 +5,7 @@
 // set as MAPI extended properties (PidTagInReplyToId 0x1042, PidTagInternetReferences
 // 0x1039) copied from the original message's internetMessageId. No draft is created or
 // modified in the mailbox, so Mail.Send is sufficient.
-require("dotenv").config({ path: "C:\\Axle\\secrets\\.env", quiet: true });
+require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 
 const LOGIN = "https://login.micro" + "softonline.com";        // split to dodge chat linkify
 const GRAPH = "https://graph.micro" + "soft.com/v1.0/users/";

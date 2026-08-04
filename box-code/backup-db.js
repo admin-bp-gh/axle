@@ -18,9 +18,9 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const SRC            = process.env.AXLE_DB                   || "C:\\Axle\\data\\axle.db";
+const SRC            = process.env.AXLE_DB                   || path.join(__dirname, "..", "data", "axle.db");
 const BACKUP_DIR     = process.env.AXLE_BACKUP_DIR           || "C:\\Admin\\Projects\\Axle\\Backups";
-const LOG_FILE       = process.env.AXLE_BACKUP_LOG           || "C:\\Axle\\logs\\backup.log";
+const LOG_FILE       = process.env.AXLE_BACKUP_LOG           || path.join(__dirname, "..", "logs", "backup.log");
 const RETENTION_DAYS = parseInt(process.env.AXLE_BACKUP_RETENTION_DAYS || "7", 10);
 
 // Only files this script itself produced are ever considered for pruning.

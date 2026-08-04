@@ -2,7 +2,7 @@
 // items (ingest only does this for new/changed conversations). READ-ONLY on
 // Graph; writes only attachments_json in Axle's own SQLite DB. Re-run safe.
 // Usage: node backfill-atts.js
-require("dotenv").config({ path: "C:\\Axle\\secrets\\.env", quiet: true });
+require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 const rulesets = require("./rules.js");
 const C = require("./connectors.js");
 const { db, audit } = require("./db.js");

@@ -18,7 +18,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const LOG  = process.env.AXLE_LOG            || "C:\\Axle\\logs\\server.log";
+const LOG  = process.env.AXLE_LOG            || path.join(__dirname, "..", "logs", "server.log");
 const MAX  = parseInt(process.env.AXLE_LOG_MAX_BYTES || String(100 * 1024 * 1024), 10); // 100 MB
 const KEEP = parseInt(process.env.AXLE_LOG_KEEP      || "10", 10);                       // .1 .. .10
 

@@ -68,6 +68,25 @@ Get-Content C:\Axle\logs\server.log -Tail 40 -Wait
 > incorrect"* because it runs under the stored `axle` password. Change its settings in the
 > **Task Scheduler GUI** (it re-prompts for the password) — not via `Set-ScheduledTask`.
 
+## Source of truth — the repo, never the box
+
+**`C:\Admin\Projects\Axle` is the only source of truth.** It is the git repo (`main`,
+remote `github.com/admin-bp-gh/axle`); app source lives in `box-code\`. `C:\Axle\app` is a
+*deployment target* — files arrive there only via `axle-pull.ps1`, and nothing is ever
+edited there directly.
+
+**`C:\Axle\app` is not a git repository.** Until 2026-08-05 it contained one — an abandoned
+local repo on branch `master`, no remote, last commit 11 June 2026, whose working tree had
+since drifted ~4,300 lines from its own HEAD. A `git checkout` or `git reset --hard` run in
+that folder would have reverted the **running application** to its June state. It has been
+renamed to `.git-retired-20260611` so git no longer recognises the folder, and its 51
+commits (the pre-import history, which exists nowhere else) are archived at
+`Backups\axle-app-prehistory-20260611.bundle` — restore with
+`git clone <bundle> <dir>` if ever needed.
+
+On a rebuild: clone the repo, deploy from it, and do **not** re-initialise git under
+`C:\Axle\app`.
+
 ## Deploying changed app files (box-local)
 
 1. Copy the changed file(s) from the repo into the puller's inbox:

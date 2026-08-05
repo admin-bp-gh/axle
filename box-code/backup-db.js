@@ -9,7 +9,7 @@
 //
 //   Output     : <BACKUP_DIR>\axle-YYYYMMDD-HHMMSS.db   (one self-contained file)
 //   Verifies   : PRAGMA integrity_check on the copy must return "ok"
-//   Retention  : prunes axle-*.db older than RETENTION_DAYS
+//   Retention  : prunes axle-*.db older than RETENTION_DAYS, plus their -wal/-shm sidecars
 //   Logs       : one line per run to <backup.log> (and stdout, captured by the wrapper)
 //
 // All paths/retention are overridable via env vars so the script is testable off-box.
@@ -25,6 +25,8 @@ const RETENTION_DAYS = parseInt(process.env.AXLE_BACKUP_RETENTION_DAYS || "7", 1
 
 // Only files this script itself produced are ever considered for pruning.
 const NAME_RE = /^axle-\d{8}-\d{6}\.db$/;
+// ...and the -wal / -shm SQLite leaves beside one after it has been opened.
+const SIDECAR_RE = /^(axle-\d{8}-\d{6}\.db)-(?:wal|shm)$/;
 
 function stamp(d = new Date()) {
   const p = (n) => String(n).padStart(2, "0");
@@ -56,14 +58,30 @@ function tableCounts(db) {
 
 // Delete backups older than the retention window (by file mtime). Never touches the
 // file we just wrote, and never touches anything not matching our own naming pattern.
+//
+// Sidecars (fixed 2026-08-05): the integrity check opens the copy, and a read-only open of
+// a WAL database leaves -wal / -shm beside it that SQLite cannot clean up on close. Those
+// names do not match NAME_RE, so the old loop skipped them and they outlived the .db they
+// belonged to - ~45 orphaned pairs had accumulated since June. A companion now goes
+// whenever its .db goes, and any sidecar whose .db is already gone is swept on the way past.
+// `removed` still counts .db files only, so the pruned=N in the log means what it always did.
 function prune(keepFile) {
   let removed = 0;
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  for (const f of fs.readdirSync(BACKUP_DIR)) {
-    if (!NAME_RE.test(f)) continue;
+  const rm = (full) => { try { fs.unlinkSync(full); return 1; } catch (e) { return 0; } };
+  const entries = fs.readdirSync(BACKUP_DIR);
+  for (const f of entries) {
     const full = path.join(BACKUP_DIR, f);
-    if (full === keepFile) continue;
-    if (fs.statSync(full).mtimeMs < cutoff) { fs.unlinkSync(full); removed++; }
+    if (NAME_RE.test(f)) {
+      if (full === keepFile) continue;
+      if (fs.statSync(full).mtimeMs >= cutoff) continue;
+      removed += rm(full);
+      rm(full + "-wal");
+      rm(full + "-shm");
+      continue;
+    }
+    const orphan = SIDECAR_RE.exec(f);
+    if (orphan && !entries.includes(orphan[1])) rm(full);
   }
   return removed;
 }

@@ -14,6 +14,24 @@
 //   * --dry-run reports without writing
 //   * the allow-list gate: off => nothing runs at all
 //
+// It also covers the REOPEN mirror (2026-08-06), whose mailbox read is stubbed through
+// `opts.unread` the same way the Graph read is stubbed through `opts.states`:
+//   * eligibility: only an item THIS pass closed (resolution 'outlook'), still inside the
+//     REOPEN_DAYS window, inbound-origin, currently 'done' — a human's Done / Archive / sent
+//     reply is never undone
+//   * matching mirrors ingest: by stored message id, then by conversation key — so an unread
+//     message ANYWHERE in the thread reopens the item, which is the live #992 regression
+//   * one reopen per thread, even in a dry run where the guarded UPDATE cannot dedupe
+//   * the item returns to its pre-close status; missing => 'new'; 'investigating' never restored
+//   * a failing mailbox read is contained and never stops the close pass
+//
+// ...and the LIVE-THREAD RULE that stopped the two passes fighting (the production flap):
+//   * an item with ANY unread message in a monitored folder is never closed, whatever the close
+//     reason says — the shape that flapped live (newest message read, original unread) is
+//     replayed over two consecutive runs to prove the loop is dead, not merely delayed
+//   * unread mail belonging to a DIFFERENT thread does not hold an item open
+//   * when the unread read fails, 'read' is withheld but 'moved' and 'gone' still close
+//
 // Usage (on the box, from the app folder): node ..\harness\harness-outlook-close.js
 const fs = require("fs");
 const os = require("os");
@@ -40,18 +58,21 @@ function item(over = {}) {
     mailbox: "info", status: "new", origin: "inbound", injection_flag: 0,
     latest_message_id: "MSG" + seq, subject: "Test " + seq, conversation_key: "key-" + seq,
     sender_email: "customer@example.com", sender_name: "Customer", priority: 2,
-    resolution: null,
+    resolution: null, pre_close_status: null, closed_ago: "0 days",
     ...over,
   };
   const r = db.prepare(
-    `INSERT INTO work_items (mailbox, conversation_key, status, resolution, origin, injection_flag,
-                             latest_message_id, subject, sender_email, sender_name, priority, updated_at)
-     VALUES (@mailbox, @conversation_key, @status, @resolution, @origin, @injection_flag,
-             @latest_message_id, @subject, @sender_email, @sender_name, @priority, datetime('now'))`
+    `INSERT INTO work_items (mailbox, conversation_key, status, resolution, pre_close_status, origin,
+                             injection_flag, latest_message_id, subject, sender_email, sender_name,
+                             priority, updated_at)
+     VALUES (@mailbox, @conversation_key, @status, @resolution, @pre_close_status, @origin,
+             @injection_flag, @latest_message_id, @subject, @sender_email, @sender_name,
+             @priority, datetime('now', @closed_ago))`
   ).run(w);
   return { id: r.lastInsertRowid, ...w };
 }
-const row = (id) => db.prepare("SELECT status, resolution FROM work_items WHERE id = ?").get(id);
+const row = (id) =>
+  db.prepare("SELECT status, resolution, pre_close_status FROM work_items WHERE id = ?").get(id);
 const audits = (id, action) =>
   db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE work_item_id = ? AND action = ?").get(id, action).n;
 const auditDetail = (id) =>
@@ -96,7 +117,7 @@ const MONITORED = new Set([INBOX, FORM]);
   const deletedItem = item({ status: "awaiting_input" });
 
   let r = await OC.reconcileBox("info", {
-    monitored: MONITORED,
+    monitored: MONITORED, unread: [],
     states: stub({
       [readItem.latest_message_id]: { isRead: true, folderId: INBOX },
       [unreadItem.latest_message_id]: { isRead: false, folderId: INBOX },
@@ -145,7 +166,7 @@ const MONITORED = new Set([INBOX, FORM]);
   ok(!ids.includes(otherBox.id), "another mailbox's item is never a candidate");
   ok(!ids.includes(noMsgId.id), "item without a message id is never a candidate");
 
-  await OC.reconcileBox("info", { monitored: MONITORED, states: stub(allRead) });
+  await OC.reconcileBox("info", { monitored: MONITORED, states: stub(allRead), unread: [] });
   ok(row(flagged.id).status === "new", "flagged + read + in inbox: still open after a real run");
   ok(row(drafting.id).status === "investigating", "drafting item still open after a run");
   ok(row(composed.id).status === "new", "compose item still open after a run");
@@ -155,29 +176,214 @@ const MONITORED = new Set([INBOX, FORM]);
   // ...but a flagged item that was DELETED does close — the deliberate-act half of the rule.
   const flaggedGone = item({ injection_flag: 1 });
   await OC.reconcileBox("info", {
-    monitored: MONITORED, states: stub({ [flaggedGone.latest_message_id]: { gone: true } }),
+    monitored: MONITORED, unread: [], states: stub({ [flaggedGone.latest_message_id]: { gone: true } }),
   });
   ok(row(flaggedGone.id).status === "done", "flagged item deleted in Outlook DOES close");
   ok(row(flaggedGone.id).resolution === "outlook", "flagged close still records resolution 'outlook'");
 
+  // --- 2b. the MIRROR: reopen on unread -------------------------------------------------
+  // Closing an item must record what it was closed FROM, so the reopen can restore it.
+  ok(row(readItem.id).pre_close_status === "ready", "close records the status it closed from");
+  ok(row(deletedItem.id).pre_close_status === "awaiting_input", "...for every close reason");
+
+  // The eligibility rule, in isolation. Only an item THIS pass closed, still within the window.
+  const NOW = Date.now();
+  const wi = (over) => ({ origin: "inbound", status: "done", resolution: "outlook",
+                          updated_at: "2026-08-06 09:00:00", ...over });
+  const at = Date.parse("2026-08-06T09:00:00Z");
+  ok(OC.canReopen(wi(), at) === "unread", "an item this pass closed is eligible");
+  ok(OC.canReopen(null, at) === null, "a message with no work item reopens nothing");
+  ok(OC.canReopen(wi({ resolution: "done" }), at) === null, "a human's Done is never reopened");
+  ok(OC.canReopen(wi({ resolution: "replied" }), at) === null, "a sent reply is never undone");
+  ok(OC.canReopen(wi({ resolution: null }), at) === null, "a legacy close with no resolution stays closed");
+  ok(OC.canReopen(wi({ status: "archived", resolution: "no_action" }), at) === null, "archived stays archived");
+  ok(OC.canReopen(wi({ status: "new", resolution: null }), at) === null, "an already-open item is not reopened");
+  ok(OC.canReopen(wi({ origin: "compose" }), at) === null, "a compose-origin item is never reopened");
+  ok(OC.canReopen(wi({ updated_at: "not a date" }), at) === null, "an unparseable close time leaves it alone");
+  ok(OC.canReopen(wi(), at + (OC.REOPEN_DAYS + 1) * 86400000) === null,
+    `a close older than ${OC.REOPEN_DAYS} days is outside the window`);
+  ok(OC.canReopen(wi(), at + (OC.REOPEN_DAYS - 1) * 86400000) === "unread", "...but just inside it still reopens");
+  ok(typeof OC.canReopen(wi(), NOW) === "string", "the default clock argument works");
+
+  // A real pass, driven from a stubbed mailbox read. `msg` builds one unread message the way
+  // connectors.getMessages maps them; the subject is what threadGroup keys on.
+  const msg = (id, subject, from = "customer@example.com", received = "2026-08-06T09:00:00Z") =>
+    ({ id, subject, from: { address: from, name: "C" }, received, text: "", hasAttachments: false });
+  const oc = (over) => item({ status: "done", resolution: "outlook", pre_close_status: "ready", ...over });
+
+  const mine = oc({ conversation_key: "customer@example.com|klacht" });
+  const humanDone = item({ status: "done", resolution: "done", pre_close_status: "ready" });
+  const replied = item({ status: "done", resolution: "replied" });
+  const archivedByHand = item({ status: "archived", resolution: "no_action" });
+  const composedClose = oc({ origin: "compose" });
+  const stale = oc({ closed_ago: `-${OC.REOPEN_DAYS + 5} days` });
+  const otherBoxClosed = oc({ mailbox: "drachten" });
+
+  const everyone = [mine, humanDone, replied, archivedByHand, composedClose, stale, otherBoxClosed]
+    .map((w) => msg(w.latest_message_id, "Sub " + w.id));
+  r = await OC.reconcileBox("info", { monitored: MONITORED, states: stub({}), unread: everyone });
+  ok(r.reopened === 1, "exactly one item reopened (" + r.reopened + ")");
+  ok(r.unread_seen === everyone.length, "the report exposes how much unread mail was seen");
+  ok(row(mine.id).status === "ready", "reopened to the status it was closed from, not 'new'");
+  ok(row(mine.id).resolution === null, "reopen clears the 'handled in Outlook' resolution");
+  ok(row(mine.id).pre_close_status === null, "reopen clears pre_close_status");
+  ok(audits(mine.id, "reopened_in_outlook") === 1, "reopen writes one audit row");
+  ok(row(humanDone.id).status === "done" && row(humanDone.id).resolution === "done",
+    "the human-closed item is untouched by the run");
+  ok(row(stale.id).status === "done", "the out-of-window item is untouched");
+  ok(row(otherBoxClosed.id).status === "done", "drachten's closed item untouched by an info run");
+
+  // THE REGRESSION THIS PASS EXISTS FOR (live #992, 2026-08-06): the unread message is NOT the
+  // one whose id the item stores — it is the customer's ORIGINAL mail, several replies back.
+  // Matching by conversation key (sender + subject minus RE:/FW:) must still find the item.
+  const thread = oc({
+    conversation_key: "benjamin@cartek.be|klacht propshaft lr037027g",
+    latest_message_id: "NEWEST-REPLY-ID",          // read; never appears in the unread set
+  });
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}),
+    unread: [msg("ORIGINAL-ID", "Klacht propshaft LR037027G", "benjamin@cartek.be")],
+  });
+  ok(r.reopened === 1, "an unread OLDER message in the thread reopens the item");
+  ok(row(thread.id).status === "ready", "...restored to its pre-close status");
+  ok(/unread again/.test(
+    (db.prepare("SELECT detail FROM audit_log WHERE work_item_id = ? AND action = 'reopened_in_outlook'")
+      .get(thread.id) || {}).detail || ""), "the audit row names the reason");
+
+  // Two unread messages in ONE thread reopen it once, not twice.
+  const twice = oc({ conversation_key: "dup@example.com|dubbel" });
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}),
+    unread: [msg("D1", "Dubbel", "dup@example.com"), msg("D2", "RE: Dubbel", "dup@example.com")],
+  });
+  ok(r.reopened === 1, "two unread messages in one thread reopen it once");
+  ok(audits(twice.id, "reopened_in_outlook") === 1, "...and write one audit row");
+
+  // Unread mail that never became a work item at all is simply ignored.
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}), unread: [msg("UNKNOWN-ID", "Never ingested", "nobody@example.com")],
+  });
+  ok(r.reopened === 0, "unread mail with no work item reopens nothing");
+
+  // Missing pre_close_status (an item closed before this column existed) falls back to 'new';
+  // a stored 'investigating' is never restored.
+  const legacy = oc({ pre_close_status: null, conversation_key: "a@example.com|legacy" });
+  const midDraft = oc({ pre_close_status: "investigating", conversation_key: "b@example.com|middraft" });
+  await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}),
+    unread: [msg("L1", "Legacy", "a@example.com"), msg("M1", "Middraft", "b@example.com")],
+  });
+  ok(row(legacy.id).status === "new", "a legacy close with no remembered status reopens as 'new'");
+  ok(row(midDraft.id).status === "new", "'investigating' is never restored");
+
+  // The two passes must not fight: closing an item does not also reopen it in the same run.
+  const churn = item({ status: "ready", conversation_key: "churn@example.com|churn" });
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED,
+    states: stub({ [churn.latest_message_id]: { isRead: true, folderId: INBOX } }),
+    unread: [],
+  });
+  ok(row(churn.id).status === "done", "an item closed this run stays closed this run");
+  ok(audits(churn.id, "reopened_in_outlook") === 0, "...and is not reopened by the mirror pass");
+
+  // --- 2c. THE LIVE-THREAD RULE (the production flap, 2026-08-06) -----------------------
+  // #992's shape: newest message READ (so the close pass wants to close it), an older message in
+  // the same thread UNREAD (so the reopen pass wants it open). Before the rule the two fought and
+  // the item toggled every sync, never appearing on anyone's list.
+  const flap = oc({
+    conversation_key: "flap@example.com|klacht",
+    latest_message_id: "FLAP-NEWEST",
+  });
+  const flapUnread = [msg("FLAP-ORIGINAL", "Klacht", "flap@example.com")];
+  const flapRead = stub({ "FLAP-NEWEST": { isRead: true, folderId: INBOX } });
+
+  r = await OC.reconcileBox("info", { monitored: MONITORED, states: flapRead, unread: flapUnread });
+  ok(r.reopened === 1, "flap round 1: the item reopens");
+  ok(r.closed === 0, "flap round 1: and is NOT closed again in the same run");
+  ok(row(flap.id).status !== "done", "flap round 1: it is genuinely open afterwards");
+
+  r = await OC.reconcileBox("info", { monitored: MONITORED, states: flapRead, unread: flapUnread });
+  ok(r.closed === 0, "flap round 2: a later run does not close it either");
+  ok(r.held_open === 1, "flap round 2: it is reported as held open by unread mail");
+  ok(row(flap.id).status !== "done", "flap round 2: still open — the loop is dead");
+  ok(audits(flap.id, "closed_in_outlook") === 0, "the item was never closed at all");
+
+  // The rule outranks EVERY close reason, not just 'read' — a human marking something unread
+  // beats even a move or a delete of the newest message.
+  const filedButUnread = item({ status: "ready", conversation_key: "filed@example.com|filed" });
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED,
+    states: stub({ [filedButUnread.latest_message_id]: { isRead: true, folderId: TOMS } }),
+    unread: [msg("FILED-OTHER", "Filed", "filed@example.com")],
+  });
+  ok(row(filedButUnread.id).status === "ready", "unread mail in the thread outranks 'moved' too");
+
+  // An item with NO unread mail in its thread still closes normally — the rule must not
+  // accidentally hold the whole queue open.
+  const normal = item({ status: "ready", conversation_key: "normal@example.com|normal" });
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED,
+    states: stub({ [normal.latest_message_id]: { isRead: true, folderId: INBOX } }),
+    unread: [msg("SOMEONE-ELSE", "Ander", "ander@example.com")],
+  });
+  ok(row(normal.id).status === "done", "an unrelated unread message does not hold other items open");
+
+  // A failing mailbox read must not break the close pass — but it must withhold the one reason
+  // that depends on knowing the unread set.
+  const boom = item({ status: "ready" });
+  const boomMoved = item({ status: "ready" });
+  const boomGone = item({ status: "ready" });
+  const throws = () => { throw new Error("Graph unavailable"); };
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED,
+    states: stub({
+      [boom.latest_message_id]: { isRead: true, folderId: INBOX },
+      [boomMoved.latest_message_id]: { isRead: true, folderId: TOMS },
+      [boomGone.latest_message_id]: { gone: true },
+    }),
+    unread: throws,
+  });
+  ok(r.reopen_error === "Graph unavailable", "the failed unread read is reported, not swallowed");
+  ok(row(boom.id).status === "ready", "FAIL-SAFE: 'read' is withheld when the unread set is unknown");
+  ok(row(boomMoved.id).status === "done", "...but 'moved' still closes — it does not depend on it");
+  ok(row(boomGone.id).status === "done", "...and so does 'gone'");
+
   // --- 3. dry run writes nothing --------------------------------------------------------
   const dryItem = item({ status: "ready" });
   const dryStub = stub({ [dryItem.latest_message_id]: { isRead: true, folderId: INBOX } });
-  r = await OC.reconcileBox("info", { dryRun: true, monitored: MONITORED, states: dryStub });
+  r = await OC.reconcileBox("info", { dryRun: true, monitored: MONITORED, states: dryStub, unread: [] });
   ok(r.closed === 1, "dry run REPORTS the close");
   ok(row(dryItem.id).status === "ready", "dry run does not write");
   ok(audits(dryItem.id, "closed_in_outlook") === 0, "dry run writes no audit row");
 
+  const dryReopen = oc({ conversation_key: "dry@example.com|dry" });
+  r = await OC.reconcileBox("info", {
+    dryRun: true, monitored: MONITORED, states: stub({}),
+    unread: [msg("DRY1", "Dry", "dry@example.com")],
+  });
+  ok(r.reopened === 1, "dry run REPORTS the reopen");
+  ok(row(dryReopen.id).status === "done", "dry run does not reopen");
+  ok(audits(dryReopen.id, "reopened_in_outlook") === 0, "dry run writes no reopen audit row");
+
+  // Dedup is the pass's own job, not the guarded UPDATE's: in a dry run nothing is written, so a
+  // thread with two unread messages must still be counted once.
+  oc({ conversation_key: "dry2@example.com|twee" });
+  r = await OC.reconcileBox("info", {
+    dryRun: true, monitored: MONITORED, states: stub({}),
+    unread: [msg("DRY2a", "Twee", "dry2@example.com"), msg("DRY2b", "RE: Twee", "dry2@example.com")],
+  });
+  ok(r.reopened === 1, "dry run counts a two-message thread once (" + r.reopened + ")");
+
   // --- 4. the allow-list gate -----------------------------------------------------------
   process.env.AXLE_ACTION_OUTLOOK_CLOSE = "";
   ok(OC.enabled() === false, "gate reads as off when the env var is unset");
-  r = await OC.reconcileBox("info", { monitored: MONITORED, states: dryStub });
+  r = await OC.reconcileBox("info", { monitored: MONITORED, states: dryStub, unread: [] });
   ok(r.skipped === "action not enabled", "run skips entirely when the action is off");
   ok(row(dryItem.id).status === "ready", "nothing closed while the action is off");
   process.env.AXLE_ACTION_OUTLOOK_CLOSE = "on";
 
   // --- 5. a run over both mailboxes never throws on a bad box ---------------------------
-  const reports = await OC.reconcileBoxes(["info", "drachten"], { monitored: MONITORED, states: stub({}) });
+  const reports = await OC.reconcileBoxes(["info", "drachten"], { monitored: MONITORED, states: stub({}), unread: [] });
   ok(reports.length === 2, "reconcileBoxes reports on every mailbox");
   ok(reports.every((x) => !x.error), "no mailbox errored");
 

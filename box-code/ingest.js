@@ -155,11 +155,18 @@ async function processThread(anthropic, key, msgs, ctx) {
     audit("system", "item_created", itemId, `rule=${rule.id}`);
   }
 
+  // A new inbound message makes the item live again, so every trace of a PREVIOUS close is
+  // cleared here: status back to 'new', the engine's "no reply needed" suggestion reset, and
+  // resolution (+ the status it was closed from) wiped. Without the resolution reset a reopened
+  // item kept rendering "· handled in Outlook" next to an open status — statusWithRes appends
+  // work_items.resolution regardless of status. (Fixed 2026-08-06; the manual Reopen control in
+  // routes/item.js always cleared it, this path never did.)
   db.prepare(
     `UPDATE work_items SET subject = ?, language = ?, intent = ?, priority = ?, summary = ?,
      injection_flag = ?, latest_message_id = ?, rule_id = ?, owner = ?,
      email_text = ?, email_received = ?, attachments_json = ?, status = 'new',
-     suggest_close = 0, updated_at = datetime('now') WHERE id = ?`
+     suggest_close = 0, resolution = NULL, pre_close_status = NULL,
+     updated_at = datetime('now') WHERE id = ?`
   ).run(
     email.subject, cls.language, cls.intent, PRIO[cls.priority] || 2, cls.summary,
     cls.injection_suspected ? 1 : 0, email.id, rule.id, rule.owner || null,
@@ -336,7 +343,9 @@ async function runBoxes(boxes, opts = {}) {
       else console.log(
         `Outlook-close ${r.box}: watching ${r.folders} folder(s), checked ${r.checked}, ` +
         `closed ${r.closed} (read ${r.read}, moved ${r.moved}, deleted ${r.gone}), ` +
-        `still open ${r.open}, unknown ${r.unknown}` +
+        `still open ${r.open} (${r.held_open} held by unread mail), unknown ${r.unknown}, ` +
+        `saw ${r.unread_seen} unread in Outlook -> reopened ${r.reopened}` +
+        (r.reopen_error ? `  [!] reopen pass: ${r.reopen_error}` : "") +
         (r.folders === 0 ? "  [!] folder lookup failed — 'moved' rule skipped this run" : ""));
     }
   }

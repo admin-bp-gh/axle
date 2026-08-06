@@ -189,16 +189,28 @@ have marked it read, filed it out of the Inbox, or deleted it. It shows on the D
 Axle only ever works from the Inbox (and, for info@, the Shopify Contact Form folder). Anything you
 move somewhere else is yours to handle in Outlook, and Axle lets it go.
 
-Two things worth knowing. Reading counts as handling, so simply opening an email in the Outlook
-reading pane will close it — if that closes something you're still working on, reopen it from the
-Done tab and it comes straight back. And an item Axle has flagged for a careful check is treated
-more cautiously: reading it is not enough to close it, so it stays on your list until you either
-file or delete the email in Outlook, or press Done in Axle.
+This also works the other way round. If you mark an email unread again in Outlook — the usual way
+of saying "actually, this still needs doing" — Axle puts the item back on your Open list at the
+next sync, exactly as it was. That only applies to items Axle closed for you: something you closed
+yourself in Axle, or closed by sending a reply, stays closed, because that was your decision. The
+email has to be unread and still in the Inbox (or the Shopify Contact Form folder); if you filed or
+deleted it, it stays closed. Items closed more than a month ago are settled and do not come back.
+
+Axle looks at the whole conversation, not just the newest email. While any message in a thread is
+still unread in the Inbox, the item stays on your Open list — so if a customer's first email is
+unread but you have read their follow-up, the item is still waiting for you. That is deliberate:
+unread mail always wins over any reason Axle might have had to close it.
+
+Two more things worth knowing. Reading counts as handling, so opening the last unread email of a
+conversation in the reading pane will close its item — if that closes something you are still
+working on, mark it unread again, or reopen it from the Done tab. And an item Axle has flagged for
+a careful check is treated more cautiously: reading it is not enough to close it, so it stays on
+your list until you either file or delete the email in Outlook, or press Done in Axle.
 
 How to use it:
 1. Handle the email in Outlook as you normally would — read it, file it, or delete it.
 2. Nothing else — it drops off the Open list at the next sync (or press "Sync now").
-3. To bring one back, open the Done tab, open the item, and press Reopen.
+3. To bring one back, mark the email unread in Outlook, or open the Done tab and press Reopen.
 
 ## Stopping unwanted emails from a sender (block)
 Key: none

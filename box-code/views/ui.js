@@ -373,7 +373,13 @@ const STATUS_LABEL = {
 const statusLabel = (lang, s) => (STATUS_LABEL[lang] && STATUS_LABEL[lang][s]) || STATUS_LABEL.en[s] || titleCase(s);
 // "Done · by phone" / "Archived · no action needed": the status label plus the recorded
 // resolution reason (work_items.resolution), when one is set. Legacy closed items have none.
-const statusWithRes = (lang, w) => statusLabel(lang, w.status) + (w.resolution ? " · " + t(lang, "res_" + w.resolution) : "");
+// A resolution records HOW an item was CLOSED, so it is meaningless on an open one and is not
+// rendered there — belt to the braces of ingest.js clearing it on reopen. Without this guard an
+// item reopened before that fix went in keeps showing e.g. "Needs your answer · handled in
+// Outlook", which reads like a contradiction. (2026-08-06.)
+const statusWithRes = (lang, w) =>
+  statusLabel(lang, w.status) +
+  (w.resolution && (w.status === "done" || w.status === "archived") ? " · " + t(lang, "res_" + w.resolution) : "");
 const INTENT_LABEL = {
   en: { stock_price_enquiry: "Stock / price enquiry", order_status: "Order status", cancellation: "Cancellation", return_complaint: "Return / complaint", b2b_order: "B2B order", supplier: "Supplier", invoice: "Invoice", other: "Other" },
   nl: { stock_price_enquiry: "Voorraad / prijs", order_status: "Orderstatus", cancellation: "Annulering", return_complaint: "Retour / klacht", b2b_order: "B2B-order", supplier: "Leverancier", invoice: "Factuur", other: "Overig" },
@@ -397,9 +403,13 @@ const ownerLabel = (w) => w.owner || (w.mailbox === "drachten" ? "Drachten" : "�
 // Valid reassignment targets for an item, derived from its mailbox's routing rules' own
 // owner labels (rules.js stays the single source of truth for who works a mailbox), so a
 // reassign can only ever produce a label the inbox "mine" queues already understand.
+// 'reassignOnly' labels are offered too: owners a human may hand an item to that no rule assigns
+// automatically (info@'s Tom — purchasing is worked in Outlook, so nothing routes to him, but
+// sales can still pass him something deliberately). rules.js remains the single source of truth.
 const ownerChoices = (mailbox) => {
-  const rules = ((rulesets[mailbox] || {}).rules) || [];
-  return [...new Set(rules.map((r) => r.owner).filter(Boolean))].sort();
+  const rs = rulesets[mailbox] || {};
+  const fromRules = (rs.rules || []).map((r) => r.owner);
+  return [...new Set(fromRules.concat(rs.reassignOnly || []).filter(Boolean))].sort();
 };
 
 // Friendly, localised timestamps in the office timezone. EN: "Today 10:32am" /

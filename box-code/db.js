@@ -196,6 +196,11 @@ ensureColumn("sends", "attachments_json", "TEXT");             // [{name,content
 // NULL on open items and on legacy closed items; cleared again on reopen.
 ensureColumn("work_items", "resolution", "TEXT");
 
+// The status an item was closed FROM by the Outlook reconciliation pass, so that pass can put
+// it back exactly as it was if the email is later marked unread again in Outlook (outlook-close.js
+// reopenItem). Only ever written by that pass; cleared on every reopen. NULL everywhere else.
+ensureColumn("work_items", "pre_close_status", "TEXT");
+
 // Engine-suggested close ("no reply needed"): set when the draft engine returns
 // status='no_reply'. The item stays OPEN (status 'new') and a human confirms via the
 // existing Done control — never an autonomous close (threat-model T13). Reset on every

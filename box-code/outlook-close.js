@@ -25,6 +25,55 @@
 // the other way round — it starts from Axle's OPEN items and asks Graph about exactly those
 // message ids.
 //
+// THE MIRROR RULE — reopen on unread (added 2026-08-06). If reading an email in Outlook is the
+// team's "I've dealt with this" gesture, then marking it UNREAD again is the equally common
+// "actually, this still needs doing" gesture — and until this existed, Axle had no way to hear
+// it. An item closed here stayed closed for good, so a customer email someone deliberately
+// re-flagged as unread had silently dropped off the queue. (Found on the live box: #992, a
+// propshaft complaint, and #1091 — both unread in Outlook, both closed in Axle.)
+//
+// It is deliberately the NARROWEST possible mirror:
+//   * only items THIS pass closed (resolution = 'outlook'). A human's Done, Archive or a sent
+//     reply is a decision Axle must never undo — those carry 'done'/'no_action'/'replied' and
+//     are not candidates. This is the rule that keeps the two directions from fighting.
+//   * only within REOPEN_DAYS of the close.
+//   * the item returns to the status it was closed from (pre_close_status), so a draft that was
+//     'ready to send' comes back ready, not as unhandled 'new'.
+//
+// It runs FROM THE MAILBOX, not from the DB: one folder-scoped "give me the unread mail" read
+// per mailbox, then each unread message is matched back to its work item. That direction matters
+// for two reasons the first cut of this got wrong (dry run, 2026-08-06 — it reopened nothing):
+//   1. THREADS. Axle keeps one item per conversation and stores only the NEWEST message's id, but
+//      the message a human marks unread is usually the one they were working — often the
+//      customer's ORIGINAL mail, several replies back. Checking `latest_message_id` alone missed
+//      exactly that: on the live box, #992's newest message was read while the original complaint
+//      underneath it was unread, so the item stayed closed. Matching mirrors ingest instead —
+//      by stored message id first, then by the conversation key threadGroup derives — so an
+//      unread message ANYWHERE in the thread brings the item back.
+//   2. COST AND COMPLETENESS. Starting from the DB meant $batch-ing every recently-closed item
+//      (200 on info@, which hit the cap exactly — so older closes were invisible). Starting from
+//      the mailbox is one list call for a handful of unread messages, and nothing is capped out.
+// Because the fetch is folder-scoped, "still in a monitored folder" is inherent: mail filed away
+// or deleted simply is not in the result, and stays closed.
+//
+// THE LIVE-THREAD RULE (2026-08-06, after the mirror flapped in production). The two passes must
+// agree about what "handled" means, or they fight. They did not: the close pass judged the
+// item's newest message alone (read => close), while the reopen pass judged the whole thread
+// (any message unread => reopen). On a thread whose newest message was read but whose original
+// was unread — #992, exactly the case this feature was built for — every sync reopened it and
+// then closed it again two minutes later, so it never actually appeared on anyone's list.
+//
+// The fix is a single definition, applied by both: AN ITEM IS LIVE IF ANY MESSAGE IN ITS THREAD
+// IS UNREAD IN A MONITORED FOLDER. The reopen pass already reads exactly that set, so it hands
+// back the item ids it saw (`live`) and the close pass skips them — no close reason, not even
+// 'moved' or 'gone', overrides a human having deliberately marked something unread. That kills
+// the flap at its root rather than by ordering the two passes carefully: the invariant now holds
+// however they are sequenced, and across runs, not just within one.
+//
+// It also removes a subtler over-close that predates the mirror: an item whose newest message was
+// read but whose earlier mail was never opened used to be closed, which is precisely the "Axle
+// says done, Outlook says unread" drift that started this whole investigation.
+//
 // Direction of travel (important): Axle → Outlook already exists (routes/shared.js markReadSafe
 // PATCHes isRead when an item is sent / marked done / archived). That path only ever touches
 // items that are ALREADY closed, and closed items are excluded from the worklist here, so the
@@ -54,6 +103,13 @@ const { db, audit } = require("./db.js");
 // queue is left unattended for a very long time. Newest-first, so the freshest work is covered.
 const MAX_ITEMS = 400;
 
+// The REOPEN pass (the mirror of the close, added 2026-08-06) works from OUTLOOK's unread list,
+// not from Axle's closed list — see the header. REOPEN_DAYS bounds how far back a close may be
+// undone: an item closed longer ago than this is settled history, and resurrecting it months
+// later would be a surprise rather than a help. REOPEN_PAGES caps the unread fetch (50/page).
+const REOPEN_DAYS = 30;
+const REOPEN_PAGES = 10;
+
 // Resolved lazily (not at require time): the mailbox addresses come from the .env the caller
 // loads, and this module is required by the long-running server as well as the CLI.
 const mailboxOf = (box) => process.env[(rulesets[box] || {}).mailboxEnv || ""] || null;
@@ -80,6 +136,93 @@ function candidates(box) {
   ).all(box, MAX_ITEMS);
 }
 
+// Find the work item an unread MESSAGE belongs to, exactly the way ingest would: by the stored
+// Graph message id first, then by the conversation key. The second lookup is the one that matters
+// — see the header — because the unread message is usually not the newest in its thread.
+function itemForMessage(box, msgId, convKey) {
+  return db.prepare("SELECT * FROM work_items WHERE mailbox = ? AND latest_message_id = ?").get(box, msgId)
+      || (convKey ? db.prepare("SELECT * FROM work_items WHERE mailbox = ? AND conversation_key = ?").get(box, convKey) : null);
+}
+
+// May this item be reopened? Pure, so the whole rule is unit-testable without a mailbox. Returns
+// "unread" to reopen, or null with every uncertainty resolved in favour of leaving it alone.
+// Note there is no folder or read-state check here: the caller only ever passes items whose mail
+// came back from a folder-scoped UNREAD fetch, so both are already true by construction.
+// Injection-flagged items are not excluded — a flagged item can only have been closed by a
+// deliberate move or delete, so its mail being unread in a watched folder is deliberate too.
+function canReopen(w, nowMs = Date.now()) {
+  if (!w) return null;                                  // never ingested / another mailbox
+  if (w.origin !== "inbound") return null;              // composed item: no inbound mail to unread
+  if (w.status !== "done") return null;                 // already open, or archived (a human act)
+  if (w.resolution !== "outlook") return null;          // THE guard: only undo our own closes
+  const closedMs = Date.parse(String(w.updated_at || "").replace(" ", "T") + "Z");
+  if (!Number.isFinite(closedMs)) return null;          // unparseable timestamp: leave it alone
+  if (nowMs - closedMs > REOPEN_DAYS * 86400000) return null;
+  return "unread";
+}
+
+// Put one item back on the queue, at the status it was closed from. The WHERE repeats the
+// closed-by-this-pass condition so a human who pressed Reopen (or a new inbound that re-opened
+// the item) in the same instant always wins — the UPDATE reports 0 changes and we skip it.
+// 'investigating' is never restored: a mid-draft status from before the close is meaningless now,
+// and restoring it would make the item permanently invisible to the close pass.
+function reopenItem(w) {
+  const back = w.pre_close_status && w.pre_close_status !== "investigating" ? w.pre_close_status : "new";
+  const changed = db.prepare(
+    `UPDATE work_items SET status = ?, resolution = NULL, pre_close_status = NULL,
+            updated_at = datetime('now')
+      WHERE id = ? AND status = 'done' AND resolution = 'outlook'`
+  ).run(back, w.id).changes;
+  if (!changed) return false;
+  audit("system", "reopened_in_outlook", w.id,
+    `marked unread again in Outlook (${w.mailbox}@) — reopened to ${back} ` +
+    `(${String(w.subject || "").slice(0, 60)})`);
+  return true;
+}
+
+// The reopen pass for ONE mailbox. Reads the unread mail in the monitored folders, maps each
+// message back to its work item, and reopens the ones this pass had closed. Never throws: a
+// failure here is logged and reported, and must not stop the close pass or the sync.
+// opts.unread — override the mailbox read: an array of mapped messages, or a function returning
+//               one (the harness seam; a throwing function exercises the failure path).
+async function reopenPass(box, mailbox, opts = {}) {
+  const E = require("./engine.js");   // lazy: only this pass and the CLI diagnostics need it
+  // `live` is the other half of this pass's job and the more important one: the ids of every
+  // work item that has ANY unread message in a monitored folder. The close pass must leave those
+  // alone — see the LIVE-THREAD RULE in the header.
+  const out = { scanned: 0, reopened: 0, live: new Set(), items: [], error: null };
+  const folders = (rulesets[box] || {}).folders || ["inbox"];
+  let emails;
+  try {
+    emails = typeof opts.unread === "function" ? await opts.unread()
+           : opts.unread ? opts.unread
+           : await C.getMessages(mailbox, { unreadOnly: true, folders, maxPages: REOPEN_PAGES });
+  } catch (e) {
+    out.error = String(e.message || e).slice(0, 150);
+    audit("system", "outlook_close_error", null, `${box}: unread fetch failed — ${out.error}`);
+    return out;
+  }
+  out.scanned = emails.length;
+
+  // Same grouping ingest uses, so the key we look up is the key it stored.
+  const keyOf = new Map();
+  for (const [key, msgs] of E.threadGroup(emails)) for (const m of msgs) keyOf.set(m.id, key);
+
+  const done = new Set();   // several unread messages can share one thread — reopen it once
+  for (const m of emails) {
+    const w = itemForMessage(box, m.id, keyOf.get(m.id));
+    if (!w) continue;
+    out.live.add(w.id);     // unread mail in this thread: the close pass must not touch it
+    if (done.has(w.id)) continue;
+    if (!canReopen(w)) continue;
+    done.add(w.id);
+    if (!opts.dryRun && !reopenItem(w)) continue;       // lost a race with a human: skip
+    out.reopened++;
+    out.items.push({ ...w, reason: "unread" });
+  }
+  return out;
+}
+
 // Decide what to do with one item, given what Graph said about its message. Pure, so the whole
 // decision table is unit-testable. Returns a reason string to close on, or null to leave it open.
 //   state undefined -> unknown (403/429/5xx): leave alone, never guess.
@@ -104,9 +247,12 @@ const REASON_TEXT = {
   moved: "moved out of the monitored folders in Outlook",
   gone: "deleted in Outlook",
 };
+// pre_close_status remembers what the item looked like before the close, so the reopen mirror
+// can restore it exactly (a 'ready' draft comes back ready, not as unhandled 'new').
 function closeItem(w, reason) {
   const changed = db.prepare(
-    `UPDATE work_items SET status = 'done', resolution = 'outlook', updated_at = datetime('now')
+    `UPDATE work_items SET status = 'done', resolution = 'outlook', pre_close_status = status,
+            updated_at = datetime('now')
       WHERE id = ? AND status NOT IN ('done', 'archived')`
   ).run(w.id).changes;
   if (!changed) return false;
@@ -125,7 +271,8 @@ function closeItem(w, reason) {
 async function reconcileBox(box, opts = {}) {
   const report = {
     box, enabled: enabled(), folders: 0, checked: 0, closed: 0,
-    read: 0, moved: 0, gone: 0, open: 0, unknown: 0, skipped: null,
+    read: 0, moved: 0, gone: 0, open: 0, unknown: 0,
+    unread_seen: 0, reopened: 0, held_open: 0, skipped: null,
   };
   const listed = opts.list ? [] : null;   // populated with the items that closed / would close
   if (!report.enabled && !opts.force) { report.skipped = "action not enabled"; return report; }
@@ -133,9 +280,18 @@ async function reconcileBox(box, opts = {}) {
   const mailbox = mailboxOf(box);
   if (!mailbox) { report.skipped = "no mailbox configured"; return report; }
 
+  // The reopen pass runs FIRST, because the close pass needs the `live` set it produces. Order is
+  // no longer load-bearing for correctness, though: an item it reopens is in `live` by
+  // construction, so the close pass below cannot undo it on this run or any later one.
+  const back = await reopenPass(box, mailbox, opts);
+  report.unread_seen = back.scanned;
+  report.reopened = back.reopened;
+  if (back.error) report.reopen_error = back.error;
+  if (listed) listed.push(...back.items);
+
   const items = candidates(box);
   report.checked = items.length;
-  if (!items.length) return report;
+  if (!items.length) { if (listed) report.items = listed; return report; }
 
   // The folders this mailbox is allowed to have live work in — the same list ingest reads from,
   // so the two ends of the pipeline can never drift apart. An EMPTY set (folder lookup failed)
@@ -162,9 +318,16 @@ async function reconcileBox(box, opts = {}) {
   const readStates = opts.states || C.getMessageStates;
   const states = await readStates(mailbox, items.map((w) => w.latest_message_id));
   for (const w of items) {
+    // LIVE-THREAD RULE: something in this thread is unread in a monitored folder, so a human
+    // still wants it. No close reason overrides that.
+    if (back.live.has(w.id)) { report.held_open++; report.open++; continue; }
     const state = states.get(w.latest_message_id);
     if (!state) { report.unknown++; continue; }        // 403 / 429 / 5xx — never guess
-    const reason = decide(state, monitored, !!w.injection_flag);
+    let reason = decide(state, monitored, !!w.injection_flag);
+    // If the unread read failed we do not KNOW whether the thread has unread mail, so the one
+    // reason that depends on it is withheld this run. 'moved' and 'gone' are facts about the
+    // message itself and still stand. Same "never guess" instinct as the empty-folder fail-safe.
+    if (reason === "read" && back.error) reason = null;
     if (!reason) { report.open++; continue; }          // still in a monitored folder, still unread
     report[reason]++;
     const done = opts.dryRun ? true : closeItem(w, reason);
@@ -191,6 +354,22 @@ async function reconcileBoxes(boxes, opts = {}) {
   return out;
 }
 
+// Which messages in ONE item's thread are unread in the monitored folders — the live-thread rule,
+// answered for a single item. Diagnostic only (explain()); the passes use reopenPass's `live` set,
+// which is the same question asked once for the whole mailbox.
+async function unreadInThread(w, mailbox, folderNames) {
+  const E = require("./engine.js");
+  const unread = await C.getMessages(mailbox, { unreadOnly: true, folders: folderNames, maxPages: REOPEN_PAGES });
+  const hit = [];
+  for (const [key, msgs] of E.threadGroup(unread)) {
+    for (const m of msgs) {
+      const owner = itemForMessage(w.mailbox, m.id, key);
+      if (owner && owner.id === w.id) hit.push({ received: m.received, subject: m.subject, id: m.id });
+    }
+  }
+  return hit;
+}
+
 // Explain, for ONE work item, exactly why this pass does or does not close it. Every exclusion in
 // candidates() is re-evaluated here in the same order, then the live Graph state is fetched and run
 // through decide(). Purely diagnostic: reads the DB and Graph, changes nothing.
@@ -202,8 +381,17 @@ async function explain(itemId) {
                 origin: w.origin, injection_flag: w.injection_flag, subject: w.subject,
                 latest_message_id: w.latest_message_id, excluded_because: null };
 
+  // A closed-by-this-pass item is not excluded — it is on the REOPEN worklist instead, and the
+  // interesting question becomes "why has it not come back?". Answered further down, after the
+  // live Graph read, by decideReopen.
+  const reopenCandidate = w.status === "done" && w.resolution === "outlook" &&
+                          w.origin === "inbound" && !!String(w.latest_message_id || "").trim();
+  out.pass = reopenCandidate ? "reopen" : "close";
+  if (reopenCandidate) out.pre_close_status = w.pre_close_status;
+
   // Same exclusions as candidates(), in the same order, so this can never disagree with it.
-  if (["done", "archived"].includes(w.status)) out.excluded_because = "already closed";
+  if (reopenCandidate) { /* fall through to the Graph read */ }
+  else if (["done", "archived"].includes(w.status)) out.excluded_because = "already closed";
   else if (w.status === "investigating") out.excluded_because = "status 'investigating' (mid-draft)";
   else if (w.origin !== "inbound") out.excluded_because = `origin '${w.origin}' (no inbound email)`;
   else if (!w.latest_message_id || !String(w.latest_message_id).trim()) out.excluded_because = "no Graph message id stored";
@@ -227,6 +415,33 @@ async function explain(itemId) {
     out.message_folder_name = await C.folderName(mailbox, state.folderId);
     out.in_monitored_folder = monitored.has(state.folderId);
   }
+  if (reopenCandidate) {
+    // The reopen pass is driven from the mailbox, so answer its two halves separately: is this
+    // item eligible at all, and is any message in its thread actually unread right now?
+    const to = w.pre_close_status && w.pre_close_status !== "investigating" ? w.pre_close_status : "new";
+    out.eligible_to_reopen = !!canReopen(w);
+    if (!out.eligible_to_reopen) {
+      out.verdict = `stays closed — closed more than ${REOPEN_DAYS} days ago, outside the reopen window`;
+      return out;
+    }
+    const hit = await unreadInThread(w, mailbox, names);
+    out.unread_messages_in_this_thread = hit;
+    out.verdict = hit.length
+      ? `WOULD REOPEN (${hit.length} unread message(s) in this thread) -> ${to}`
+      : "stays closed — nothing in this thread is unread in a monitored folder. Marking ANY " +
+        "message of the thread unread (including the customer's original) brings it back.";
+    return out;
+  }
+
+  // The live-thread rule outranks every close reason, so it is answered before decide().
+  const unreadHere = await unreadInThread(w, mailbox, names);
+  out.unread_messages_in_this_thread = unreadHere;
+  if (unreadHere.length) {
+    out.verdict = `stays open — ${unreadHere.length} message(s) in this thread are unread in a ` +
+                  "monitored folder, and unread mail always outranks a close reason";
+    return out;
+  }
+
   const reason = decide(state, monitored, !!w.injection_flag);
   out.verdict = reason ? `WOULD CLOSE (${reason})` : "stays open";
   // Name the flagged rule explicitly — otherwise "stays open" on a read, in-folder flagged item
@@ -311,7 +526,10 @@ async function missingBox(box, days = 30) {
   return { box, days, scanned: emails.length, missing };
 }
 
-module.exports = { reconcileBox, reconcileBoxes, candidates, decide, explain, auditBox, missingBox, enabled, MAX_ITEMS };
+module.exports = {
+  reconcileBox, reconcileBoxes, candidates, decide, explain, auditBox, missingBox, enabled,
+  reopenPass, canReopen, itemForMessage, MAX_ITEMS, REOPEN_DAYS,
+};
 
 // CLI: node outlook-close.js [info|drachten|all] [--dry-run] [--list]
 // --dry-run also bypasses the allow-list gate, so the pass can be inspected before it is enabled.

@@ -19,7 +19,9 @@ const langOK = (l) => (UI_LANGS.includes(l) ? l : DEFAULT_LANG);
 const STRINGS = {
   en: {
     inbox: "Inbox", audit: "Audit",
-    mailbox: "Mailbox", status: "Status", all: "All", info: "Info", drachten: "Drachten",
+    // The mailbox filter is named after the LOCATION the team works in, not the address:
+    // everyone says "Gouda" and "Drachten", never "info@". The query value stays 'info'.
+    mailbox: "Mailbox", status: "Status", all: "All", info: "Gouda", drachten: "Drachten",
     open: "Open", done: "Done", archived: "Archived", search_emails: "Search emails…", of: "of",
     col_status: "Status", col_prio: "Prio", col_box: "Box", col_from: "From", col_subject: "Subject",
     col_intent: "Intent", col_owner: "Owner", col_open: "Open", col_updated: "Updated",
@@ -55,7 +57,7 @@ const STRINGS = {
     archive_tip: "No action was needed (FYI / noise)",
     block_tip: "Stop future emails from this sender appearing in Axle",
     res_replied: "replied", res_done: "completed", res_phone: "by phone", res_no_action: "no action needed",
-    res_outlook: "handled in Outlook",
+    res_outlook: "handled in Outlook", res_forwarded: "handed over",
     nav_blocks: "Blocked",
     block_sender: "Block sender", block_title: "Block this sender",
     block_explain: "Future emails from this sender will no longer appear in Axle. They still arrive in the shared mailbox in Outlook. The block applies to both info@ and drachten@, and can be undone at any time on the Blocked page.",
@@ -112,6 +114,10 @@ const STRINGS = {
     compose_relang: "Apply & re-draft",
     lang_fix: "Customer's language", lang_fix_btn: "Set",
     owner_fix: "Assign to", owner_fix_btn: "Reassign",
+    // {owner}/{address}: handing an item to someone who works a different mailbox forwards the
+    // email there and closes this item, so the confirm has to say both things plainly.
+    owner_handover_confirm: "Hand this email over to {owner}?\n\nIt will be forwarded to {address} and closed here.",
+    owner_handover_hint: "forwards the email and closes this item",
     attach_doc_title: "Attach SAP document", attach_doc_hint: "Attach the standard SAP/Boyum print PDF of a referenced document to this email.",
     attach_doc_type: "Type", attach_doc_number: "Number", attach_doc_btn: "Attach PDF",
     attach_doc_none: "No document with that number.", attach_doc_ambiguous: "Several documents share that number - pick one:",
@@ -188,7 +194,7 @@ const STRINGS = {
   },
   nl: {
     inbox: "Postvak", audit: "Audit",
-    mailbox: "Mailbox", status: "Status", all: "Alle", info: "Info", drachten: "Drachten",
+    mailbox: "Mailbox", status: "Status", all: "Alle", info: "Gouda", drachten: "Drachten",
     // NB "archived" is the FILTER-TAB label only (chips use STATUS_LABEL) — kept short so the
     // counted NL tabs fit the queue pane.
     open: "Open", done: "Afgehandeld", archived: "Archief", search_emails: "Zoek e-mails…", of: "van",
@@ -226,7 +232,7 @@ const STRINGS = {
     archive_tip: "Geen actie nodig (ter info / ruis)",
     block_tip: "Toekomstige e-mails van deze afzender niet meer in Axle tonen",
     res_replied: "beantwoord", res_done: "afgerond", res_phone: "telefonisch", res_no_action: "geen actie nodig",
-    res_outlook: "afgehandeld in Outlook",
+    res_outlook: "afgehandeld in Outlook", res_forwarded: "overgedragen",
     nav_blocks: "Geblokkeerd",
     block_sender: "Blokkeer afzender", block_title: "Deze afzender blokkeren",
     block_explain: "Toekomstige e-mails van deze afzender verschijnen niet meer in Axle. Ze komen nog wel aan in de gedeelde mailbox in Outlook. De blokkade geldt voor info@ en drachten@, en is altijd terug te draaien op de pagina Geblokkeerd.",
@@ -283,6 +289,8 @@ const STRINGS = {
     compose_relang: "Toepassen & opnieuw opstellen",
     lang_fix: "Taal van de klant", lang_fix_btn: "Instellen",
     owner_fix: "Toewijzen aan", owner_fix_btn: "Toewijzen",
+    owner_handover_confirm: "Deze e-mail overdragen aan {owner}?\n\nHij wordt doorgestuurd naar {address} en hier afgesloten.",
+    owner_handover_hint: "stuurt de e-mail door en sluit dit item",
     attach_doc_title: "SAP-document bijvoegen", attach_doc_hint: "Voeg de standaard SAP/Boyum print-PDF van een document toe aan deze e-mail.",
     attach_doc_type: "Type", attach_doc_number: "Nummer", attach_doc_btn: "PDF bijvoegen",
     attach_doc_none: "Geen document met dat nummer.", attach_doc_ambiguous: "Meerdere documenten met dat nummer - kies er een:",
@@ -517,9 +525,13 @@ function renderMail(text, lang) {
 // the change through the existing audited route. Pure <details> + a form per menu —
 // still works without JS; the small script in page() closes open menus on an
 // outside click. `chipHtml` is provided pre-escaped by the caller.
+// An option may carry `confirm`: a prompt shown before the form posts. It is rendered into
+// data-confirm and read via dataset by the shared handler at the bottom of the page script -
+// as DATA, never as JavaScript source (see the long note there; interpolating a translated
+// string into JS inside an attribute silently disables the confirmation).
 function chipMenu({ chipClass, chipHtml, title, action, field, options, current, note }) {
   const items = options.map((o) =>
-    `<button name="${esc(field)}" value="${esc(o.value)}"${o.value === current ? ' class="on"' : ""}>${esc(o.label)}</button>`).join("");
+    `<button name="${esc(field)}" value="${esc(o.value)}"${o.value === current ? ' class="on"' : ""}${o.confirm ? ` data-confirm="${esc(o.confirm)}"` : ""}>${esc(o.label)}</button>`).join("");
   return `<details class="chipmenu"><summary title="${esc(title)}"><span class="chip ${chipClass}">${chipHtml}<span class="caret">&#9662;</span></span></summary>
 <form method="post" action="${action}" class="chipmenu-list">${items}${note ? `<div class="menunote">${esc(note)}</div>` : ""}</form></details>`;
 }
@@ -824,8 +836,9 @@ document.addEventListener("click", function (e) {
   });
 })();
 
-// Send confirmation. The prompt text lives in the button's data-confirm attribute and is read as
-// DATA, never compiled as JavaScript source.
+// Confirmation prompts. The text lives in the button's data-confirm attribute and is read as
+// DATA, never compiled as JavaScript source. Used by the Send buttons and by any chipMenu option
+// that carries a confirm (the owner handover, which forwards the email when it is picked).
 //
 // It used to be an inline onclick="return confirm('...')". Interpolating a translated string into
 // JS source inside an HTML attribute is a trap: HTML-escaping turns ' into &#39;, the parser
@@ -837,7 +850,7 @@ document.addEventListener("click", function (e) {
 // Capture phase so it runs before the form submits; cancelling the click cancels the submit.
 (function () {
   document.addEventListener("click", function (e) {
-    var btn = e.target.closest ? e.target.closest("button.send[data-confirm]") : null;
+    var btn = e.target.closest ? e.target.closest("button[data-confirm]") : null;
     if (!btn) return;
     if (!window.confirm(btn.dataset.confirm)) { e.preventDefault(); e.stopPropagation(); }
   }, true);

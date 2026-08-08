@@ -209,9 +209,25 @@ function quotedHistory(workItem) {
 // get when nobody touches the control. A human-confirmed workItem.recipient overrides it (see
 // the RECIPIENT MODEL note at the top of this file). Either way the final address is screened
 // by acceptTypedRecipient before it can reach Graph.
+// One extra refusal, added with the handover forward (2026-08-08). An item created from an
+// INTERNAL FORWARD (rule 'internal_forward' - Drachten handed a customer email to Gouda, or a
+// colleague pressed Forward in Outlook) has a thread sender that is one of OUR OWN mailboxes.
+// The default recipient for a reply is the thread sender, so without this the obvious click would
+// send a customer-facing reply straight back to drachten@ instead of to the customer. Nothing is
+// harmed by that - it is internal mail - but it is a silent non-delivery, which is worse than a
+// clear refusal. So these items must have a human-confirmed recipient before they can send.
+// Deliberately narrow: keyed on the rule id, so every pre-existing item behaves exactly as before.
+const INTERNAL_FORWARD_RULE = "internal_forward";
+function needsConfirmedRecipient(workItem) {
+  return String(workItem.rule_id || "") === INTERNAL_FORWARD_RULE && !String(workItem.recipient || "").trim();
+}
+
 function assembleSend(workItem, body, stagedAtts = []) {
   if (!workItem) throw new Error("refused: no work item");
   if (workItem.injection_flag) throw new Error("refused: item is flagged as possible injection - resolve before sending");
+  if (needsConfirmedRecipient(workItem)) {
+    throw new Error("refused: this email was forwarded to us internally, so replying to the sender would reply to our own mailbox - confirm the customer's address first");
+  }
 
   const to = acceptTypedRecipient(workItem.recipient || workItem.sender_email);
   if (!to) throw new Error("refused: work item has no valid recipient address to reply to");
@@ -283,7 +299,7 @@ const assembleContactFormSend = assembleNewOutboundSend;
 
 module.exports = {
   URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256, acceptTypedRecipient,
-  escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend,
+  escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient,
   assembleNewOutboundSend, assembleContactFormSend,
   findImageTokens, applyInlineImages, contentIdFor,
 };

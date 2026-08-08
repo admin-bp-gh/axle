@@ -64,7 +64,13 @@ app.post("/sync", (req, res) => {
 async function buildQueuePane(req, opts) {
   const lang = req.user.lang;
   const sel = (opts && opts.sel) || 0;
-  const mb = ["info", "drachten"].includes(req.query.mailbox) ? req.query.mailbox : "all";
+  // Mailbox filter. Sales see everything by default because their scope is already "mine" (their
+  // own owner label), which confines them to their own queue anyway. Admins are scope="all", and
+  // an unfiltered All is both mailboxes' entire traffic at once - so they land on Gouda (info@)
+  // and click through to Drachten or All. 'all' is one click away either way, and an explicit
+  // ?mailbox= in the URL always wins, so every existing link keeps working.
+  const mb = ["info", "drachten", "all"].includes(req.query.mailbox) ? req.query.mailbox
+    : (req.user.role === "admin" ? "info" : "all");
   const show = ["open", "done", "archived", "all"].includes(req.query.show) ? req.query.show : "open";
   // Scope: "mine" shows only items routed to this user (owner label); "all" shows everything.
   // Sales default to their own queue; admins default to all for oversight. Either can toggle.

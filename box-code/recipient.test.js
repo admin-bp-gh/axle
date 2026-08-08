@@ -215,3 +215,35 @@ test("new-outbound applies the same character screen", () => {
   assert.throws(() => SG.assembleNewOutboundSend({ ...cf, recipient: "Jan <evil@x.com>" }, "hi", "subj"), /recipient/i);
   assert.equal(SG.assembleNewOutboundSend({ ...cf, recipient: " PIET@Dekker4x4.NL " }, "hi", "subj").to, "piet@dekker4x4.nl");
 });
+
+// ---- internally-forwarded items (handover forward, 2026-08-08) -------------------------------
+// An item created from an internal forward has one of OUR OWN mailboxes as its thread sender, so
+// the default "reply to the sender" would send a customer-facing reply back into drachten@ and
+// nowhere near the customer. Harmless but silent, which is worse than a refusal.
+
+const forwarded = { ...base, rule_id: "internal_forward", sender_email: "drachten@budget-parts.nl", sender_name: "Drachten" };
+
+test("a forwarded item refuses to send until a recipient is confirmed", () => {
+  assert.throws(() => SG.assembleSend(forwarded, BODY), /forwarded to us internally/);
+  assert.throws(() => SG.assembleSend({ ...forwarded, recipient: "  " }, BODY), /forwarded to us internally/);
+  assert.ok(SG.needsConfirmedRecipient(forwarded));
+});
+
+test("a confirmed recipient releases it, and goes to the customer", () => {
+  const s = SG.assembleSend({ ...forwarded, recipient: "jan@dekker4x4.nl" }, BODY);
+  assert.equal(s.to, "jan@dekker4x4.nl");
+  assert.ok(!SG.needsConfirmedRecipient({ ...forwarded, recipient: "jan@dekker4x4.nl" }));
+});
+
+test("the refusal is keyed on the rule id only, so nothing else changes behaviour", () => {
+  // Same internal sender, different rule (e.g. the Shopify return notification, whose sender is
+  // our own info@): untouched by this guard — it has its own new-outbound path.
+  assert.ok(!SG.needsConfirmedRecipient({ ...base, rule_id: "shopify_return_request", sender_email: "info@budget-parts.nl" }));
+  assert.ok(!SG.needsConfirmedRecipient({ ...base, rule_id: "catch_all" }));
+  assert.ok(!SG.needsConfirmedRecipient(base), "an item with no rule_id at all");
+  assert.equal(SG.assembleSend(base, BODY).to, "jan@dekker4x4.nl");
+});
+
+test("a flagged forwarded item is refused for being flagged first", () => {
+  assert.throws(() => SG.assembleSend({ ...forwarded, injection_flag: 1 }, BODY), /injection/);
+});

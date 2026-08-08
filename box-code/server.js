@@ -53,6 +53,13 @@ const ACTION_COMPOSE_SEND = process.env.AXLE_ACTION_COMPOSE_SEND === "on";
 // the route. Like the contact form, a send is a NEW outbound to the code-held customer recipient.
 const ACTION_RETURN_SEND = process.env.AXLE_ACTION_RETURN_SEND === "on";
 
+// Allow-list action #6 — "forward an email to the mailbox of the owner it was handed to". OFF by
+// default; Brad enables it by setting AXLE_ACTION_OWNER_FORWARD=on in the box .env and restarting.
+// Until then a cross-mailbox reassign is the old silent relabel and nothing is sent. The
+// destination is always one of our own three mailboxes, resolved in code from rules.OWNER_HOME —
+// see forward-guard.js for why that makes this a much narrower action than the customer sends.
+const ACTION_OWNER_FORWARD = process.env.AXLE_ACTION_OWNER_FORWARD === "on";
+
 // Recover items stuck in 'investigating' after a crash/restart mid-redraft.
 const stuck = db.prepare("UPDATE work_items SET status = 'awaiting_input', updated_at = datetime('now') WHERE status = 'investigating'").run();
 if (stuck.changes) audit("system", "recovered_stuck_items", null, `${stuck.changes} item(s) reset to awaiting_input on startup`);
@@ -283,7 +290,7 @@ app.post("/compose", async (req, res) => {
   res.redirect("/item/" + itemId);
 });
 
-mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND });
+mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND, ACTION_OWNER_FORWARD });
 
 // ---- the recipient control (editable send recipient, 2026-07-10) ------------------------------
 //

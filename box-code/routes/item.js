@@ -11,6 +11,9 @@ const SAPDOC = require("../sap-doc-pdf.js");       // render a referenced SAP do
 const DOCSUGGEST = require("../doc-suggest.js");   // Auto-attach: resolve + scope-filter referenced documents (read-only)
 const CUSTSUM = require("../customer-summary.js"); // FR-0002: read-only customer at-a-glance + detail
 const RSET = require("../recipient-set.js");       // the single definition of an item's known addresses
+const FG = require("../forward-guard.js");         // handover forward: deterministic internal-only guardrails
+const FWD = require("../forward.js");              // handover forward: the Graph call (Mail.Send)
+const SG = require("../send-guard.js");            // only for needsConfirmedRecipient (the UI mirror of the send refusal)
 const { db, audit } = require("../db.js");
 const { esc, t, page, linkify, splitQuoted, fmtSize, renderAttachments, renderMail,
         fmtDateTime, statusWithRes, intentLabel, kindLabel, langDisplay, ownerLabel,
@@ -21,7 +24,7 @@ const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
 // Resolver-backed address lookups, built once. Best-effort by contract (see recipient-set.js).
 const RSET_DEPS = RSET.defaultDeps();
 
-module.exports = function mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND }) {
+module.exports = function mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND, ACTION_OWNER_FORWARD }) {
 
 // A proposed subject for a return-request reply (NEW outbound, no "Re:"), order-ref-aware and in the
 // customer's language (work_items.language). Deterministic default; the salesperson can edit it.
@@ -262,7 +265,13 @@ app.get("/item/:id", async (req, res) => {
   const cfCanSend = isContactForm && ACTION_CONTACTFORM_SEND && !!w.recipient;
   const composeCanSend = isCompose && ACTION_COMPOSE_SEND && !!w.recipient;
   const rnCanSend = isRN && ACTION_RETURN_SEND && !!w.recipient;
-  const canSend = editable && !w.injection_flag && (!isCompose || composeCanSend) && (!isContactForm || cfCanSend) && (!isRN || rnCanSend);
+  // internal_forward: a colleague handed this customer email to us, so the thread sender is one of
+  // OUR OWN mailboxes. Replying to the sender would mail ourselves, so send-guard refuses until a
+  // recipient is confirmed - mirrored here so the button says "Confirm recipient" rather than
+  // offering a Send that is going to be refused at the route.
+  const fwdNeedsRecipient = SG.needsConfirmedRecipient(w);
+  const canSend = editable && !w.injection_flag && !fwdNeedsRecipient
+    && (!isCompose || composeCanSend) && (!isContactForm || cfCanSend) && (!isRN || rnCanSend);
   // The editable reply: the human's saved edit if any, else the AI full draft, else the holding reply.
   const replyText = w.draft_edit != null ? w.draft_edit : (full ? full.body : (interim ? interim.body : ""));
   const atts = db.prepare("SELECT id, name, content_type, size FROM draft_attachments WHERE work_item_id = ? ORDER BY id").all(w.id);
@@ -337,11 +346,24 @@ app.get("/item/:id", async (req, res) => {
     : `<span class="chip">${langChipHtml}</span>`;
   const ownerOpts = ownerChoices(w.mailbox);
   const ownerChipHtml = `${esc(t(lang, "owner"))}: ${esc(ownerLabel(w))}`;
+  // An owner who works a DIFFERENT mailbox is a handover, not a relabel: picking them forwards
+  // the email to their mailbox and closes this item. Those options say so in the label and ask
+  // for confirmation first (rendered as data-confirm; read as data, never compiled as JS).
+  // forward-guard is the single source of that decision, so the menu and the route agree.
+  const ownerOption = (o) => {
+    const target = ACTION_OWNER_FORWARD ? FG.forwardTargetFor(w.mailbox, o) : null;
+    if (!target) return { value: o, label: o };
+    return {
+      value: o,
+      label: `${o} — ${t(lang, "owner_handover_hint")}`,
+      confirm: t(lang, "owner_handover_confirm").replace("{owner}", o).replace("{address}", target.address),
+    };
+  };
   const ownerChip = (editable && ownerOpts.some((o) => o !== (w.owner || "")))
     ? chipMenu({
         chipClass: "", chipHtml: ownerChipHtml, title: t(lang, "owner_fix"),
         action: `/item/${w.id}/owner`, field: "owner", current: w.owner || "",
-        options: ownerOpts.map((o) => ({ value: o, label: o })),
+        options: ownerOpts.map(ownerOption),
       })
     : `<span class="chip">${ownerChipHtml}</span>`;
   const chips = [
@@ -521,7 +543,7 @@ app.get("/item/:id", async (req, res) => {
 
   // No confirmed recipient yet on a new-outbound item: the button becomes "Confirm recipient" and
   // opens the same popover. One place recipients are decided, in every state.
-  const needsRecipient = (isContactForm || isCompose || isRN) && !w.recipient;
+  const needsRecipient = ((isContactForm || isCompose || isRN) && !w.recipient) || fwdNeedsRecipient;
 
   const sendBtn = canSend
     ? `<span class="send-split">
@@ -1005,18 +1027,62 @@ app.post("/item/:id/language", (req, res) => {
   res.redirect("/item/" + w.id);
 });
 
-// Reassign an item's owner (any registered user - e.g. Jack hands a mis-routed supplier
-// email to Tom). The new owner must be one of the mailbox's own routing labels (see
-// ownerChoices) - never free text - so the inbox "mine" queues stay consistent. Closed
-// items are immutable (reopen first), matching the other metadata edits.
-app.post("/item/:id/owner", (req, res) => {
+// Reassign an item's owner. The new owner must be one of the mailbox's own labels (see
+// ownerChoices) - never free text - so the inbox "mine" queues stay consistent. Closed items are
+// immutable (reopen first), matching the other metadata edits.
+//
+// TWO OUTCOMES, decided in code by forward-guard.forwardTargetFor:
+//
+//  * SAME MAILBOX (Sales(Gouda) -> Tom) - a pure relabel, exactly as before. Nothing is sent.
+//
+//  * DIFFERENT MAILBOX (info@ item -> Brad, drachten@ item -> Sales(Gouda)) - a HANDOVER. The
+//    email is forwarded to that owner's mailbox, then the Axle item is closed as 'forwarded' and
+//    the source message marked read, so the work leaves the handing-over team's queue AND their
+//    Outlook unread list rather than sitting somewhere nobody is watching. Where an owner works
+//    comes from the fixed rules.OWNER_HOME table, so the destination is always one of our own
+//    three mailboxes and can never be influenced by an email, a tool result or the model.
+//
+// ORDER MATTERS: forward first, write second. A Graph failure throws to the global error handler
+// with the item untouched, so a handover is never recorded as done when the mail did not move.
+// The DB write is guarded on the item still being open, so a human pressing Done in the same
+// instant cannot be overwritten.
+//
+// Governed by allow-list action #6 (env AXLE_ACTION_OWNER_FORWARD). While it is off, a
+// cross-mailbox reassign degrades to the old relabel and says so in the audit log.
+app.post("/item/:id/owner", async (req, res) => {
+  const login = req.user.tailscale_login;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(req.user.lang, "not_found"))}</p>`));
   const to = String(req.body.owner || "");
-  if (ownerChoices(w.mailbox).includes(to) && to !== (w.owner || "") && !["done", "archived"].includes(w.status)) {
+  const allowed = ownerChoices(w.mailbox).includes(to) && to !== (w.owner || "") && !["done", "archived"].includes(w.status);
+  if (!allowed) return res.redirect("/item/" + w.id);
+
+  const relabel = () => {
     db.prepare("UPDATE work_items SET owner = ?, updated_at = datetime('now') WHERE id = ?").run(to, w.id);
-    audit(req.user.tailscale_login, "owner_changed", w.id, `${ownerLabel(w)} -> ${to}`);
+    audit(login, "owner_changed", w.id, `${ownerLabel(w)} -> ${to}`);
+  };
+
+  const target = FG.forwardTargetFor(w.mailbox, to);
+  if (!target) { relabel(); return res.redirect("/item/" + w.id); }
+
+  if (!ACTION_OWNER_FORWARD) {
+    relabel();
+    audit(login, "owner_forward_skipped", w.id, `${to} <${target.address}> - AXLE_ACTION_OWNER_FORWARD not enabled`);
+    return res.redirect("/item/" + w.id);
   }
+
+  const fwd = FG.assembleForward(w, { toOwner: to, byName: req.user.display_name, byLogin: login });
+  await FWD.forwardMessage({
+    mailbox: MAILBOX_OF[w.mailbox], messageId: fwd.messageId, to: fwd.to, comment: fwd.comment,
+  });
+  const info = db.prepare(
+    `UPDATE work_items SET owner = ?, status = 'done', resolution = 'forwarded', updated_at = datetime('now')
+     WHERE id = ? AND status NOT IN ('done', 'archived')`
+  ).run(to, w.id);
+  audit(login, "owner_changed", w.id, `${ownerLabel(w)} -> ${to}`);
+  audit(login, "email_forwarded", w.id,
+    `${to} <${fwd.to}> from ${w.mailbox} msg=${String(fwd.messageId).slice(0, 24)}${info.changes ? "" : " (item already closed by someone else)"}`);
+  await markReadSafe(login, w);
   res.redirect("/item/" + w.id);
 });
 

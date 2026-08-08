@@ -26,6 +26,57 @@ const SALES_GOUDA = "Sales(Gouda)";
 // Tom stays available as a MANUAL reassign target (reassignOnly, below) — sales can hand him an
 // item deliberately; nothing does it automatically.
 
+// --- Owner home mailboxes (reassign-and-forward, 2026-08-08) ---------------------------------
+// Where each owner label ACTUALLY works. Reassigning an item to an owner whose home mailbox is
+// not the item's own mailbox is a real handover, not a relabel: Axle forwards the email to that
+// mailbox and closes its own item, so the work physically moves and leaves the handing-over
+// team's queue AND their Outlook unread list — instead of parking in a queue nobody watches,
+// which is the exact trap described in the Tom note above.
+//
+// These addresses are the ONLY destinations the forward path will ever use. They are resolved
+// here, in code, from a fixed table — never from a work item, an email body, a tool result or a
+// model. Nothing a customer writes can add an entry, so a forward cannot leave the company.
+//
+// admin@ is a DESTINATION ONLY: Axle does not read that mailbox (Brad works it in Outlook), so a
+// forward to Brad takes the email out of Axle entirely. info@ and drachten@ ARE ingested, so a
+// forward between them is re-ingested by the receiving mailbox and becomes a fresh work item
+// there (see the internal_forward rule below).
+//
+// Tom is deliberately absent: purchasing is worked inside info@'s own Outlook folder, so a
+// "forward" to him would be info@ -> info@. Reassigning to Tom stays a pure relabel, as before.
+const OWNER_HOME = {
+  "Sales(Gouda)": { box: "info",     env: "MAILBOX_INFO",     fallback: "info@budget-parts.nl" },
+  "Drachten":     { box: "drachten", env: "MAILBOX_DRACHTEN", fallback: "drachten@budget-parts.nl" },
+  "Brad":         { box: "admin",    env: "MAILBOX_ADMIN",    fallback: "admin@budget-parts.nl" },
+};
+// Read lazily (not at require time): rules.js is required by modules that may load before dotenv,
+// and a fallback keeps the map correct even if an env var is missing from .env.
+const homeAddress = (h) => String(process.env[h.env] || h.fallback).trim().toLowerCase();
+function ownerHome(label) {
+  const h = OWNER_HOME[String(label == null ? "" : label)];
+  return h ? { box: h.box, address: homeAddress(h) } : null;
+}
+// Our own three mailbox addresses, for "is this mail from us?" tests (the internal_forward rule
+// below, and send-guard's refusal to reply straight back into one of our own mailboxes).
+function ourMailboxAddresses() {
+  return Object.values(OWNER_HOME).map(homeAddress);
+}
+const isOurMailbox = (addr) => ourMailboxAddresses().includes(String(addr || "").trim().toLowerCase());
+
+// An email one of our own mailboxes forwarded to another — either Axle's own handover forward or
+// a human pressing Forward in Outlook. Owned by the receiving mailbox's sales queue and drafted
+// like any other customer mail; tagged so it is recognisable at a glance.
+//
+// requireAll + the FW: markers matter: matching our own sender ALONE would also swallow the
+// Shopify "Return requested for order" notification (priority 44), whose sender is our own info@,
+// and break the return flow. A forward always carries the marker; that notification never does.
+const internalForward = {
+  id: "internal_forward", priority: 31, requireAll: true,
+  senderIsOurMailbox: true,
+  subjectContains: ["fw:", "fwd:", "doorst:", "door:"],
+  tags: ["Forwarded"], draft: true,
+};
+
 const noise = [
   { id: "noise_postnl", priority: 10, senderDomain: ["edm.postnl.nl"], action: "archive" },
   { id: "noise_trustedshops", priority: 10, senderDomain: ["etrusted.com"], action: "archive" },
@@ -63,6 +114,7 @@ const infoRules = [
   { id: "supplier_news", priority: 23, senderAddress: ["marketing@allmakes.co.uk", "sales@hotbray.net"], action: "archive", tags: ["Supplier News"] },
   { id: "supplier_direct", priority: 25, senderDomain: ["tuffplusautolighting.com", "breeland.nl"], owner: SALES_GOUDA },
   { id: "admin_forward", priority: 30, requireAll: true, senderAddress: ["admin@budget-parts.nl"], subjectContains: ["FW:"], owner: null, llmSubRoute: true },
+  { ...internalForward, owner: SALES_GOUDA },
   { id: "b2b_known", priority: 35, senderDomain: ["sve-automotive.nl", "komplot.be"], owner: SALES_GOUDA, tags: ["B2B"], draft: true },
   ...customer,
   { id: "catch_all", priority: 100, catchAll: true, owner: SALES_GOUDA, draft: true },
@@ -71,6 +123,7 @@ const infoRules = [
 const drachtenRules = [
   ...noise,
   { ...voicemail, owner: "Drachten" },
+  { ...internalForward, owner: "Drachten" },
   ...customer.map((r) => ({ ...r, owner: "Drachten" })), // Drachten: Rob & Huub share; owner labelled "Drachten"
   { id: "catch_all", priority: 100, catchAll: true, owner: "Drachten", draft: true },
 ];
@@ -82,8 +135,13 @@ module.exports = {
   // 'reassignOnly' = owner labels a human may hand an item to, that no rule ever assigns
   // automatically. Tom is here and not in any rule: purchasing is worked in Outlook (see the
   // note at the top), but sales can still pass him something deliberately.
-  info: { mailboxEnv: "MAILBOX_INFO", team: ["Jack", "Brendan", "Tom"], reassignOnly: ["Tom"], folders: ["inbox", "Shopify Contact Form"], rules: infoRules },
-  drachten: { mailboxEnv: "MAILBOX_DRACHTEN", team: ["Rob", "Huub"], folders: ["inbox"], rules: drachtenRules },
+  //
+  // The cross-mailbox labels (Brad on both, Drachten on info@, Sales(Gouda) on drachten@) are
+  // reassign targets whose home mailbox differs from this one, so picking one is a HANDOVER and
+  // triggers the forward — see OWNER_HOME above. Tom's home is info@, so he stays a relabel.
+  info: { mailboxEnv: "MAILBOX_INFO", team: ["Jack", "Brendan", "Tom"], reassignOnly: ["Tom", "Brad", "Drachten"], folders: ["inbox", "Shopify Contact Form"], rules: infoRules },
+  drachten: { mailboxEnv: "MAILBOX_DRACHTEN", team: ["Rob", "Huub"], reassignOnly: ["Brad", "Sales(Gouda)"], folders: ["inbox"], rules: drachtenRules },
+  OWNER_HOME, ownerHome, ourMailboxAddresses, isOurMailbox,
 };
 
 
@@ -97,6 +155,9 @@ function matchRule(email, rules) {
     const checks = [];
     if (rule.senderDomain) checks.push(rule.senderDomain.some((d) => domain === d || domain.endsWith("." + d)));
     if (rule.senderAddress) checks.push(rule.senderAddress.some((a) => addr === a.toLowerCase()));
+    // Sent by one of OUR OWN mailboxes (info@ / drachten@ / admin@). Resolved from OWNER_HOME at
+    // match time rather than listed inline, so the address list has exactly one definition.
+    if (rule.senderIsOurMailbox) checks.push(isOurMailbox(addr));
     if (rule.subjectContains) checks.push(rule.subjectContains.some((s) => subject.includes(s.toLowerCase())));
     if (!checks.length) continue;
     if (rule.requireAll ? checks.every(Boolean) : checks.some(Boolean)) return rule;

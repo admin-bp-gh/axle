@@ -9,11 +9,13 @@ const { applyFitmentGate } = require("./engine.js");
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; } else { fail++; console.log("  FAIL:", m); } };
 
-// 1) false + ready + asserting draft, no interim -> draft salvaged into interim, held, question added, confidence capped
+// 1) false + ready + asserting draft, no interim -> draft WITHDRAWN (not salvaged into the
+// sendable interim — changed 2026-08-12), held, question added, confidence capped
 let r = applyFitmentGate({ status: "ready", draft: "The correct part is BTR9641.", interim_draft: "", questions_for_salesperson: [], physical_checks: [], fitment_confirmed: false, confidence: "high" });
 ok(r.status === "awaiting_input", "false+ready -> awaiting_input");
 ok(r.draft === "", "asserting draft cleared from the ready slot");
-ok(r.interim_draft === "The correct part is BTR9641.", "draft salvaged into interim (research not lost)");
+ok(r.withdrawn_draft === "The correct part is BTR9641.", "draft withdrawn for read-only reference (research not lost)");
+ok(!r.interim_draft, "the asserting draft must NOT become the sendable interim");
 ok(r.questions_for_salesperson.length === 1, "a confirmation question is guaranteed");
 ok(r.confidence === "medium", "high confidence capped to medium");
 

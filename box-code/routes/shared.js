@@ -48,6 +48,13 @@ function persistResult(itemId, result, toolLog, seed) {
   const ver = (db.prepare("SELECT MAX(version) AS v FROM drafts WHERE work_item_id = ?").get(itemId).v || 0) + 1;
   if (result.draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body) VALUES (?, ?, 0, ?)").run(itemId, ver, result.draft);
   if (result.interim_draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body) VALUES (?, ?, 1, ?)").run(itemId, ver, result.interim_draft);
+  // Text the accuracy gates withdrew. Not shown anywhere (the red card was removed 2026-08-12 —
+  // it read as breakage next to a good reply); kept purely so "why was this held?" is answerable
+  // after the fact. Mirrors ingest.js so the redraft and ingest paths record the same thing.
+  if (result.withdrawn_draft) {
+    db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body, source) VALUES (?, ?, 0, ?, 'withdrawn')")
+      .run(itemId, ver, result.withdrawn_draft);
+  }
   db.prepare("DELETE FROM questions WHERE work_item_id = ? AND answer IS NULL").run(itemId);
   // Consolidated-questions round (2026-06-11): never store the same question twice on an
   // item - dedupe by normalised text within this batch AND against the answered questions

@@ -39,12 +39,24 @@ $c = Get-NetTCPConnection -LocalPort 8484 -State Listen -ErrorAction SilentlyCon
 if ($c) { "UP — PID $($c.OwningProcess)" } else { "DOWN" }
 ```
 
-**Restart** (the one-liner — use after a deploy):
+**Restart** (the one-liner — use after a deploy). **Requires an ELEVATED PowerShell:**
 ```powershell
 Stop-ScheduledTask -TaskName "Axle Server"; Start-ScheduledTask -TaskName "Axle Server"
 ```
 (There is no `Restart-ScheduledTask` cmdlet; stop-then-start is the equivalent. `Stop` kills
 the wrapper + its node; `Start` relaunches from boot state.)
+
+> **Elevation is not optional** (learned the hard way, 2026-08-12). The task runs as the
+> low-privilege `axle` account, so from a normal shell both cmdlets fail with **"Access is
+> denied"** — a deploy will place its files, pass its tests, and then die at the restart step.
+> Either start PowerShell with *Run as administrator*, or run
+> **`C:\Admin\Projects\Axle\restart-axle.ps1`**, which self-elevates (one UAC prompt), restarts,
+> and confirms the PID actually changed so you know new code is loaded.
+
+> **Writing deploy scripts for Brad:** he cannot read a PowerShell window that auto-closes, and
+> `Start-Transcript` produces nothing if the script dies before it runs. Always (a) log line by
+> line to a file under `C:\Admin\Projects\Axle\` — readable from the Claude sandbox — and (b) end
+> with `Read-Host` so the window stays put.
 
 **Stop / Start individually:**
 ```powershell
@@ -89,6 +101,20 @@ On a rebuild: clone the repo, deploy from it, and do **not** re-initialise git u
 
 ## Deploying changed app files (box-local)
 
+**Normally: just run `C:\Admin\Projects\Axle\deploy.ps1`** (right-click → *Run with PowerShell*,
+approve the UAC prompt). It hashes every file under `box-code\` against `C:\Axle\app`, stages only
+what actually differs, places it via `axle-pull.ps1`, runs the test suites **against the live
+tree**, and restarts only if they all pass — then confirms the PID changed. It logs line by line
+to `deploy.log` and pauses at the end. `-WhatIf` lists the changes and stops; `-NoRestart` deploys
+without touching the running server.
+
+One thing it cannot do for you: `axle-pull.ps1` routes by *basename*, so a brand-new file destined
+for `views\` or `routes\` lands in the app root the first time and must be moved once by hand.
+`deploy.ps1` warns when that happens.
+
+The manual sequence below is the same thing by hand — useful when deploying a single file or
+debugging the puller.
+
 1. Copy the changed file(s) from the repo into the puller's inbox:
    ```powershell
    Copy-Item C:\Admin\Projects\Axle\box-code\<path>\<file> C:\Axle\_incoming
@@ -98,9 +124,39 @@ On a rebuild: clone the repo, deploy from it, and do **not** re-initialise git u
    C:\Axle\axle-pull.ps1
    ```
    If any JS reports `FAIL`, **do not restart** — fix first.
-3. Restart (the one-liner above).
-4. Verify over Tailscale (hard-refresh). For a CSS/asset change, confirm the new
-   `?v=` cache-buster in page source.
+3. Run the test suites **against the live tree**, not just the repo — this is what proves the
+   deploy, and it caught real problems on 2026-08-12:
+   ```powershell
+   cd C:\Axle\app
+   node accuracy-gates.test.js; node fitment-gate.test.js; node part-dossier.test.js; node part-finder.test.js
+   ```
+   Any non-zero exit: **do not restart.**
+4. Restart (the one-liner above — elevated).
+5. Verify over Tailscale (hard-refresh). For a CSS/asset change, bump `ASSET_V` in `views/ui.js`
+   and confirm the new `?v=` cache-buster in page source.
+6. **Drive the real UI before calling it done.** Unit tests cannot see the browser seam. Twice on
+   2026-08-12 every suite was green while the live page still offered text the gates had just
+   refused. For anything that withholds, blocks or hides, assert on what the salesperson actually
+   sees (`#replybox` contents), not on what the function returns.
+7. Commit the repo (`C:\Admin\Projects\Axle`) so the source of truth matches the box.
+
+### Re-drafting open items after a drafting change
+
+When a change alters what Axle is allowed to say, items drafted before it keep their old text.
+Re-run them so nobody meets a stale draft:
+
+```powershell
+cd C:\Axle\app
+node redraft-open.js --dry        # list what would be redrafted, change nothing
+node redraft-open.js              # all open items, one at a time
+node redraft-open.js --id 1249    # a single item
+```
+
+Uses the same `runRedraft` as the "Save & redraft" button. Read-only on the business systems and
+it never sends. One Anthropic call per item, so a full pass over ~15 items takes several minutes.
+It deliberately does not post the work form — that would run `saveWorkInputs` with a partial body
+and could clobber a salesperson's saved edit. Note a redraft clears `draft_edit`, so give the team
+a moment to finish anything half-written before running a bulk pass.
 
 ## Crash-recovery proof (run when quiet)
 

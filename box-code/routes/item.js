@@ -249,8 +249,28 @@ app.get("/item/:id", async (req, res) => {
 
   // AI reference drafts (source='ai'); human-sent drafts are kept separately for the audit
   // trail and must not be shown as "the AI draft".
-  const full = db.prepare("SELECT * FROM drafts WHERE work_item_id = ? AND is_interim = 0 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
+  const fullRow = db.prepare("SELECT * FROM drafts WHERE work_item_id = ? AND is_interim = 0 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
   const interim = db.prepare("SELECT * FROM drafts WHERE work_item_id = ? AND is_interim = 1 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
+
+  // HELD ITEMS MUST NOT OFFER A SUPERSEDED DRAFT (2026-08-12, found live-verifying item 1249).
+  // When a run holds the reply it emits no full draft, so ingest inserts no row — and this query
+  // used to fall back to the PREVIOUS run's draft and present it as the current AI draft under
+  // "this exact text goes to the customer". On 1249 that meant the very sentences the accuracy
+  // gates had just refused ("it matches your VIN perfectly", "ships directly from our supplier")
+  // sat in the send box, one click from the customer. Holding a draft is pointless if the
+  // superseded one stays sendable.
+  //
+  // status='awaiting_input' is the invariant: a held run always clears result.draft (the
+  // two-stage prompt rule, applyFitmentGate and holdDraft all do), so an awaiting_input item can
+  // never have a CURRENT full draft — anything found is from an earlier run. Drop it, and let the
+  // send box fall through to the INTERIM: the current run's only-what-we-know reply, which is
+  // written to be safe to send exactly as-is. A human's own saved edit (draft_edit) always wins;
+  // that is their text, not ours.
+  const held = w.status === "awaiting_input" && !!fullRow;
+  const full = held ? null : fullRow;
+  // Withdrawn drafts (source='withdrawn') are still recorded for the audit trail, but they are
+  // NOT shown: a red "withdrawn" card next to a perfectly good reply reads as breakage rather
+  // than as care. The reply the salesperson sees is simply the current, safe one.
   const latestVer = full ? full.version : (interim ? interim.version : 0);
   const questions = db.prepare("SELECT * FROM questions WHERE work_item_id = ? ORDER BY id").all(w.id);
   const open = questions.filter((q) => !q.answer);

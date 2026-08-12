@@ -364,6 +364,41 @@ async function sapStockPrice(itemCodes) {
 // disambiguation is right in front of the model. Read-only, parameterised, shared pool.
 // Shopify product handles are batched into one read-only call (best effort).
 
+// Availability rule (single source of truth, JS side so it is unit-testable).
+//
+// 2026-08-12 (item 1249): the dossier used to hand the model a field literally named
+// `dropship: "Y"`, and the model paraphrased the FIELD NAME into customer prose — "it ships
+// directly from our supplier". That is not true: a drop-ship item is one we BUY IN, and the
+// only thing the customer is ever told is the lead time. We never explain how we source.
+// So the raw U_WS_DropShip flag no longer reaches the model at all. Instead each item carries
+// a precomputed `availability` object whose `statement` is the exact customer-facing wording,
+// leaving nothing to paraphrase. `state` is what the gates in engine.js key off.
+//
+//   in_stock     OnHand > 0                      -> "in stock"
+//   order_in     OnHand <= 0, DropShip = 'Y'     -> we buy it in, 2-3 weeks
+//   check_first  OnHand <= 0, DropShip <> 'Y'    -> availability MUST be checked with the
+//                                                   supplier by a human (often NLA). Nothing
+//                                                   about availability may be promised.
+function availabilityOf(onHand, dropShipFlag) {
+  const ds = String(dropShipFlag == null ? "" : dropShipFlag).trim().toUpperCase();
+  if (Number(onHand) > 0) {
+    return { state: "in_stock", statement: "In stock (never quote exact quantities)." };
+  }
+  if (ds === "Y") {
+    return {
+      state: "order_in",
+      statement: "Not in stock — we order it in for the customer. Lead time 2-3 weeks. "
+               + "Say ONLY the lead time; never explain how or from where we source it.",
+    };
+  }
+  return {
+    state: "check_first",
+    statement: "Not in stock and NOT a stock-order item — availability is unknown and is often "
+             + "NLA. Do NOT state any availability, lead time or delivery estimate. A "
+             + "salesperson must check with the supplier first.",
+  };
+}
+
 // Customer-facing code rule (single source of truth, JS side so it is unit-testable):
 // first non-empty of AllMakes > BritPart > Hotbray > BaseCode(U_WS_LRNo) > ItemCode.
 function customerCode(r) {
@@ -393,7 +428,9 @@ function assembleDossier(familyRows, matchedSet, handleMap = {}) {
       name: (r.ItemName || "").trim() || undefined,
       quality: (r.U_Quality || "").trim() || undefined,
       abc: (r.U_ABC || "").trim() || undefined,
-      dropship: (r.U_WS_DropShip || "").trim() || undefined,
+      // NOT the raw U_WS_DropShip flag — see availabilityOf(). The model gets the finished
+      // sentence, so there is no internal jargon left for it to invent an explanation from.
+      availability: availabilityOf(r.OnHand, r.U_WS_DropShip),
       on_hand: r.OnHand,
       on_order: r.OnOrder,
       web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
@@ -641,6 +678,7 @@ function rankCandidates(rows, tokens, opts = {}) {
     name: (r.ItemName || "").trim() || undefined,
     quality: (r.U_Quality || "").trim() || undefined,
     on_hand: r.OnHand,
+    availability: availabilityOf(r.OnHand, r.U_WS_DropShip),
     web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
     fitment: r.U_Tag_Model ? String(r.U_Tag_Model).replace(/\s+/g, " ").trim().slice(0, 200) : undefined,
     handle: (opts.handleMap || {})[r.ItemCode] || undefined,
@@ -705,7 +743,7 @@ async function partFinder(params = {}) {
     : "0";
   const rows = (await req.query(
     `SELECT TOP (80) I.ItemCode, I.U_WS_LRNo, I.U_Code_AllMakes, I.U_Code_BritPart, I.U_Code_Hotbray,
-            I.ItemName, I.U_Quality, I.U_ABC, I.OnHand, P.Price AS WebPrice,
+            I.ItemName, I.U_Quality, I.U_ABC, I.OnHand, I.U_WS_DropShip, P.Price AS WebPrice,
             CAST(I.U_Tag_Model AS NVARCHAR(MAX)) AS U_Tag_Model, I.U_Alternatives${catSelect}
      FROM OITM I LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1
      WHERE ${where.join(" AND ")}
@@ -1220,7 +1258,7 @@ module.exports = {
   htmlToText, graphToken, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, getAttachment,
   getMessageStates, folderIds, folderName,
   getPool, closePool, sapCustomerContext, sapStockPrice,
-  partDossier, customerCode, assembleDossier,
+  partDossier, customerCode, assembleDossier, availabilityOf,
   partFinder, vinDecode, modelToColumn, rankCandidates, categoryFromTokens, tokenize, shopifyHandles,
   shopifyCustomerContext, shopifyOrderByName,
   myparcelSearch, myparcelTrack, extractEntities, shopifyGraphql,

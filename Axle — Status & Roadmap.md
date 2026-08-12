@@ -1,5 +1,128 @@
 # Axle — Status & Roadmap
 
+> **★ ACCURACY GATES — Axle may no longer make claims it cannot back. BUILT, DEPLOYED &
+> LIVE-VERIFIED 2026-08-12 (three rounds). No allow-list or send-path change.**
+>
+> **What happened.** Item 1249 (Johannes Hecker, contact form, NVG225 transfer box for a supplied
+> VIN) drafted, ready to send, at high confidence: *"it matches your VIN perfectly"* and *"it ships
+> directly from our supplier."* The second is simply untrue — we buy drop-ship items in and send
+> them ourselves. The first was never checked: `part_finder` decodes the model YEAR out of a VIN and
+> deliberately nothing else (`engine: null`), so the engine and gearbox in that sentence came from
+> the customer's own email and our `U_Tag_Model` note, then went back out as *our* verification.
+> Verified afterwards on JLR EPC (VIN SALLMAMC45A193273 → L322, built 17/12/2004, M57 D30 3.0
+> Diesel, 5 Speed Auto GM 5L40E; NVG225 section applies, Steyr section empty; IAB000033E correct):
+> **the answer was right and the homework was not.** The same draft would have read identically,
+> with the same confidence, had the customer's engine claim been wrong. Jack and Rob send what Axle
+> drafts.
+>
+> **Why the existing gate missed it.** `applyFitmentGate` only fires on an explicit
+> `fitment_confirmed: false`. The customer named the part himself, so the model reported `"n/a"`,
+> the gate never armed — and nothing stopped the draft asserting VIN-level fitment anyway. The gate
+> keyed off a self-declared classification instead of the draft's actual content. Separately,
+> `part_finder`'s `confidence: "high"` means only *"we mapped a model string to a `U_M_` column"*;
+> it is a lookup-quality signal that reads like a fitment-certainty signal.
+>
+> **Fix 1 — the word was the bug.** `part_dossier`/`part_finder` used to hand the model a field
+> literally named `dropship: "Y"`, and it paraphrased the field name into customer prose. The raw
+> flag no longer reaches the model at all. Each item now carries `availability = {state, statement}`
+> (`connectors.availabilityOf`), where `statement` is the finished customer-facing wording, so there
+> is nothing left to paraphrase: `in_stock` / `order_in` (not in stock, we order it in, 2-3 weeks —
+> lead time and nothing else) / `check_first` (out of stock and not a stock-order item, usually NLA:
+> no availability, lead time or delivery estimate may be stated at all).
+>
+> **Fix 2 — gates on content, not self-report** (`engine.js`, all pure, unit-tested, mirroring
+> `applyContainment`). `applyClaimGate` scans the finished draft for VIN-verification claims and
+> sourcing claims (EN/NL/DE) — both always false — and **holds** the draft rather than rewriting it:
+> the text is preserved as an interim reply, a plain-language question explains the problem, and a
+> human decides the wording. `applyAvailabilityGate` holds any draft naming a `check_first` part,
+> using availability facts harvested from the full tool results during the run (`collectItemFacts`)
+> rather than the 240-char `toolLog` snippets. `applyVinCheck` attaches an EPC verification check
+> naming the VIN whenever the customer supplied one.
+>
+> **VIN policy (decided 2026-08-12).** Axle keeps recommending from our own `U_Tag_Model` data when
+> it clearly matches the vehicle the customer *described* — a VIN in the email does not by itself
+> hold the draft. But vehicle details the customer supplies are written back as **their** claim
+> ("you mention yours has the M57 3.0 diesel"), never as our confirmation, and Axle may never say a
+> part matches, fits or was confirmed against a VIN, because it has not been. The salesperson gets
+> the VIN and an EPC check. A future EPC connector remains open, not scheduled.
+>
+> **Fix 3 — the standing rule.** New prompt rule in both reply and compose modes: assume the
+> salesperson sends the draft as written. Every sentence must trace to a tool result, the seed
+> context or the business knowledge, stated no more strongly than that source supports; confirming
+> flourishes ("matches perfectly", "guaranteed to fit") are banned outright; anything not
+> establishable becomes a salesperson question, never a confident sentence.
+>
+> **Fix 4 — held items no longer offer a superseded draft (found by live-verifying, round 2).**
+> Round 1 deployed clean and 1249 came back held with good questions — and the send box still
+> contained the original *"it matches your VIN perfectly / ships directly from our supplier"*,
+> labelled "AI draft (v1)" under *"this exact text goes to the customer"*. A held run emits no
+> full draft, so `ingest` inserts no row and `routes/item.js` fell back to the previous version.
+> Holding a draft is pointless if the superseded one stays sendable. Now: on `awaiting_input` the
+> stale full draft is dropped and the send box falls through to the **interim**, which the prompt
+> now REQUIRES on every hold — a genuinely sendable reply carrying everything our data settles and
+> nothing else, with the uncertain part not mentioned, hedged or alluded to at all. Withdrawn text
+> is stored `source='withdrawn'` and rendered read-only (a `<pre>`, red "Earlier draft — withdrawn,
+> do not send" card), so the research survives while nothing sendable carries the claim.
+>
+> **Fix 5 — the gates were decorative on the interim (round 3).** Round 2's own output proved it:
+> the interim read *"It is a drop-ship item ordered in from our supplier … Based on your VIN, your
+> Range Rover is a 2005 L322"*. Both gates MATCHED that text — and left it in place, because
+> `holdDraft` only ever cleared `draft`. Now both gates scan `draft` and `interim_draft`
+> independently and empty whichever slot carries the claim. Also: `holdDraft` used to salvage the
+> offending draft INTO the interim, which once the interim became the send box would have handed
+> the claim straight back to the customer — the gate feeding its own bypass. It withdraws to
+> `withdrawn_draft` instead.
+>
+> **Live-verified on 1249 (2026-08-12 13:1x).** Held, confidence medium, three questions (EPC check
+> naming the VIN; a firmer supplier ETA; a note that the interim is sendable once EPC-confirmed).
+> The interim now reads: *"The IAB000033E … is listed in our catalogue for the 2002–2009 Range
+> Rover L322 with the 5-speed Steptronic automatic and M57 D30 3.0-litre diesel — which matches
+> what you describe. The price is €680 excl. VAT. It is not in stock; we order it in for you. The
+> standard lead time is 2–3 weeks from the date of your order."* Every clause is checkable: the
+> fitment is attributed to our catalogue and to his description, there is no VIN claim, no sourcing
+> mechanism, and no invented follow-up promise.
+>
+> **Fix 6 — the withdrawn-draft card was removed again (round 4, Brad's call).** A red "Earlier
+> draft — withdrawn, do not send" panel beside a perfectly good reply reads as breakage, not as
+> care. Withdrawn text is still recorded (`drafts.source='withdrawn'`, both the ingest and redraft
+> paths) purely so "why was this held?" stays answerable; nothing renders it.
+>
+> **Fix 7 — `max_tokens` 2000 → 4096.** Requiring an interim on every hold made responses longer
+> (a full reply AND the questions, escaped into one JSON object). Item 1244 — a long Dutch
+> window-frame enquiry — was truncated mid-JSON, so `parseResult` fell back to "Axle could not
+> parse its own draft output" and the whole item was lost. Output tokens are billed as produced,
+> so the headroom is nearly free; a `max_tokens` stop is now logged as a warning.
+>
+> **Bulk redraft (`redraft-open.js`, new).** Every OPEN item was re-run through the new build so no
+> salesperson meets a pre-gate draft: 15 items, 0 failures. It calls the same `runRedraft` as the
+> button, one at a time, and deliberately does NOT post the work form (that would run
+> `saveWorkInputs` with a partial body and could clobber saved edits). Outcome: 12 items with a
+> real, sendable reply in the box; 2 legitimately empty (UPS out-of-office auto-replies); 1 (#1244)
+> the truncation above, fixed and redrafted clean.
+>
+> **Expect more "Needs your answer".** 13 of 15 open items now hold where roughly half did before.
+> This is not a regression: held no longer means empty. #1256 carries a complete Dutch reply with
+> part number, price, stock and pickup details; #1250 correctly tells the customer BH610321L is the
+> REAR bolt, not the front. The attached question is the one thing Axle could not confirm. If the
+> team reads the status label as "Axle failed", the label is the thing to change, not the gate.
+>
+> **Files:** `connectors.js`, `agent-tools.js`, `engine.js`, `compose.js`, `ingest.js`,
+> `routes/shared.js`, `redraft-open.js`,
+> `routes/item.js`, `views/ui.js` (+`ASSET_V` → `polaris13`), `assets/components.css`,
+> `business-knowledge.md`, new `accuracy-gates.test.js` (65 asserts, incl. 1249's real output
+> end-to-end), updated `fitment-gate.test.js`. Deploy scripts kept in the repo root
+> (`deploy-accuracy-gates*.ps1`, `deploy-held-drafts.ps1`, `restart-axle.ps1`).
+>
+> **Runbook gap found:** the documented restart one-liner fails with *"Access is denied"* from a
+> normal shell — the `Axle Server` task runs as the low-privilege `axle` account, so a deploy
+> restart needs an ELEVATED PowerShell. `restart-axle.ps1` self-elevates. Worth folding into the
+> runbook's deploy section.
+>
+> **Lesson, for the second time.** Every unit suite was green at each round, and both real defects
+> (the stale draft in the send box, then the untouched interim) were visible only by driving the
+> live UI. Anything that claims to hold a draft must be checked against what a salesperson
+> actually sees, not against what the function returns. See [[axle-live-verification-catches-seam-bugs]].
+
 > **★ HANDOVER FORWARD — reassigning an item across mailboxes now MOVES the email. BUILT,
 > DEPLOYED, ENABLED & LIVE-VERIFIED 2026-08-08. Allow-list action #6 ON.**
 >

@@ -249,6 +249,13 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (result.interim_draft) {
     db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body) VALUES (?, ?, 1, ?)").run(itemId, ver, result.interim_draft);
   }
+  // A draft the accuracy gates WITHDREW (it carried a claim we cannot stand behind). Stored with
+  // source='withdrawn' so it is excluded from both the full and interim lookups — the item view
+  // shows it read-only, and nothing can send it. Keeps the research visible without the risk.
+  if (result.withdrawn_draft) {
+    db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body, source) VALUES (?, ?, 0, ?, 'withdrawn')")
+      .run(itemId, ver, result.withdrawn_draft);
+  }
 
   // Replace unanswered questions with the new set; answered ones are history worth keeping.
   // Consolidated-questions round (2026-06-11): dedupe by normalised text within the batch

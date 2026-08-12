@@ -15,10 +15,26 @@
 # fails with "Access is denied". Logs line by line to deploy.log so the result survives even if
 # the window closes, and pauses at the end.
 #
+# Deploys UPDATES to files that already exist on the box. A repo file with no counterpart in the
+# live tree is listed but NOT sent unless you pass -IncludeNew: most such files are repo-only dev
+# helpers, not pending deploys.
+#
 # Flags (optional, for a shell):  -WhatIf  list changes and stop.   -NoRestart  deploy but leave
-# the running server alone (safe for test-only or asset-only changes).
+# the running server alone (safe for test-only or asset-only changes).   -IncludeNew  also send
+# files the box does not have yet.
 
-param([switch]$WhatIf, [switch]$NoRestart)
+param([switch]$WhatIf, [switch]$NoRestart, [switch]$IncludeNew)
+
+# Files that live in the repo but must NEVER be pushed to the box. On its first run (2026-08-12)
+# this script treated "absent from the live tree" as "deploy it" and pushed 14 such files,
+# including a second copy of axle-pull.ps1 INSIDE app\ — the real one lives at C:\Axle\axle-pull.ps1
+# and a duplicate is an invitation to edit the wrong one. Nothing broke, but the box should hold
+# what it runs and nothing else. New files now also need -IncludeNew (see below).
+$neverDeploy = @(
+  "axle-pull.ps1",        # box tooling: lives at C:\Axle\, not in the app tree
+  "axle-send.sh",         # Mac-side helper
+  "shared-domains.js"     # marked obsolete in its own header
+)
 
 $repo = "C:\Admin\Projects\Axle"
 $src  = Join-Path $repo "box-code"
@@ -30,8 +46,9 @@ $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIde
 if (-not $isAdmin) {
   Write-Host "Not elevated - relaunching as administrator (approve the UAC prompt)..." -ForegroundColor Yellow
   $argList = @("-ExecutionPolicy","Bypass","-NoExit","-File","`"$PSCommandPath`"")
-  if ($WhatIf)    { $argList += "-WhatIf" }
-  if ($NoRestart) { $argList += "-NoRestart" }
+  if ($WhatIf)     { $argList += "-WhatIf" }
+  if ($NoRestart)  { $argList += "-NoRestart" }
+  if ($IncludeNew) { $argList += "-IncludeNew" }
   Start-Process powershell -Verb RunAs -ArgumentList $argList
   Start-Sleep -Seconds 3     # keep this window up briefly so a failed relaunch is visible
   exit
@@ -52,19 +69,26 @@ try {
   if (-not (Test-Path $app)) { throw "live tree missing: $app" }
 
   Say "`n=== 1. Comparing repo -> box ===" "Cyan"
-  $changed = @()
+  $changed = @(); $skippedNew = @()
   Get-ChildItem $src -Recurse -File |
-    Where-Object { $_.FullName -notmatch '\\node_modules\\' } |
+    Where-Object { $_.FullName -notmatch '\\node_modules\\' -and $neverDeploy -notcontains $_.Name } |
     ForEach-Object {
       $rel  = $_.FullName.Substring($src.Length).TrimStart('\')
       $dest = Join-Path $app $rel
-      $differs = -not (Test-Path $dest) -or
+      $isNew = -not (Test-Path $dest)
+      $differs = $isNew -or
                  ((Get-FileHash $_.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $dest -Algorithm SHA256).Hash)
-      if ($differs) {
-        $changed += [pscustomobject]@{ Rel = $rel; Path = $_.FullName; New = -not (Test-Path $dest) }
-      }
+      if (-not $differs) { return }
+      # Default is UPDATES ONLY. A file absent from the box is usually repo-only (a dev helper, a
+      # harness) rather than something waiting to be deployed, so adding it is an explicit choice.
+      if ($isNew -and -not $IncludeNew) { $skippedNew += $rel; return }
+      $changed += [pscustomobject]@{ Rel = $rel; Path = $_.FullName; New = $isNew }
     }
 
+  if ($skippedNew.Count) {
+    Say ("  {0} repo-only file(s) NOT on the box - re-run with -IncludeNew to add them:" -f $skippedNew.Count) "Yellow"
+    foreach ($n in $skippedNew) { Say "      $n" }
+  }
   if (-not $changed.Count) {
     Say "  box already matches the repo - nothing to deploy." "Green"
     if (-not $NoRestart) { Say "  (no restart needed)" }

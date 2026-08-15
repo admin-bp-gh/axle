@@ -95,6 +95,55 @@ try {
     return
   }
   foreach ($c in $changed) { Say ("  {0}  {1}" -f $(if ($c.New) { "NEW " } else { "diff" }), $c.Rel) }
+
+  # --- 1b. Dependency check -------------------------------------------------------------------
+  # Added 2026-08-15, after this script took the server down. It skipped the NEW file
+  # outlook-block.js (correctly, per the -IncludeNew rule), then deployed the MODIFIED
+  # routes\admin.js that had just gained `require("../outlook-block.js")`, passed every suite (they
+  # exercise other modules and never load admin.js), restarted, and left Axle dead. The warning
+  # about repo-only files was printed several screens earlier and is easy to miss.
+  #
+  # So: every relative require in a file we are about to deploy must resolve to something that will
+  # exist on the box afterwards - either already there, or going out in this same run. Anything
+  # else stops the deploy BEFORE a single file moves, which is the only safe moment.
+  Say "`n=== 1b. Dependency check ===" "Cyan"
+  $deploying = @{}
+  foreach ($c in $changed) { $deploying[$c.Rel.Replace('\','/').ToLower()] = $true }
+  $broken = @()
+  foreach ($c in ($changed | Where-Object { $_.Rel -like "*.js" })) {
+    $text = Get-Content $c.Path -Raw
+    foreach ($m in [regex]::Matches($text, 'require\(\s*["''](\.[^"'']+)["'']\s*\)')) {
+      $req = $m.Groups[1].Value
+      # Resolve relative to the file's own folder IN THE LIVE TREE, then try the usual Node
+      # resolution order: exact, +.js, +.json, /index.js.
+      $baseDir = Split-Path (Join-Path $app $c.Rel) -Parent
+      $cand = @($req, "$req.js", "$req.json", "$req/index.js") | ForEach-Object {
+        [IO.Path]::GetFullPath((Join-Path $baseDir ($_ -replace '/','\')))
+      }
+      $ok = $false
+      foreach ($p in $cand) {
+        if (Test-Path $p) { $ok = $true; break }
+        # Only paths inside the app tree can be satisfied by this run; a require that climbs out of
+        # it (..\..\something) is left to Test-Path alone rather than mangled by Substring.
+        if ($p.StartsWith($app, [StringComparison]::OrdinalIgnoreCase)) {
+          $rel = $p.Substring($app.Length).TrimStart('\').Replace('\','/').ToLower()
+          if ($deploying.ContainsKey($rel)) { $ok = $true; break }   # arriving in this same run
+        }
+      }
+      if (-not $ok) { $broken += [pscustomobject]@{ File = $c.Rel; Requires = $req } }
+    }
+  }
+  if ($broken.Count) {
+    foreach ($b in $broken) {
+      $missing = Split-Path $b.Requires -Leaf
+      $hint = if ($skippedNew | Where-Object { (Split-Path $_ -Leaf) -like "$missing*" }) {
+        "it is in the repo-only list above - re-run with -IncludeNew, or place it by hand first"
+      } else { "it is missing from the repo as well - nothing can deploy this file" }
+      Say ("  [X] {0} requires {1} which will NOT be on the box - {2}" -f $b.File, $b.Requires, $hint) "Red"
+    }
+    throw ("{0} unmet dependency(ies) - NOTHING deployed, server untouched." -f $broken.Count)
+  }
+  Say ("  all relative requires in {0} changed file(s) resolve on the box." -f $changed.Count) "Green"
   if ($WhatIf) { Say "`n-WhatIf: stopping without changing anything." "Yellow"; return }
 
   Say "`n=== 2. Staging + placing ===" "Cyan"

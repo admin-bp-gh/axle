@@ -49,11 +49,14 @@ the wrapper + its node; `Start` relaunches from boot state.)
 > **Elevation is not optional** (learned the hard way, 2026-08-12). The task runs as the
 > low-privilege `axle` account, so from a normal shell both cmdlets fail with **"Access is
 > denied"** — a deploy will place its files, pass its tests, and then die at the restart step.
-> Start PowerShell with *Run as administrator* and use the one-liner above.
+> Either start PowerShell with *Run as administrator* and use the one-liner above, or run
+> **`C:\Admin\Projects\Axle\restart-axle.ps1`** (right-click → *Run with PowerShell*), which
+> self-elevates on one UAC prompt, polls until the server is listening again, and states plainly
+> whether the PID changed — "the command ran without error" is not the same as "it came back on new
+> code". On failure it tails `server.log` for you. `-Wait 20` allows a longer startup.
 >
-> (This paragraph used to point at `C:\Admin\Projects\Axle\restart-axle.ps1`, "which self-elevates".
-> **That script does not exist and never did** — found 2026-08-14 mid-deploy, with the server down.
-> Either write it or leave this as the elevated one-liner; do not document it again until it exists.)
+> (This paragraph pointed at that script from June onwards while **the script did not exist** —
+> found 2026-08-14 mid-deploy, with the server down. Written 2026-08-15.)
 
 > **Writing deploy scripts for Brad:** he cannot read a PowerShell window that auto-closes, and
 > `Start-Transcript` produces nothing if the script dies before it runs. Always (a) log line by
@@ -120,14 +123,18 @@ for `views\` or `routes\` lands in the app root the first time and must be moved
 > every test suite (they run the *old* tree's modules), restarted, and took the server down. The
 > warning is printed several screens above the failure, so it is easy to miss.
 >
-> After any deploy that reports repo-only files, either re-run with `-IncludeNew` or place them by
-> hand **before** restarting:
+> **Fixed at the source 2026-08-15.** `deploy.ps1` now runs a **dependency check** (step 1b) before
+> it stages anything: every relative `require()` in a file about to be deployed must resolve to
+> something that will exist on the box afterwards — already there, or going out in the same run.
+> An unmet one aborts with `NOTHING deployed, server untouched`, names the file and the missing
+> module, and says whether `-IncludeNew` would fix it. It runs under `-WhatIf` too, so a dry run
+> surfaces the problem without touching the box.
+>
+> If it does fire, either re-run with `-IncludeNew` or place the file by hand first:
 > ```powershell
 > Copy-Item C:\Admin\Projects\Axle\box-code\<new-file>.js C:\Axle\_incoming
 > C:\Axle\axle-pull.ps1
 > ```
-> Worth fixing at the source: `deploy.ps1` should refuse to restart when it has skipped a new file
-> that a deployed file requires.
 
 ## Outlook sender blocking (allow-list action #7)
 

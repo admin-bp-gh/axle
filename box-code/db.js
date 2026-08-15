@@ -208,10 +208,15 @@ ensureColumn("work_items", "pre_close_status", "TEXT");
 ensureColumn("work_items", "suggest_close", "INTEGER NOT NULL DEFAULT 0");
 
 // Blocked senders (the "ignore future marketing emails" action). Ingest checks this list
-// BEFORE rule matching and skips matching mail entirely - Axle-only suppression: the mail
-// still arrives in the shared Outlook mailbox. Patterns are derived in code from a work
+// BEFORE rule matching and skips matching mail entirely. Patterns are derived in code from a work
 // item's stored sender address (kind 'address' = exact address, kind 'domain' = '@domain'
 // suffix incl. subdomains) - never free text. Global across info@ and drachten@.
+//
+// Since 2026-08-14 this table is ALSO the source of truth for a server-side Exchange inbox rule
+// (outlook-block.js, allow-list action #7): blocking now files the sender's mail out of the Outlook
+// Inbox into the "Axle Blocked" folder, instead of Axle-only suppression that left the team still
+// staring at mail they had told Axle to ignore. The rule is rebuilt in full from these rows, so
+// this table stays authoritative and Outlook is only ever a projection of it.
 db.exec(`
 CREATE TABLE IF NOT EXISTS sender_blocks (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,6 +226,20 @@ CREATE TABLE IF NOT EXISTS sender_blocks (
   added_by     TEXT NOT NULL,
   added_at     TEXT NOT NULL DEFAULT (datetime('now')),
   work_item_id INTEGER
+);
+`);
+
+// Per-mailbox record of the last Outlook rule sync: a hash of the blocklist as written, so the
+// ingest-time reconcile can skip the write path when nothing has changed, plus the resolved folder
+// id and any warning worth showing on the /blocks page. Purely a cache - deleting a row costs one
+// extra rebuild, never correctness.
+db.exec(`
+CREATE TABLE IF NOT EXISTS sender_block_sync (
+  mailbox   TEXT PRIMARY KEY,
+  hash      TEXT,
+  folder_id TEXT,
+  synced_at TEXT,
+  note      TEXT
 );
 `);
 

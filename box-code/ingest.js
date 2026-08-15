@@ -27,6 +27,7 @@ const CF = require("./contact-form.js");
 const RN = require("./return-note.js");
 const DS = require("./doc-suggest.js");
 const OUTLOOK = require("./outlook-close.js");   // Outlook -> Axle: close what was handled in Outlook
+const OBLOCK = require("./outlook-block.js");    // Axle -> Outlook: file blocked senders out of the inbox
 const { db, audit, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 
 const arg0 = process.argv[2];
@@ -356,6 +357,25 @@ async function runBoxes(boxes, opts = {}) {
         (r.folders === 0 ? "  [!] folder lookup failed — 'moved' rule skipped this run" : ""));
     }
   }
+
+  // Axle -> Outlook: keep the blocked-sender inbox rule in step with the sender_blocks table.
+  // Normally a no-op (one DB read comparing a hash), so it costs nothing per run; it exists so a
+  // rule someone edited, disabled or deleted in Outlook heals itself, and so a block made while
+  // Graph was down is eventually applied instead of quietly never happening. Gated by
+  // AXLE_ACTION_OUTLOOK_BLOCK; no-op when off. Never throws — reported, never fatal to a sync.
+  try {
+    const rb = await OBLOCK.reconcile();
+    if (rb && rb.skipped) console.log(`Outlook-block: skipped (${rb.skipped})`);
+    else if (rb && rb.upToDate) console.log("Outlook-block: rules already in step with the blocklist");
+    else if (rb) {
+      for (const b of rb.boxes || []) {
+        if (b.error) console.log(`Outlook-block ${b.box}: ERROR ${b.error}`);
+        else console.log(`Outlook-block ${b.box}: ${b.addresses} address(es), ${b.domains} domain(s)` +
+          (b.changes.length ? " -> " + b.changes.join("; ") : " -> no change") +
+          (b.warnings.length ? "  [!] " + b.warnings.join("; ") : ""));
+      }
+    }
+  } catch (e) { console.log("Outlook-block: ERROR " + e.message); }
 }
 
 module.exports = { runBoxes };

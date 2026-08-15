@@ -49,9 +49,11 @@ the wrapper + its node; `Start` relaunches from boot state.)
 > **Elevation is not optional** (learned the hard way, 2026-08-12). The task runs as the
 > low-privilege `axle` account, so from a normal shell both cmdlets fail with **"Access is
 > denied"** — a deploy will place its files, pass its tests, and then die at the restart step.
-> Either start PowerShell with *Run as administrator*, or run
-> **`C:\Admin\Projects\Axle\restart-axle.ps1`**, which self-elevates (one UAC prompt), restarts,
-> and confirms the PID actually changed so you know new code is loaded.
+> Start PowerShell with *Run as administrator* and use the one-liner above.
+>
+> (This paragraph used to point at `C:\Admin\Projects\Axle\restart-axle.ps1`, "which self-elevates".
+> **That script does not exist and never did** — found 2026-08-14 mid-deploy, with the server down.
+> Either write it or leave this as the elevated one-liner; do not document it again until it exists.)
 
 > **Writing deploy scripts for Brad:** he cannot read a PowerShell window that auto-closes, and
 > `Start-Transcript` produces nothing if the script dies before it runs. Always (a) log line by
@@ -111,6 +113,41 @@ without touching the running server.
 One thing it cannot do for you: `axle-pull.ps1` routes by *basename*, so a brand-new file destined
 for `views\` or `routes\` lands in the app root the first time and must be moved once by hand.
 `deploy.ps1` warns when that happens.
+
+> **`deploy.ps1` skips NEW files unless you pass `-IncludeNew` — and will still deploy the modified
+> files that depend on them.** On 2026-08-14 it reported "3 repo-only file(s) NOT on the box",
+> deployed a modified `routes\admin.js` that had gained a `require("../outlook-block.js")`, passed
+> every test suite (they run the *old* tree's modules), restarted, and took the server down. The
+> warning is printed several screens above the failure, so it is easy to miss.
+>
+> After any deploy that reports repo-only files, either re-run with `-IncludeNew` or place them by
+> hand **before** restarting:
+> ```powershell
+> Copy-Item C:\Admin\Projects\Axle\box-code\<new-file>.js C:\Axle\_incoming
+> C:\Axle\axle-pull.ps1
+> ```
+> Worth fixing at the source: `deploy.ps1` should refuse to restart when it has skipped a new file
+> that a deployed file requires.
+
+## Outlook sender blocking (allow-list action #7)
+
+Blocking a sender in Axle also writes a server-side Exchange inbox rule that files their mail into
+the **Axle Blocked** folder. Source of truth is the `sender_blocks` table; the rule is rebuilt from
+it on every block/unblock and reconciled at the end of each ingest run, so editing or deleting the
+rule in Outlook is healed automatically.
+
+```powershell
+cd C:\Axle\app
+node outlook-block.js --status     # rule state, filed-message count, last sync, per mailbox
+node outlook-block.js --dry-run    # what a sync WOULD write (works even with the gate off)
+node outlook-block.js              # force a full rebuild now, instead of waiting for ingest
+```
+
+Gate: `AXLE_ACTION_OUTLOOK_BLOCK` in `C:\Axle\secrets\.env` — unset = Axle-only suppression (the
+pre-2026-08-14 behaviour), `dry` = read + report only, `on` = live. Changing it needs a restart.
+
+**Never delete the "Axle Blocked" folder in Outlook** — unblocking moves mail back out of it.
+Nothing here ever deletes a message.
 
 The manual sequence below is the same thing by hand — useful when deploying a single file or
 debugging the puller.

@@ -583,7 +583,7 @@ app.get("/item/:id", async (req, res) => {
   const closeMenu = `<details class="menu"><summary class="btn" title="${esc(t(lang, "more_actions"))}">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary><div class="menu-list">
       <form method="post" action="/item/${w.id}/status"><button name="to" value="phone"><b>${esc(t(lang, "mark_phone"))}</b><span>${esc(t(lang, "phone_tip"))}</span></button></form>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="archived"><b>${esc(t(lang, "archive"))}</b><span>${esc(t(lang, "archive_tip"))}</span></button></form>
-      ${!isCompose ? `<form method="get" action="/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, "block_tip"))}</span></button></form>` : ""}
+      ${!isCompose ? `<form method="get" action="/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, require("../outlook-block.js").active() ? "block_tip_outlook" : "block_tip"))}</span></button></form>` : ""}
     </div></details>`;
   // Bar: left cluster works the reply (Send / Save / Save & redraft — the redraft note is now the
   // button's tooltip, so the bar no longer wraps on it); right cluster closes the item.

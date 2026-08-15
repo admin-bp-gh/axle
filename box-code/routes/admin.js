@@ -2,6 +2,7 @@
 // admin-only audit viewer. Extracted VERBATIM from server.js (UI rework Step 0,
 // 2026-06-10).
 const RESOLVE = require("../resolve-customer.js"); // read-only SAP-customer check on the block page
+const OB = require("../outlook-block.js");        // Outlook-side filing of blocked senders (action #7)
 const { db, audit } = require("../db.js");
 const { esc, t, page, fmtDateTime } = require("../views/ui.js");
 const { markReadSafe } = require("./shared.js");
@@ -25,6 +26,10 @@ app.get("/item/:id/block", async (req, res) => {
   const addr = String(w.sender_email || "").trim().toLowerCase();
   const domain = addr.split("@")[1] || "";
   if (!addr || !domain) return res.redirect("/item/" + w.id);
+  // Never offer to block ourselves. With the Outlook rule live (action #7) a block on one of our
+  // own domains would file our own internal mail — including action #6's cross-mailbox handover
+  // forwards — out of the inbox. Cheap guard, catastrophic omission.
+  if (OB.isInternal(addr)) return res.redirect("/item/" + w.id);
 
   // SAP check: warn when the address belongs to a real customer (guest matches have no
   // CardCode and don't count). A SQL failure must not break the page - show "unknown".
@@ -43,7 +48,7 @@ app.get("/item/:id/block", async (req, res) => {
     <h2>${esc(t(lang, "block_title"))}</h2>
     <div class="box">
       <p><b>${esc(w.sender_name || addr)}</b> &lt;${esc(addr)}&gt;</p>
-      <p class="muted">${esc(t(lang, "block_explain"))}</p>
+      <p class="muted">${esc(t(lang, OB.active() ? "block_explain_outlook" : "block_explain"))}</p>
       ${sapNote}
       <form method="post" action="/item/${w.id}/block">
         <p><b>${esc(t(lang, "block_addr_opt"))}:</b> ${esc(addr)}</p>
@@ -71,19 +76,45 @@ app.post("/item/:id/block", async (req, res) => {
   // any more, and remain removable on the Blocked page.
   const kind = "address";
   const pattern = addr.slice(0, 200);
+  if (OB.isInternal(pattern)) return res.redirect("/item/" + w.id);   // mirrors the GET guard
   db.prepare("INSERT OR IGNORE INTO sender_blocks (pattern, kind, reason, added_by, work_item_id) VALUES (?, ?, 'unwanted sender', ?, ?)")
     .run(pattern, kind, req.user.tailscale_login, w.id);
   db.prepare("UPDATE work_items SET status = 'archived', resolution = 'no_action', updated_at = datetime('now') WHERE id = ?").run(w.id);
   audit(req.user.tailscale_login, "sender_blocked", w.id, `${pattern} (${kind})`);
   await markReadSafe(req.user.tailscale_login, w);
+  // Outlook side (action #7): rebuild the inbox rule from the table, then sweep this sender's mail
+  // already in the inbox into the "Axle Blocked" folder. DB first, mailbox second, and applyBlock
+  // never throws — a Graph failure is audited and leaves the Axle-side block standing rather than
+  // failing the whole action in the user's face.
+  await OB.applyBlock(req.user.tailscale_login, pattern, w.id);
   res.redirect("/");
 });
 
 // Blocklist viewer: visible to the whole team, unblock allowed for anyone (audited), so a
 // mistake is fixable on the spot without waiting for Brad.
-app.get("/blocks", (req, res) => {
+app.get("/blocks", async (req, res) => {
   const lang = req.user.lang;
   const rows = db.prepare("SELECT * FROM sender_blocks ORDER BY id DESC").all();
+
+  // Outlook-side status panel. Says plainly whether blocked mail is actually being filed, and how
+  // much has been - the antidote to the 2026-07-27 incident, where suppression was invisible.
+  // Best effort: any Graph trouble degrades to a note, never a broken page.
+  let olPanel = "";
+  try {
+    const st = await OB.status();
+    if (!st.enabled && !st.dry) {
+      olPanel = `<p class="muted"><b>${esc(t(lang, "blocks_ol_status"))}:</b> ${esc(t(lang, "blocks_ol_off"))}</p>`;
+    } else {
+      const bits = st.boxes.map((b) => {
+        const state = b.error ? esc(b.error)
+          : b.rule === "missing" ? esc(t(lang, "blocks_ol_missing"))
+          : `${esc(t(lang, st.dry ? "blocks_ol_dry" : "blocks_ol_on"))} &middot; ${b.count == null ? "?" : b.count} ${esc(t(lang, "blocks_ol_msgs"))}`;
+        const when = b.syncedAt ? esc(fmtDateTime(b.syncedAt, lang)) : esc(t(lang, "blocks_ol_never"));
+        return `<li>${esc(b.mailbox)} &mdash; ${state} <span class="muted">(${when})</span></li>`;
+      }).join("");
+      olPanel = `<div class="box"><p><b>${esc(t(lang, "blocks_ol_status"))}</b></p><ul>${bits}</ul></div>`;
+    }
+  } catch (e) { olPanel = ""; }
   const trs = rows.map((b) => `<tr>
       <td>${esc(b.pattern)}</td><td>${esc(b.kind)}</td><td>${esc(b.added_by)}</td>
       <td class="muted">${esc(fmtDateTime(b.added_at, lang))}</td>
@@ -92,17 +123,21 @@ app.get("/blocks", (req, res) => {
     </tr>`).join("");
   res.send(page(t(lang, "blocks_title"), req.user, `
     <h2>${esc(t(lang, "blocks_title"))}</h2>
-    <p class="muted">${esc(t(lang, "blocks_explain"))}</p>
+    <p class="muted">${esc(t(lang, OB.active() ? "blocks_explain_outlook" : "blocks_explain"))}</p>
+    ${olPanel}
     ${rows.length
       ? `<table><tr><th>${esc(t(lang, "col_sender_b"))}</th><th>${esc(t(lang, "col_kind_b"))}</th><th>${esc(t(lang, "col_by_b"))}</th><th>${esc(t(lang, "col_when_b"))}</th><th>${esc(t(lang, "col_item_b"))}</th><th></th></tr>${trs}</table>`
       : `<p class="muted">${esc(t(lang, "blocks_none"))}</p>`}`));
 });
 
-app.post("/blocks/:id/unblock", (req, res) => {
+app.post("/blocks/:id/unblock", async (req, res) => {
   const b = db.prepare("SELECT * FROM sender_blocks WHERE id = ?").get(req.params.id);
   if (b) {
     db.prepare("DELETE FROM sender_blocks WHERE id = ?").run(b.id);
     audit(req.user.tailscale_login, "sender_unblocked", b.work_item_id || null, `${b.pattern} (${b.kind})`);
+    // Rebuild the rule without this pattern and move the sender's filed mail back to the inbox.
+    // Unblocking is the fix-a-mistake path, so it has to undo the visible effect, not just the row.
+    await OB.applyUnblock(req.user.tailscale_login, b.kind === "address" ? b.pattern : null, b.work_item_id || null);
   }
   res.redirect("/blocks");
 });

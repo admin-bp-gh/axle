@@ -28,7 +28,12 @@ const RN = require("./return-note.js");
 const DS = require("./doc-suggest.js");
 const OUTLOOK = require("./outlook-close.js");   // Outlook -> Axle: close what was handled in Outlook
 const OBLOCK = require("./outlook-block.js");    // Axle -> Outlook: file blocked senders out of the inbox
+const ACK = require("./acknowledgement.js");     // no_reply courtesy line: when to keep it, and what may be in it
 const { db, audit, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
+// runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
+// never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
+// pure helpers, no express and no route registration, so this pulls in nothing web-facing.
+const { runClaim } = require("./routes/shared.js");
 
 const arg0 = process.argv[2];
 const BOXES = arg0 === "all" ? ["info", "drachten"] : arg0 === "drachten" ? ["drachten"] : ["info"];
@@ -62,13 +67,19 @@ function briefMd(seed, toolLog) {
 // and cache them on the item for instant render on the detail page. Skipped for contact-form items
 // (the sender is Shopify's mailer, not the customer) and for injection-flagged items (surface
 // nothing automatically). READ-ONLY; a failure here must never block the item.
-async function storeSuggestions(itemId, senderEmail, scanText, isContactForm, injectionSuspected, modelRefs) {
+async function storeSuggestions(itemId, senderEmail, scanText, isContactForm, injectionSuspected, modelRefs, claimScope) {
   if (isContactForm || injectionSuspected) {
     db.prepare("UPDATE work_items SET doc_suggestions_json = NULL WHERE id = ?").run(itemId);
     return;
   }
   try {
-    const sugg = await DS.suggestForEmail(senderEmail, scanText, { extraRefs: modelRefs || [] });
+    // Carrier claim: the sender is MyParcel, so scoping to the sender's customer resolves to
+    // nobody and files every correct document under "different customer" (what item 1316 did).
+    // The scope becomes the customer on the order that the shipment's OWN label names - our data,
+    // not the email's. Same resolve-and-classify path either way; only the scope differs.
+    const sugg = claimScope && claimScope.cardCode
+      ? await DS.buildSuggestions(scanText, claimScope, { extraRefs: modelRefs || [] })
+      : await DS.suggestForEmail(senderEmail, scanText, { extraRefs: modelRefs || [] });
     db.prepare("UPDATE work_items SET doc_suggestions_json = ? WHERE id = ?").run(JSON.stringify(sugg), itemId);
     if (sugg.length) {
       audit("system", "doc_suggestions", itemId,
@@ -166,7 +177,7 @@ async function processThread(anthropic, key, msgs, ctx) {
     `UPDATE work_items SET subject = ?, language = ?, intent = ?, priority = ?, summary = ?,
      injection_flag = ?, latest_message_id = ?, rule_id = ?, owner = ?,
      email_text = ?, email_received = ?, attachments_json = ?, status = 'new',
-     suggest_close = 0, resolution = NULL, pre_close_status = NULL,
+     suggest_close = 0, ack_draft = 0, resolution = NULL, pre_close_status = NULL,
      updated_at = datetime('now') WHERE id = ?`
   ).run(
     email.subject, cls.language, cls.intent, PRIO[cls.priority] || 2, cls.summary,
@@ -232,6 +243,19 @@ async function processThread(anthropic, key, msgs, ctx) {
     : result.status === "no_reply" ? "new"
     : "awaiting_input";
   const suggestClose = result.status === "no_reply" ? 1 : 0;
+
+  // ACKNOWLEDGEMENT (2026-08-15, item 1308). A no_reply draft is a courtesy line, offered only when
+  // we were actually in this exchange and only when the text really is just good manners — see
+  // acknowledgement.js for both tests. Failing either drops the draft, which is exactly the old
+  // behaviour: no draft, "No reply needed?", the human closes the item.
+  const isReopen = !!existing;
+  const priorSends = db.prepare("SELECT COUNT(*) AS n FROM sends WHERE work_item_id = ? AND status = 'sent'").get(itemId).n;
+  const ackDraft = suggestClose && ACK.keepAcknowledgement(result.draft, { isReopen, priorSends }) ? 1 : 0;
+  if (suggestClose && !ackDraft && result.draft) {
+    audit("system", "ack_dropped", itemId,
+      ACK.shouldAcknowledge({ isReopen, priorSends }) ? "not a courtesy-only line" : "no prior exchange");
+    result.draft = "";
+  }
   const injection = cls.injection_suspected || result.injection_suspected ? 1 : 0;
   // The DETECTED customer language (classifier) is authoritative — it drives the translation
   // panel and is de/fr/es-aware. The draft step only emits nl|en, so never let it downgrade a
@@ -239,9 +263,9 @@ async function processThread(anthropic, key, msgs, ctx) {
   // classifier was unsure ('other').
   const detectedLang = cls.language && cls.language !== "other" ? cls.language : (result.language || "en");
   db.prepare(
-    `UPDATE work_items SET status = ?, suggest_close = ?, language = ?, confidence = ?, injection_flag = ?,
+    `UPDATE work_items SET status = ?, suggest_close = ?, ack_draft = ?, language = ?, confidence = ?, injection_flag = ?,
      brief_md = ?, draft_edit = NULL, updated_at = datetime('now') WHERE id = ?`
-  ).run(status, suggestClose, detectedLang, result.confidence, injection, briefMd(seed, toolLog), itemId);
+  ).run(status, suggestClose, ackDraft, detectedLang, result.confidence, injection, briefMd(seed, toolLog), itemId);
 
   const ver = (db.prepare("SELECT MAX(version) AS v FROM drafts WHERE work_item_id = ?").get(itemId).v || 0) + 1;
   if (result.draft) {
@@ -269,7 +293,16 @@ async function processThread(anthropic, key, msgs, ctx) {
   for (const q of result.questions_for_salesperson || []) addQ("blocking", q);
   for (const q of result.physical_checks || []) addQ("physical", q);
 
-  await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, !!injection, result.referenced_documents);
+  // Carrier claim (step 4): detect, assemble the dossier, and stage the sales invoice + the
+  // purchase-value statement on the draft. Read-only against every business system; staging sits
+  // behind the same Send approval as a hand-attached file. Gated by AXLE_ACTION_CLAIM_AUTOATTACH.
+  // Runs AFTER the draft so a claim reply is written with the dossier in the model's context, and
+  // its result also re-scopes the document suggestions below.
+  const claimScope = await runClaim(itemId, {
+    senderAddress: email.from.address, subject: email.subject, text: email.text,
+  }, result.language);
+
+  await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, !!injection, result.referenced_documents, claimScope);
 
   audit("system", "item_drafted", itemId, `status=${status}${suggestClose ? " suggest_close" : ""} v=${ver} tools=${toolLog.length} inj=${injection}`);
   return { itemId, status, drafted: Boolean(result.draft || result.interim_draft), threadLen: msgs.length, tools: toolLog.length };

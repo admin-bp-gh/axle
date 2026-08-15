@@ -14,9 +14,10 @@ const RSET = require("../recipient-set.js");       // the single definition of a
 const FG = require("../forward-guard.js");         // handover forward: deterministic internal-only guardrails
 const FWD = require("../forward.js");              // handover forward: the Graph call (Mail.Send)
 const SG = require("../send-guard.js");            // only for needsConfirmedRecipient (the UI mirror of the send refusal)
+const DS = require("../draft-staleness.js");       // is the newest stored draft still this email's draft?
 const { db, audit } = require("../db.js");
 const { esc, t, page, linkify, splitQuoted, fmtSize, renderAttachments, renderMail,
-        fmtDateTime, statusWithRes, intentLabel, kindLabel, langDisplay, ownerLabel,
+        fmtDateTime, statusWithRes, suggestCloseChip, intentLabel, kindLabel, langDisplay, ownerLabel,
         ownerChoices, chipMenu, renderTimeline, workPanes, shell, lazyQueue } = require("../views/ui.js");
 const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
         isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment } = require("./shared.js");
@@ -250,7 +251,16 @@ app.get("/item/:id", async (req, res) => {
   // AI reference drafts (source='ai'); human-sent drafts are kept separately for the audit
   // trail and must not be shown as "the AI draft".
   const fullRow = db.prepare("SELECT * FROM drafts WHERE work_item_id = ? AND is_interim = 0 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
-  const interim = db.prepare("SELECT * FROM drafts WHERE work_item_id = ? AND is_interim = 1 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
+  const interimRow = db.prepare("SELECT * FROM drafts WHERE work_item_id = ? AND is_interim = 1 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
+
+  // A DRAFT WRITTEN BEFORE THE CURRENT EMAIL ARRIVED IS NOT THIS EMAIL'S DRAFT (2026-08-15, item
+  // 1308). The item reopens on each new message in the thread, but a run that writes no draft row —
+  // a no_reply outcome (suggest_close), or a run that errored — leaves the PREVIOUS round's draft as
+  // the newest, and the queries above then present it as the current reply. See draft-staleness.js
+  // for the full case and the reasoning behind the test.
+  const fullStale = DS.isSupersededDraft(w, fullRow);
+  const interimStale = DS.isSupersededDraft(w, interimRow);
+  const interim = interimStale ? null : interimRow;
 
   // HELD ITEMS MUST NOT OFFER A SUPERSEDED DRAFT (2026-08-12, found live-verifying item 1249).
   // When a run holds the reply it emits no full draft, so ingest inserts no row — and this query
@@ -267,7 +277,10 @@ app.get("/item/:id", async (req, res) => {
   // written to be safe to send exactly as-is. A human's own saved edit (draft_edit) always wins;
   // that is their text, not ours.
   const held = w.status === "awaiting_input" && !!fullRow;
-  const full = held ? null : fullRow;
+  const full = (held || fullStale) ? null : fullRow;
+  // The dropped draft is still worth seeing — it is the research from the previous round — but only
+  // as read-only history, clearly labelled and out of the send path. Held drafts stay hidden (above).
+  const supersededRow = fullStale ? fullRow : (interimStale ? interimRow : null);
   // Withdrawn drafts (source='withdrawn') are still recorded for the audit trail, but they are
   // NOT shown: a red "withdrawn" card next to a perfectly good reply reads as breakage rather
   // than as care. The reply the salesperson sees is simply the current, safe one.
@@ -390,8 +403,7 @@ app.get("/item/:id", async (req, res) => {
     isCompose ? `<span class="chip origin">${esc(t(lang, "compose_origin_chip"))}</span>` : "",
     isContactForm ? `<span class="chip origin">${esc(t(lang, "contactform_chip"))}</span>` : "",
     `<span class="chip s-${esc(w.status)}">${esc(statusWithRes(lang, w))}</span>`,
-    w.suggest_close && w.status !== "done" && w.status !== "archived"
-      ? `<span class="chip sugg" title="${esc(t(lang, "suggest_close_title"))}">${esc(t(lang, "suggest_close_chip"))}</span>` : "",
+    suggestCloseChip(lang, w),
     `<span class="chip p${w.priority || 2}">${esc(t(lang, "priority"))} ${w.priority || 2}</span>`,
     w.injection_flag ? `<span class="chip inj">${esc(t(lang, "injection_chip"))}</span>` : "",
     isCompose
@@ -461,6 +473,16 @@ app.get("/item/:id", async (req, res) => {
     <div id="attlist">${attRowsHtml}</div>
     <p class="muted attnote">${esc(t(lang, "attach_hint"))} ${esc(t(lang, "drop_hint"))}. ${esc(t(lang, "paste_hint"))} ${esc(t(lang, "paste_hint_inline"))}</p>
     <input type="file" id="att_file" multiple></div>`;
+
+  // The previous round's draft, collapsed. Plain <details> — no JS, no interpolated strings in
+  // attributes. It sits outside the work form, so its text can never be posted or sent.
+  const supersededCard = supersededRow ? `<div class="box">
+    <details class="fold prevdraft">
+      <summary>${esc(t(lang, "prev_draft_summary"))}</summary>
+      <p class="muted trnote">${esc(t(lang, "prev_draft_hint"))}</p>
+      <textarea class="draft" readonly>${esc(supersededRow.body)}</textarea>
+    </details>
+  </div>` : "";
 
   // The work form (state-driven order, F8): when answers block progress the questions
   // card leads; otherwise the reply leads and questions sit collapsed beneath. The
@@ -769,6 +791,7 @@ app.get("/item/:id", async (req, res) => {
 
     ${busy && !full && !interim ? `<div class="box"><span class="muted">${esc(t(lang, "no_draft_busy"))}</span></div>` : ""}
     ${workSection}
+    ${supersededCard}
     ${actionBar}
     <script>
     // Reset the editable reply to the original AI draft (the hidden, name-less seed).

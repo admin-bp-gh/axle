@@ -11,7 +11,7 @@ const INGEST = require("../ingest.js");
 const TR = require("../translate.js");
 const SCEN = require("../scenarios.js");
 const { db, audit, acquireSync, releaseSync, syncStatus } = require("../db.js");
-const { esc, t, page, langOK, statusLabel, statusWithRes, intentLabel, ownerLabel,
+const { esc, t, page, langOK, statusLabel, statusWithRes, suggestCloseChip, intentLabel, ownerLabel,
         fmtDateTime, fmtTime, parseTS, shell, workPanes } = require("../views/ui.js");
 const { anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, defaultMailbox } = require("./shared.js");
 
@@ -140,8 +140,7 @@ async function buildQueuePane(req, opts) {
   const stateChip = (w) => w.injection_flag
     ? `<span class="chip inj">${esc(t(lang, "check"))}</span>`
     : `<span class="chip s-${esc(w.status)}">${esc(statusWithRes(lang, w))}</span>`
-      + (w.suggest_close && w.status !== "done" && w.status !== "archived"
-        ? ` <span class="chip sugg" title="${esc(t(lang, "suggest_close_title"))}">${esc(t(lang, "suggest_close_chip"))}</span>` : "");
+      + (suggestCloseChip(lang, w) ? " " + suggestCloseChip(lang, w) : "");
   const sumLine = (w) => `<span${sumPending.has(w.id) ? ` data-trs="${w.id}"` : ""}>${esc(sumOf(w))}</span>`
     + (w.caller_info ? `${sumOf(w) ? " &middot; " : ""}&#128222; ${esc(w.caller_info)}` : "");
   // Card-rows: plain links (work without JS); htmx upgrades a click to swap the

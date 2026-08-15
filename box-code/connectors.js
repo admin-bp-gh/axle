@@ -935,6 +935,10 @@ function mpShipment(s) {
     signature: mpFlag(o.signature), only_recipient: mpFlag(o.only_recipient),
     return_if_not_home: mpFlag(o.return), age_check: mpFlag(o.age_check),
     insurance_eur: o.insurance && o.insurance.amount ? o.insurance.amount / 100 : undefined,
+    // Declared parcel weight in grams. Added 2026-08-15 for carrier claims: on a lost-parcel
+    // investigation the weight is evidence about what was in the box, and it was the one field
+    // the claim brief wanted that this mapper did not carry.
+    weight_g: (s.physical_properties && s.physical_properties.weight) || undefined,
     recipient: {
       person: r.person, company: r.company || undefined,
       street: [r.street, r.number, r.number_suffix].filter(Boolean).join(" ") || undefined,
@@ -1247,6 +1251,195 @@ async function returnDossier(orderRef, opts = {}) {
   };
 }
 
+// ---------- Claim dossier: everything MyParcel's investigation needs, in one call ----------
+// The carrier-claim counterpart of returnDossier. Given a BARCODE (never an order number the
+// email asserts — see carrier-claim.js for why), it resolves our own shipment, then assembles
+// what MyParcel asks for every time: the sales invoice to attach, the purchase value of the
+// goods, a contents description, and the parcel's own facts.
+//
+// The purchase value is taken from INV1.StockPrice — the cost of goods SAP booked against that
+// AR invoice line. That is deliberate and it is the heart of the design. It is the cost of the
+// units that actually went in the box, it exists for every line including parts bought years ago
+// with no traceable supplier invoice, and it is what our own books say those goods were worth.
+// A "last purchase price" would be a different, later number for anything restocked since (four
+// of order 227148's eight lines were bought again AFTER the parcel shipped), and two of its
+// lines have no purchase record at all.
+//
+// The supplier invoice behind each line is carried as PROVENANCE only — the most recent purchase
+// on or before the invoice date, so it can plausibly be the goods that shipped. It is shown in
+// the statement as a reference; the supplier's own PDF is never sent (it lists unrelated parts
+// and our whole cost base, which the team has refused before, correctly).
+//
+// READ-ONLY: one MyParcel read plus SAP SELECTs. Writes nothing, renders nothing, sends nothing.
+async function claimDossier(barcode, opts = {}) {
+  const CC = require("./carrier-claim.js");
+  const raw = String(barcode || "").trim().toUpperCase();
+  if (!raw) return { barcode: raw, found: false, note: "no barcode supplied" };
+
+  // Dependencies are injectable so the suite can drive real SAP/MyParcel shapes without either
+  // system. They default to the live ones; nothing but a test ever passes opts.deps.
+  const deps = opts.deps || {};
+  const mpSearch = deps.myparcelSearch || myparcelSearch;
+
+  // 1. Our own shipment. No shipment, no dossier — there is no looser fallback by design.
+  const shipment = await CC.resolveShipment(raw, { myparcelSearch: mpSearch });
+  if (!shipment) {
+    return {
+      barcode: raw, found: false,
+      note: "This barcode is not one of our MyParcel shipments (Gouda or Drachten), so no order, invoice or value can be established for it. Do not attach anything; ask the salesperson to check the barcode.",
+    };
+  }
+
+  const pool = deps.pool || await getPool();
+  const orderNums = shipment.sap_order_numbers.slice(0, 5).map((n) => parseInt(n, 10)).filter(Boolean);
+  const notes = [];
+
+  // 2. The SAP order(s) named on the label, and the AR invoice(s) copied from them. The invoice
+  //    is linked structurally (INV1.BaseEntry -> ORDR.DocEntry, BaseType 17), not guessed at by
+  //    matching totals: on a claim we are asserting to an insurer which document covers which
+  //    parcel, so the link has to be the real one.
+  let orders = [], invoices = [];
+  if (orderNums.length) {
+    const req = pool.request();
+    const ph = orderNums.map((n, i) => { req.input("o" + i, sql.Int, n); return "@o" + i; });
+    const r = await req.query(
+      `SELECT T0."DocEntry", T0."DocNum", T0."CardCode", T0."CardName", T0."DocDate",
+              T0."DocTotal", T0."U_Paid", T0."NumAtCard"
+       FROM ORDR T0 WHERE T0."DocNum" IN (${ph.join(",")})`);
+    orders = r.recordset;
+
+    if (orders.length) {
+      const req2 = pool.request();
+      const ph2 = orders.map((o, i) => { req2.input("e" + i, sql.Int, o.DocEntry); return "@e" + i; });
+      const r2 = await req2.query(
+        `SELECT DISTINCT T2."DocEntry", T2."DocNum", T2."DocDate", T2."DocTotal", T2."DocCur",
+                T2."CardCode", T2."CardName", T1."BaseEntry"
+         FROM INV1 T1 JOIN OINV T2 ON T2."DocEntry" = T1."DocEntry"
+         WHERE T1."BaseType" = 17 AND T1."BaseEntry" IN (${ph2.join(",")}) AND T2."CANCELED" = 'N'`);
+      invoices = r2.recordset;
+    }
+  }
+  if (!orderNums.length) notes.push("The shipment label carries no SAP order number, so no invoice could be linked.");
+  else if (!orders.length) notes.push("The order number on the label matches no SAP order.");
+  else if (!invoices.length) notes.push("No AR invoice was copied from this order, so the goods were never invoiced. Check with the salesperson before answering the claim.");
+
+  // 3. Contents + purchase value, per invoice line.
+  let contents = [], goodsExclVat = 0, purchaseValue = 0;
+  if (invoices.length) {
+    const req = pool.request();
+    const ph = invoices.map((v, i) => { req.input("i" + i, sql.Int, v.DocEntry); return "@i" + i; });
+    const r = await req.query(
+      `SELECT T1."DocEntry", T1."LineNum", T1."ItemCode", T1."Dscription", T1."Quantity",
+              T1."Price", T1."LineTotal", T1."StockPrice",
+              T2."U_Quality", T2."U_Tag_Cat",
+              COALESCE(NULLIF(T2."U_Code_AllMakes",''), NULLIF(T2."U_Code_BritPart",''),
+                       NULLIF(T2."U_Code_Hotbray",''), NULLIF(T2."U_WS_LRNo",''), T1."ItemCode") AS "CustCode"
+       FROM INV1 T1 LEFT JOIN OITM T2 ON T2."ItemCode" = T1."ItemCode"
+       WHERE T1."DocEntry" IN (${ph.join(",")}) ORDER BY T1."DocEntry", T1."LineNum"`);
+
+    // Provenance: the most recent A/P purchase of each item on or before the invoice date.
+    const codes = [...new Set(r.recordset.map((x) => x.ItemCode).filter(Boolean))].slice(0, 40);
+    const invDate = invoices[0].DocDate;
+    let sourceByCode = {};
+    if (codes.length) {
+      const rq = pool.request();
+      rq.input("cut", sql.DateTime, new Date(invDate));
+      const cph = codes.map((c, i) => { rq.input("c" + i, sql.NVarChar, c); return "@c" + i; });
+      const rs = await rq.query(
+        `SELECT X."ItemCode", X."DocNum", X."DocDate", X."CardName", X."NumAtCard", X."Price" FROM (
+           SELECT P1."ItemCode", P0."DocNum", P0."DocDate", P0."CardName", P0."NumAtCard", P1."Price",
+                  ROW_NUMBER() OVER (PARTITION BY P1."ItemCode" ORDER BY P0."DocDate" DESC, P0."DocNum" DESC) AS rn
+           FROM OPCH P0 JOIN PCH1 P1 ON P1."DocEntry" = P0."DocEntry"
+           WHERE P0."CANCELED" = 'N' AND P0."DocDate" <= @cut AND P1."ItemCode" IN (${cph.join(",")})
+         ) X WHERE X.rn = 1`);
+      for (const row of rs.recordset) sourceByCode[row.ItemCode] = row;
+    }
+
+    for (const l of r.recordset) {
+      const src = sourceByCode[l.ItemCode] || null;
+      const lineCost = round2((l.Quantity || 0) * (l.StockPrice || 0));
+      goodsExclVat = round2(goodsExclVat + (l.LineTotal || 0));
+      purchaseValue = round2(purchaseValue + lineCost);
+      if (!src) notes.push(`No purchase record on or before the invoice date for ${l.ItemCode}. Its cost is taken from SAP's booked stock value.`);
+      contents.push({
+        item_code: l.ItemCode,
+        customer_code: l.CustCode,          // the code a catalogue shows — use THIS in the description
+        description: l.Dscription,
+        quality: l.U_Quality || null,       // Genuine | OEM | Aftermarket — the "brand" MyParcel asks for
+        category: l.U_Tag_Cat || null,
+        quantity: l.Quantity,
+        unit_price_excl_vat: l.Price,
+        line_total_excl_vat: l.LineTotal,
+        unit_purchase_cost: l.StockPrice,
+        line_purchase_cost: lineCost,
+        purchase_source: src ? {
+          supplier: src.CardName, supplier_invoice: src.NumAtCard,
+          our_ap_docnum: src.DocNum, date: src.DocDate, unit_price: src.Price,
+        } : null,
+      });
+    }
+  }
+
+  // 4. The insurance question, answered rather than raised. MyParcel pays out at 100% of the
+  //    PURCHASE value, not the sales value — so the comparison that matters is cover against
+  //    cost, and comparing cover against the invoice total (the intuitive move) overstates any
+  //    shortfall. Both are returned so the brief can say so plainly.
+  const insured = shipment.insurance_eur != null ? Number(shipment.insurance_eur) : null;
+  const salesTotal = invoices.length ? round2(invoices.reduce((a, v) => a + (v.DocTotal || 0), 0)) : null;
+  const insurance = {
+    insured_eur: insured,
+    purchase_value_eur: purchaseValue || null,
+    sales_value_excl_vat_eur: goodsExclVat || null,
+    invoice_total_eur: salesTotal,
+    payout_basis: "MyParcel pays out at 100% of the PURCHASE value, so cover is judged against purchase value, not the invoice total.",
+    covers_purchase_value: insured == null || !purchaseValue ? null : insured >= purchaseValue,
+    shortfall_eur: insured == null || !purchaseValue ? null : round2(Math.max(0, purchaseValue - insured)),
+  };
+
+  return {
+    barcode: raw,
+    found: true,
+    shipment: {
+      shipment_id: shipment.shipment_id, shop: shipment.shop, carrier: shipment.carrier,
+      status: shipment.status, created: shipment.created, reference: shipment.reference,
+      weight_g: shipment.weight_g, recipient: shipment.recipient,
+    },
+    scope: { sap_order_numbers: shipment.sap_order_numbers, shopify_order_names: shipment.shopify_order_names },
+    orders: orders.map((o) => ({
+      doc_num: o.DocNum, doc_date: o.DocDate, card_code: o.CardCode, card_name: o.CardName,
+      order_total: o.DocTotal, shopify_name: o.NumAtCard,
+    })),
+    // The verkoopfactuur: this is the document to attach, and the ONLY one resolved from SAP.
+    sales_invoices: invoices.map((v) => ({
+      doc_num: v.DocNum, date: v.DocDate, total: v.DocTotal, currency: v.DocCur || "EUR",
+      card_code: v.CardCode, card_name: v.CardName,
+    })),
+    contents,
+    purchase_value: purchaseValue ? {
+      total_eur: purchaseValue,
+      basis: "SAP booked cost of goods (INV1.StockPrice) on the AR invoice for this shipment.",
+    } : null,
+    insurance,
+    // Our standard answer to MyParcel's "uiterlijke kenmerken" question. Supplied in BOTH
+    // languages, and to be used verbatim: it is the same sentence on every claim, and left in
+    // English the model re-translated it each time (2026-08-15: "bruin kartonnen doos", missing
+    // the adjective inflection). Anything beyond this - a non-standard box, extra stickers - is a
+    // salesperson question, never an assumption.
+    parcel_appearance: {
+      nl: "Bruine kartonnen doos, afgesloten met Budget Parts-tape.",
+      en: "Brown cardboard box, sealed with Budget Parts branded tape.",
+    },
+    notes,
+    note: "Read-only. Attach the sales invoice and the generated purchase-value statement; NEVER a supplier's own invoice. Anything not listed here (extra stickers, a non-standard box, product photos) is a salesperson question, not an assumption.",
+  };
+}
+
+// Applied to every line AND cumulatively to the running total, which is what keeps the figure we
+// quote an insurer clean: the eight lines of order 227148 sum to 74.51000000000002 if you only
+// round at the end. See the note on money() in claim-statement.js for why there is no epsilon
+// here - the values arrive from SAP at 2dp, and this rounds away the noise from qty x price.
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
 // ---------- Entity extraction (part numbers, order numbers) ----------
 function extractEntities(text) {
   const partNumbers = [...new Set((text.match(/\b(?:[A-Z]{2,3}\d{6}[A-Z]?|\d{2}[A-Z]\d{4,5}[A-Z]?)\b/g) || []))];
@@ -1264,6 +1457,7 @@ module.exports = {
   myparcelSearch, myparcelTrack, extractEntities, shopifyGraphql,
   extractPhoneNumbers, findCustomerByPhone,
   returnDossier, whoPaysForReason, businessSignal, electricalHint, refundRoute,
+  claimDossier,
 };
 
 

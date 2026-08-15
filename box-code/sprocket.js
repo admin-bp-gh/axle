@@ -64,6 +64,12 @@ function allowList(env = process.env) {
     { key: "compose_send",     enabled: env.AXLE_ACTION_COMPOSE_SEND === "on",     gated: true,  label: "Send a brand-new email (#3)" },
     { key: "contactform_send", enabled: env.AXLE_ACTION_CONTACTFORM_SEND === "on", gated: true,  label: "Send a contact-form reply (#4)" },
     { key: "outlook_close",    enabled: env.AXLE_ACTION_OUTLOOK_CLOSE === "on",    gated: true,  label: "Close an item handled in Outlook (#5)" },
+    // Carrier claims: stage the sales invoice + purchase-value statement on a MyParcel claim
+    // draft. Draft-only like attach_doc (it cannot send), but automatic rather than human-
+    // initiated, so it is gated. 'dry' counts as NOT enabled - it stages nothing, and telling
+    // the team otherwise is exactly the "describe a disabled action as available" failure the
+    // allow-list awareness rule exists to prevent.
+    { key: "claim_autoattach", enabled: env.AXLE_ACTION_CLAIM_AUTOATTACH === "on", gated: true,  label: "Attach the invoice + purchase-value statement on a carrier claim (draft-only)" },
   ];
 }
 

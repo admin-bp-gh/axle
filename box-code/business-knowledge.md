@@ -292,9 +292,11 @@
 - Master-data changes (email address, delivery address): done on request, no verification
   step. The change itself is a salesperson action until Axle has write access - draft the
   confirmation and list "update in SAP/Shopify" as an explicit to-do.
-- Attachments (invoice copies, credit notes, payment requests): Axle cannot attach files.
-  Draft the reply and prompt the salesperson to attach the required document(s) before
-  sending, naming the exact document ("attach invoice 426123 from SAP").
+- Attachments (invoice copies, credit notes, payment requests): Axle CAN attach the standard
+  SAP/Boyum print PDF of an existing document. Name the document by number in the draft and put
+  it in referenced_documents; Axle re-validates the number against SAP and against this email's
+  customer, then offers or stages it for the salesperson to approve. Axle never creates a SAP
+  document, and nothing is attached or sent without a human clicking.
 
 ## Quotes, sourcing & can't-supply
 - Prices are ALWAYS quoted excl. VAT, and stated as such ("excl. VAT" / "ex btw") - B2B and
@@ -347,6 +349,38 @@
 - Paid express that arrived late (e.g. UPS Express): we DO refund the shipping cost to the
   customer. Whether we claim it back from the carrier is our internal decision - never
   discuss that with the customer.
+
+## Carrier claims (MyParcel) - lost or damaged parcels
+- These emails come FROM the carrier (info@myparcel.nl), not from a customer. The reader is
+  MyParcel's customer-service agent, who is opening an investigation ("onderzoek") with the
+  carrier's Lost & Found depot on our behalf. Write to them as a supplier we work with:
+  businesslike, complete, no customer-service warmth and no apology - we are the claimant.
+- Reply in the language MyParcel wrote in (in practice Dutch).
+- What MyParcel asks for, every time (their standard list):
+  1. Verkoopfactuur - the AR invoice, as proof of the goods sent.
+  2. Inkoopfactuur - proof of purchase value; a payout is made at 100% of PURCHASE value,
+     which is why they insist on it.
+  3. Uiterlijke kenmerken van het pakket - box colour, tape, stickers, other distinguishing marks.
+  4. Gedetailleerde beschrijving van de inhoud - brand, type/part number, description, quantity.
+  5. A photo of the product, e.g. a screenshot of the webshop page.
+- Never send a supplier's own purchase invoice. It lists many parts that have nothing to do with
+  this parcel and exposes our whole cost base. The team has refused this before, correctly
+  ("inkoopfactuur kan ik niet sturen omdat hier meerdere onderdelen op staan die niet gericht
+  zijn naar deze klant"). Send the purchase-value statement Axle produces instead: it covers
+  exactly the parcel's lines, with our purchase price, supplier and supplier invoice reference
+  per item. If MyParcel insists on the underlying document, that is a decision for Brad.
+- Our outward-appearance answer is standard: a brown cardboard box, sealed with Budget Parts
+  branded tape. Say that; anything beyond it (a specific box size, extra stickers, black
+  stretch wrap) is a salesperson question, never an assumption.
+- Where an item genuinely has no purchase record, say so plainly for that line rather than
+  leaving a gap or estimating a cost.
+- Check the insured amount against the invoice value and raise a shortfall as a salesperson
+  question - never negotiate cover or accept a payout figure in a draft.
+- CLOSING LINE: close by offering anything further and asking their timescale, e.g. EN "Let us
+  know if you need anything further, and how long you expect the processing to take." / NL "Laat
+  het ons weten als je nog iets nodig hebt, en hoe lang de verwerking naar verwachting duurt."
+  Do NOT ask what the next step in the investigation is ("wat de volgende stap is in het
+  onderzoek") - they have just told us, and it reads as though we were not listening.
 
 ## Vendor solicitations ("people selling us things")
 - Do NOT draft replies - replying invites more spam. Ask the salesperson to confirm it is

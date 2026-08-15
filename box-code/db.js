@@ -175,6 +175,14 @@ ensureColumn("work_items", "return_json", "TEXT");
 // actual attach re-renders live from SAP via /attach-doc behind the approval gate.
 ensureColumn("work_items", "doc_suggestions_json", "TEXT");
 
+// Carrier claims (MyParcel lost/damaged parcel). The resolved claim for this item: the detection
+// result, the assembled dossier (shipment, order, sales invoice, contents, purchase value,
+// insurance) and what was staged on the draft. The scope of a claim reply is the order that the
+// barcode resolves to in OUR MyParcel account - never anything the email asserts - so this column
+// records the derivation as well as the answer. Display + brief only; every document is
+// re-resolved live from SAP before it is rendered.
+ensureColumn("work_items", "claim_json", "TEXT");
+
 // Per-user work-queue label for the inbox "Assigned to me" filter. Matched against
 // work_items.owner (the routing-rule owner). Falls back to display_name when NULL, so a
 // user whose display_name already equals their owner label (e.g. "Jack") needs no setup.
@@ -206,6 +214,12 @@ ensureColumn("work_items", "pre_close_status", "TEXT");
 // existing Done control — never an autonomous close (threat-model T13). Reset on every
 // new inbound and re-set per the latest engine result on each (re)draft.
 ensureColumn("work_items", "suggest_close", "INTEGER NOT NULL DEFAULT 0");
+
+// The draft on a suggest_close item is a COURTESY line, not an answer (see acknowledgement.js).
+// Only the chip label depends on this — "Just acknowledge?" instead of "No reply needed?", so the
+// send box holding text does not contradict the chip beside it. Set with suggest_close on each
+// (re)draft, cleared on every new inbound.
+ensureColumn("work_items", "ack_draft", "INTEGER NOT NULL DEFAULT 0");
 
 // Blocked senders (the "ignore future marketing emails" action). Ingest checks this list
 // BEFORE rule matching and skips matching mail entirely. Patterns are derived in code from a work

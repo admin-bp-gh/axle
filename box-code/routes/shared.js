@@ -11,6 +11,11 @@ const SEND = require("../send.js");
 const COMPOSE = require("../compose.js");          // Compose: compose-mode engine
 const SCEN = require("../scenarios.js");           // Compose: scenario library
 const DOCSUGGEST = require("../doc-suggest.js");   // Auto-attach: read-only resolve + scope filter
+const ACK = require("../acknowledgement.js");      // no_reply courtesy line: when to keep it, and what may be in it
+const CA = require("../claim-attach.js");          // carrier claims: stage the invoice + purchase-value statement
+const CS = require("../claim-statement.js");       // the generated purchase-value statement
+const SAPDOC = require("../sap-doc-pdf.js");       // read-only Boyum print renderer
+const C = require("../connectors.js");             // MyParcel + SAP reads for the claim dossier
 const { db, audit } = require("../db.js");
 const { t, fmtSize } = require("../views/ui.js");
 
@@ -33,10 +38,18 @@ function persistResult(itemId, result, toolLog, seed) {
     : result.status === "no_reply" ? "new"    // no reply warranted - suggest close, human confirms
     : "awaiting_input";
   const suggestClose = result.status === "no_reply" ? 1 : 0;
+  // Acknowledgement (mirrors ingest.js; see acknowledgement.js). A redraft is always a human
+  // deliberately asking Axle to have another go at an item that already exists, so the "were we in
+  // this exchange" half is satisfied by definition - only the content check remains.
+  const ackDraft = suggestClose && ACK.keepAcknowledgement(result.draft, { isReopen: true }) ? 1 : 0;
+  if (suggestClose && !ackDraft && result.draft) {
+    audit("system", "ack_dropped", itemId, "not a courtesy-only line");
+    result.draft = "";
+  }
   // A fresh AI draft supersedes any earlier human edit - clear draft_edit so the new draft shows.
   db.prepare(
-    `UPDATE work_items SET status = ?, suggest_close = ?, confidence = ?, brief_md = ?, draft_edit = NULL, updated_at = datetime('now') WHERE id = ?`
-  ).run(status, suggestClose, result.confidence, [
+    `UPDATE work_items SET status = ?, suggest_close = ?, ack_draft = ?, confidence = ?, brief_md = ?, draft_edit = NULL, updated_at = datetime('now') WHERE id = ?`
+  ).run(status, suggestClose, ackDraft, result.confidence, [
     `## Investigation (${toolLog.length} tool calls)`,
     toolLog.map((t) => `- ${t.ok ? "OK" : "FAIL"} ${t.tool} - ${t.purpose}\n  ${t.input.replace(/\s+/g, " ").slice(0, 160)}`).join("\n") || "- none",
     "",
@@ -154,7 +167,15 @@ async function runRedraft(itemId, login) {
     // (read-only; same deterministic resolve+scope gate). Skipped for contact-form/flagged items.
     try {
       if (!isContactFormItem(w) && !w.injection_flag && !result.injection_suspected) {
-        const sugg = await DOCSUGGEST.suggestForEmail(w.sender_email, w.email_text || "", { extraRefs: result.referenced_documents || [] });
+        // Carrier claim: detect, assemble and stage on THIS path too, then scope the suggestions
+        // to the order the shipment's own label names. Reading a previously-stored claim would not
+        // do: on a redraft the item may never have been through ingest's claim path at all.
+        const claimScope = await runClaim(itemId, {
+          senderAddress: w.sender_email, subject: w.subject, text: w.email_text || "",
+        }, result.language);
+        const sugg = claimScope
+          ? await DOCSUGGEST.buildSuggestions(w.email_text || "", claimScope, { extraRefs: result.referenced_documents || [] })
+          : await DOCSUGGEST.suggestForEmail(w.sender_email, w.email_text || "", { extraRefs: result.referenced_documents || [] });
         db.prepare("UPDATE work_items SET doc_suggestions_json = ? WHERE id = ?").run(JSON.stringify(sugg), itemId);
       } else {
         db.prepare("UPDATE work_items SET doc_suggestions_json = NULL WHERE id = ?").run(itemId);
@@ -240,8 +261,48 @@ function addAttachment(w, body, login, lang) {
   return { error: null, id };
 }
 
+// ---------------------------------------------------------------- carrier claims
+// ONE implementation, called by BOTH the ingest path and the redraft path.
+//
+// It started as ingest-only, and that was wrong in a way the unit tests could not see: a claim
+// item already exists by the time anyone looks at it, so ingest does not run again unless a new
+// email arrives on the thread. The button a salesperson actually presses is "Save & redraft",
+// which goes through runRedraft - so the documents would never have been staged from the UI, at
+// any gate setting. Found on the live dry run of item 1316, 2026-08-15.
+function claimDeps() {
+  return {
+    claimDeps: { myparcelSearch: C.myparcelSearch },
+    claimDossier: (barcode) => C.claimDossier(barcode),
+    buildDocumentPdf: (type, num) => SAPDOC.buildDocumentPdf(type, num),
+    buildStatementPdf: (dossier, o) => CS.buildStatementPdf(dossier, o),
+    // 'system' is the actor: this staging is automatic, unlike a human pressing Attach.
+    addAttachment: (item, body) => addAttachment(item, body, "system", "en"),
+    existingNames: async (itemId) =>
+      db.prepare("SELECT name FROM draft_attachments WHERE work_item_id = ?").all(itemId).map((r) => r.name),
+    audit,
+  };
+}
+
+// Detect, assemble and stage for one item. Returns the claim scope ({cardCode, cardName} of the
+// customer on the shipment's own order) so the caller can scope its document suggestions to it,
+// or null when this is not a claim. Never throws: a claim failure must not cost us the item.
+async function runClaim(itemId, email, lang) {
+  const item = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
+  if (!item) return null;
+  const res = await CA.handleInboundClaim(item, email, claimDeps(), { lang: lang === "en" ? "en" : "nl" });
+  if (!res.claim || !res.claim.is_claim) return null;
+  db.prepare("UPDATE work_items SET claim_json = ? WHERE id = ?")
+    .run(JSON.stringify({ claim: res.claim, dossier: res.dossier, staged: res.report }), itemId);
+  audit("system", "claim_detected", itemId,
+    `barcode=${res.claim.barcodes[0]} order=${(res.claim.sap_order_numbers || []).join(",") || "-"} ` +
+    `staged=${(res.report && res.report.staged.length) || 0} mode=${(res.report && res.report.mode) || "off"}`);
+  const ord = res.dossier && (res.dossier.orders || [])[0];
+  return ord && ord.card_code ? { cardCode: ord.card_code, cardName: ord.card_name } : null;
+}
+
 module.exports = {
   MAILBOX_OF, anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL,
   persistResult, runRedraft, markReadSafe, defaultMailbox,
   isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
+  claimDeps, runClaim,
 };

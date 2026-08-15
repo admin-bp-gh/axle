@@ -1,5 +1,80 @@
 # Axle — Status & Roadmap
 
+> **★ ITEM 1308 — two fixes: a superseded draft is no longer shown as the reply, and a thread that
+> needs no answer no longer closes in silence. BUILT, DEPLOYED & LIVE-VERIFIED 2026-08-15. No
+> allow-list or send-path change; nothing new can send itself.**
+>
+> **What happened.** Item 1308 (Hans Petter Haraldsen, a parcel to Norway). He chased it, Jack sent
+> the tracking reply, he pushed back, Axle drafted v3 about pickup points — and then he wrote *"New
+> update. The package was in my mailbox now. Have a nice weekend."* The item reopened on that
+> message and Axle read it correctly: summary *"customer confirms receipt of previously delayed
+> package; issue resolved"*, confidence high, **No reply needed?** set. But the send box still held
+> v3's *"your parcel has stalled on the Norwegian end, check your local pickup point"*, under *"this
+> exact text goes to the customer"*. Brad's read on opening it was that Axle had missed the point
+> entirely. It had not — the stale draft beside the correct summary is what he saw.
+>
+> **Why.** A work item is keyed on the conversation, so a reply reopens the SAME item, but `ingest`
+> only inserts a draft row when the run produces one. A `no_reply` outcome (which sets
+> `suggest_close`) and a run that errors both write none, and `routes/item.js` picks the newest AI
+> draft by version — so it reached back into the previous round. Same failure shape as Fix 4 of the
+> accuracy-gates work (held items offering a superseded draft), one layer up: that fix keyed on
+> `status = awaiting_input`, which says nothing about a reopened thread.
+>
+> **The fix.** New `draft-staleness.js` (pure, no dependencies): a draft is always written after the
+> email that prompted it, so `drafts.created_at < work_items.email_received` means it belongs to an
+> earlier message. Both are UTC — `created_at` is SQLite `datetime('now')` with no zone marker, so
+> it is pinned explicitly rather than parsed as local time, which on CEST would have called every
+> fresh draft stale. Deliberately conservative: an unparseable stamp is NOT stale, so bad data keeps
+> the old behaviour instead of blanking someone's draft. Compose items have no inbound email and are
+> exempt. `routes/item.js` drops such a draft from the send box (full and interim alike) and renders
+> it in a collapsed, read-only **"Draft for an earlier message in this thread"** fold below the work
+> form — outside `#workform`, so it cannot be posted or sent. The research stays visible; the wrong
+> text stops being one click from the customer.
+>
+> **Scale.** 85 of the 691 drafted items in the 15 Aug backup were in this state — a standing 12%,
+> not a one-off. All but 1308 were already Done; for those the reply box now shows what was actually
+> *sent* rather than the stale draft, which is the truer record.
+>
+> **Live-verified (2026-08-15, over Tailscale).** 1308: send box empty, fold present and holding v3
+> read-only. 1316 (held, `awaiting_input`): unchanged, still seeds from its interim — no fold. 1284
+> (Done, handled in Outlook): the stale draft that used to sit in the reply box is now folded away.
+>
+> **Fix 2 — a closed thread no longer closes in silence (same day).** `no_reply` used to mean no
+> draft at all, so a customer who chased a missing parcel for three weeks and finally wrote "found
+> it, have a nice weekend" got nothing back. The prompt now asks for a SHORT courtesy line on
+> `no_reply` — two sentences in the customer's language, acknowledge and close warmly, explicitly no
+> facts, figures, tracking, promises or upsell. `acknowledgement.js` then decides whether it
+> survives, on two independent checks; failing either restores the old behaviour exactly (no draft,
+> "No reply needed?", human closes it), so nothing here can make an item MORE sendable than before.
+>
+> - **Were we in this exchange?** A prior Axle send, or the item existed before this email arrived.
+>   That second clause carries the weight: only 38 of 213 historical `suggest_close` items have a
+>   send row, because most threads are answered in Outlook. First contact with no send gets no
+>   courtesy line.
+> - **Is the text really just manners?** A content check, not a self-report — the accuracy-gates
+>   principle. Over 500 chars, or any promise (`we will` / `wij zullen`), money, refund, invoice,
+>   discount, tracking or lead-time wording, and it is dropped with an `ack_dropped` audit line. This
+>   is the one path that skips the usual "is this true?" scrutiny, because the model has just
+>   declared the thread closed and stopped investigating, so the text is checked rather than trusted.
+>
+> New `work_items.ack_draft` drives the chip: **"Just acknowledge?"** when a courtesy line is
+> waiting, "No reply needed?" when the box is empty — the label follows what is actually there. Both
+> views now render it through one `suggestCloseChip` helper. Nothing sends itself either way.
+>
+> **Live-verified on 1308 (2026-08-15, Save & redraft).** Came back v4: *"Hans Petter, / Glad it made
+> it to you in the end — enjoy the weekend! / Kind regards, Team Budget Parts"*, chip "Just
+> acknowledge?" on both the item and the inbox row, status still New. The superseded fold correctly
+> disappeared, v4 being newer than the email — the two fixes compose.
+>
+> **Files:** new `draft-staleness.js` + `draft-staleness.test.js` (9 cases: the real 1308 timestamps,
+> the UTC-vs-local trap, boundaries either side of the email, compose, unparseable stamps), new
+> `acknowledgement.js` + `acknowledgement.test.js` (16 cases; note the contraction rule needs an
+> apostrophe or a space, since a bare `we\s*ll` also matches the "well" in "all is well"),
+> `engine.js`, `ingest.js`, `db.js`, `routes/shared.js`, `routes/inbox.js`, `routes/item.js`,
+> `views/ui.js` (EN + NL strings), `deploy.ps1` (both new suites added to the standing list). New
+> files were placed by hand into `C:\Axle\_incoming` before running `deploy.ps1`, per the
+> `-IncludeNew` caveat.
+
 > **★ ACCURACY GATES — Axle may no longer make claims it cannot back. BUILT, DEPLOYED &
 > LIVE-VERIFIED 2026-08-12 (three rounds). No allow-list or send-path change.**
 >
@@ -2632,6 +2707,28 @@ Nothing is permitted by default.
 | 6 | Forward an email to the mailbox of the owner it was handed to (cross-mailbox reassign) | M365 Graph (Mail.Send) + Axle DB | **enabled** | 2026-08-08 | Handover forward, added 2026-08-08 (`forward-guard.js` + `forward.js`, wired into `POST /item/:id/owner`). Answers the same adoption gap as #5 from the other side: reassigning an owner only changed a label, so handing a Gouda item to Brad left the email in info@ where Brad never sees it, and the item sat in a queue nobody watches — the Tom-misroute failure mode again. **The rule:** an owner has a home mailbox (`rules.OWNER_HOME` — Sales(Gouda)→info@, Drachten→drachten@, Brad→admin@); reassigning to an owner whose home is a DIFFERENT mailbox forwards the email there, then closes the item (`status='done', resolution='forwarded'` → "Done · handed over") and marks the source message read, so the work leaves the handing-over team's queue *and* their Outlook unread list. Same-mailbox reassign (Sales(Gouda)→Tom) is unchanged: a silent relabel, nothing sent; Tom has no home-mailbox entry, so he can never be a target. **Destination safety:** the To can only ever be one of our own three mailboxes, resolved in code from that fixed table using the label a human clicked (already validated against `ownerChoices`) — no path from an email body, tool result, model output or free-text field. A hostile email cannot make a forward leave the company. The customer-reply URL allowlist is deliberately NOT applied: this is an internal relay of someone else's email, and stripping their links would defeat it. **Refusals:** never an injection-flagged item (a suspect email must not be pushed silently into another mailbox — admin@ is read by an LLM triage skill), never a compose item, never a closed one, never one without a Graph message id. **Order:** forward first, write second — a Graph failure throws with the item untouched, and the UPDATE is guarded on the item still being open. **Permission:** `POST /users/{mailbox}/messages/{id}/forward` needs **Mail.Send only** (Graph v1.0, verified 2026-08-08) — no new grant; Graph copies the body + attachments itself. admin@ stays denied as a sender; it is only ever a recipient here. A plain-text handover note (who, from which queue, original sender, `AXLE_BASE_URL` deep link) goes on top, built from our strings plus a scrubbed sender name — address- and header-looking tokens dropped. **Return leg:** info@↔drachten@ forwards are re-ingested by rule `internal_forward` (priority 31, our own sender AND a FW:/Fwd:/Doorst: subject marker — the `requireAll` keeps it from swallowing the Shopify return notification, whose sender is also our own info@). Those items' thread sender is one of our mailboxes, so `send-guard.needsConfirmedRecipient` refuses a send until a human confirms the customer's address, and the UI shows "Confirm recipient" instead of Send. **Gated:** `AXLE_ACTION_OWNER_FORWARD=on` in `C:\Axle\secrets\.env` + restart; while off, a cross-mailbox reassign is the old relabel plus an `owner_forward_skipped` audit row. Audit when on: `owner_changed` + `email_forwarded` + `mark_read`. **Tests:** `forward-guard.test.js` 18, `rules.test.js` 18, `recipient.test.js` 31 — 93/93 across the touched suites. **Live-verified 2026-08-08** on item #1171 (a DHL billing email in info@ handed to Brad): confirm dialog fired and blocked until accepted; item went to "Done · handed over" owned by Brad and left the Open list (8→7); audit `owner_changed` → `email_forwarded` → `mark_read ok` at 08:33:39; the forward reached admin@ four seconds later from `Budget Parts | Gouda <info@budget-parts.nl>`, single To, no CC/BCC, with the 157 KB DHL PDF carried by Graph and the handover note + working `AXLE_BASE_URL` deep link on top. The drachten@↔info@ direction (`internal_forward` re-ingest + the "Confirm recipient" refusal) is unit-tested but not yet exercised live. |
 | 7 | File a blocked sender's mail out of the Outlook inbox | M365 Graph (MailboxSettings.ReadWrite + Mail.ReadWrite) | **enabled** | 2026-08-14 | Outlook-side sender block (`outlook-block.js`), built 2026-08-14. Closes the gap that "Block sender" was Axle-only suppression: ingest skipped the mail (`db.isBlockedSender`) but it still landed in the shared inbox, so the team went on seeing exactly the mail they had just told Axle to ignore. Blocking now also writes a **server-side Exchange inbox rule** per mailbox, rebuilt in full from `sender_blocks` (the single source of truth) on every block/unblock and reconciled at the end of each ingest run — so a rule someone edits, disables or deletes in Outlook heals itself and the DB and mailbox cannot drift. **Two rules, not one:** conditions inside a single Exchange rule are **ANDed**, so `fromAddresses` (exact addresses) and `senderContains` (the legacy `@domain` rows, which can no longer be created) must live in separate rules or the rule would match nothing. Action is **move to the "Axle Blocked" folder + mark read + stop processing** — never delete, and deliberately not Junk (which Exchange expires): suppressed mail stays visible, searchable and reversible, which is the direct answer to the 2026-07-27 domain-block incident. **The empty-conditions trap:** a rule with no conditions matches EVERY message in the mailbox, so an empty blocklist DELETES the rule; `ruleBody()` throws rather than build one. Also: **retroactive sweep** on block (that sender's existing inbox mail moves across, capped at 200) and the inverse on unblock (mail moves back to the inbox, so undoing a mistake undoes the visible effect, not just the row); **our own domains can never be blocked** (`isInternal`, guarded at the route and again in the module) since blocking `@budget-parts.nl` would file our own internal mail including action #6's handover forwards; rule sequenced ahead of every foreign rule, with a read-back reporting which rule Exchange actually runs first; `/blocks` page shows per-mailbox rule state, filed-message count and last sync, so suppressed volume is never invisible again. **Permission:** new Exchange RBAC assignment `Axle-MailboxSettings-ReadWrite-Scoped` (2026-08-14), scoped to "Axle Mailboxes"; verified info@ 200 / admin@ 403. **This grant was got wrong first and it matters:** adding + consenting `MailboxSettings.ReadWrite` in **Entra** gave the app tenant-wide rule access to *every* mailbox including admin@, because tenant-wide consent OVERRIDES the RBAC scope — the app must keep **zero** Entra API permissions (token `roles: (none)`) and take everything from RBAC. Consent revoked, correct scoping re-proved. **Gated:** `AXLE_ACTION_OUTLOOK_BLOCK` in `C:\Axle\secrets\.env` — unset = today's Axle-only behaviour, `dry` = every read plus a report of the intended writes with nothing written, `on` = live. **Tests:** `outlook-block.test.js`, 20 assertions, with four negative controls confirming each guard bites (removing the empty-conditions throw, the internal-domain filter, the two-rule split, or the allow-list gate each fails a test). **THE DRY RUN EARNED ITS KEEP.** The pre-flight showed 20 addresses and **39 legacy `@domain` rows** — all created before whole-domain blocking was removed, all about to start filing entire domains out of the shared inbox. Checked against SAP (`OCRD.E_Mail` + `OCPR.E_MailL`, exact domain and subdomains), four were live customer cards, and **`@triumphcentre.nl` is BRITISH SPORTSCAR CENTRE — 42 invoices, the last on 2026-06-29.** Enabling as-built would have hidden a trading customer's email: the July incident, again, caught by the gate rather than by a customer complaining weeks later. Resolved by `migrate-domain-blocks.js` (one-off, audited, dry-run-by-default), which converts each domain row **down to the exact addresses Axle actually saw from it** in its own `work_items` history and then deletes the row — suppression kept at a granularity that can be justified, the "and everyone else at this domain, forever" part dropped. 39 rows → 41 candidate addresses, of which **7 were deliberately left unblocked** with the reason recorded in the script's `EXCLUDE` map: the two SAP customer addresses above, plus `sales@huntersprestige.com` (info@ has a dedicated Outlook rule filing them to their own folder — a rule and a block that flatly contradict each other), `inkoop@kanaaldijk.nl` (a purchasing department), `customerservice@dieseltechnic.com` (supplier service channel; their `newsletter@` stays blocked), `bap@importautos.nl` and `ellis.blackman@polybush.co.uk`. Final state: **54 addresses, 0 domains**, so no domain rule is created at all. **LIVE 2026-08-14** on both mailboxes: rule created with 54 patterns on info@ and drachten@, `firstRule` = ours on both (it did get ahead of info@'s 19 existing rules), no warnings, "Axle Blocked" folder created on each. **LIVE-VERIFIED 2026-08-15** (Chrome over Tailscale + the M365 connector, driven end to end on `sales@classicmotorsforsale.com`, a sender already blocked, so the round trip ended where it began). Within 90 minutes of going live the rule had already filed two real messages unprompted. Full round trip: **Unblock** from the /blocks page → `outlook_unblocked` 09:56:12, rule rebuilt to 53 patterns on both mailboxes, 1 filed message restored to the Inbox with a new Graph id; **Block** from the item confirm page → `sender_blocked` + `outlook_blocked` 09:58:51, rule back to 54 patterns, **18 messages swept**, Inbox 15372 → 15354, Axle Blocked 1 → 19, **Deleted Items 0 throughout**. The confirm page rendered the new Outlook wording and the SAP check ("No SAP customer matches this address"). Three findings, two fixed the same day: (a) the audit detail read "updated rule X (54 patterns); updated rule X (54 patterns)" with no way to tell the mailboxes apart or to see one failing while the other succeeded — now `describe()` prefixes every fragment with its mailbox and surfaces warnings and per-mailbox failures; (b) the "Block sender" menu tip still said "…appearing in Axle", understating what the button now does — new `block_tip_outlook` string, chosen at render time from `OB.active()`; (c) **not** changed, deliberately: the sweep does not mark moved mail read (the rule does), so the folder can show unread items. Marking swept mail read would mean a wrongly-blocked customer's unread email came back read on unblock, and could be missed — the bold folder is the cheaper mistake. |
 
+> **Draft-only capability added (2026-08-15): "Carrier-claim document auto-attach".** On a
+> recognised MyParcel claim, Axle renders the AR invoice's Boyum print PDF and generates a
+> purchase-value statement, and **stages both on the draft** in `draft_attachments`. Like the
+> "Attach SAP document" note above this is **read-only against every business system and cannot
+> send** — the documents sit behind the existing Send approval with a Remove button, exactly like a
+> hand-attached file — so it is governed by the draft/approval flow rather than a new numbered
+> send-action. What IS new is that it happens **automatically** rather than on a human click, so it
+> is gated: `AXLE_ACTION_CLAIM_AUTOATTACH` in `C:\Axle\secrets\.env`, unset = off, `dry` = read and
+> report only, `on` = stage. **Enabled 2026-08-15.**
+>
+> The scope rule is the load-bearing guard and differs from every other attach path: a claim's
+> sender is the carrier, not the customer, so the usual sender→customer scope resolves to nobody.
+> Scope instead comes from **the barcode in the email → our own MyParcel shipment → the order named
+> on that shipment's own label**. Our API keys can only return our own shipments, and the order
+> number is read off a field we wrote at dispatch, so an order number asserted anywhere in the email
+> is ignored (unit-tested with a hostile email naming two other orders). An unresolvable or foreign
+> barcode yields no scope and nothing is attached — there is no looser fallback. The rendered
+> invoice is re-resolved from SAP by number and its CardCode must equal the order's, or nothing is
+> staged and `claim_attach_scope_block` is audited. Never on an injection-flagged item. Idempotent
+> across re-ingests. Audited as `claim_detected` + `claim_doc_attached`. Tests: `carrier-claim` 50,
+> `claim-dossier` 32, `claim-statement` 49, `claim-attach` 46.
+
 > **Read capability added (2026-06-16): "Shopify — read discounts".** Axle may READ Shopify
 > discount data (every discount code + automatic discount) live via the existing read-only
 > `shopify_query` tool, to validate discount mentions in customer emails against current data.
@@ -2646,6 +2743,83 @@ Nothing is permitted by default.
 > 2026-06-16** (DLRR10 expired / ERIC10 active / bogus-code manipulation refused).
 
 ---
+
+## In progress — Carrier claims (MyParcel), started 2026-08-15
+
+From item 1316 (MyParcel asking for an inkoop- en verkoopfactuur on a lost UPS parcel). The
+sender is the carrier, not the customer, so `customerByEmail` returns nothing and the existing
+attach path pushed both correct hits into "different customer — review before attaching".
+
+Decisions taken with Brad, 2026-08-15: the *inkoopfactuur* is an **Axle-generated purchase-value
+statement** covering exactly the parcel's lines, never a supplier's own invoice (which lists
+unrelated parts and our whole cost base — the team has refused to send one before, correctly);
+claim documents **auto-stage** on the draft behind the existing Send approval; and the draft
+covers MyParcel's **full standard request list**, not just the two documents.
+
+The safety rule for the whole feature: **a carrier-claim email's scope is the order its barcode
+resolves to in our own MyParcel account, never anything the email body asserts.** Our API keys
+can only return our own shipments, and the order number is read off the shipment's label
+reference — a field we wrote at dispatch. An unresolvable or foreign barcode yields no scope at
+all, with no looser fallback.
+
+| Step | What | Status |
+|------|------|--------|
+| 1 | `carrier-claim.js` — detection, barcode extraction, shipment→order resolution | **built**, 50 asserts + a live check; awaiting deploy |
+| 2 | `claim_dossier` agent tool + SYSTEM rule | **built**, 30 asserts; awaiting deploy |
+| 3 | Purchase-value statement PDF (headless Edge on the box, no new npm dependency) | **built + rendered live**, 48 asserts. One-page A4, EUR 74,51, layout reviewed |
+| 4 | Carrier-claim scope in `doc-suggest`; auto-stage behind the Send approval | **LIVE-VERIFIED 2026-08-15** on item 1316, gated `AXLE_ACTION_CLAIM_AUTOATTACH=on` |
+| 5 | Harness, live test on 1316, control gate | live test done; **control gate open** |
+
+**Live verification, item 1316, 2026-08-15** (Chrome over Tailscale, driven end to end). Redraft →
+`claim_detected barcode=1ZRJ71190404069255 order=227148 staged=2 mode=on`, then
+`claim_doc_attached` twice: `Invoice-427442.pdf` (155 KB, cust K122894) and
+`Inkoopwaarde-427442.pdf` (84 KB, EUR 74.51). Both appear under ATTACHMENTS with a Remove button.
+The SAP-documents panel now offers invoice 427442 as an in-scope one-click instead of filing it
+under "different customer". A second redraft left the count at two, so the idempotency guard
+holds in production. The draft is Dutch, contains no em dash, explains why no supplier invoice is
+enclosed, states the insurance covers the purchase value, and closes with the new line.
+
+**Sent for real, 2026-08-15 13:07:23** — `email_sent kind=reply to=info@myparcel.nl edited=true
+atts=2 threaded=true`. The first real MyParcel claim answered this way went out with both PDFs
+attached, after a human edit. Sprocket answers "what happens when MyParcel emails about a lost
+parcel?" correctly from the new help-doc section (`Key: claim_autoattach`, which reads `dry` as
+DISABLED so the team is never told a switched-off capability works).
+
+**Three defects the live run caught that the 148 unit asserts could not:**
+1. The claim path was wired into **ingest only**. A claim item already exists by the time anyone
+   opens it, so ingest never runs again; the button a salesperson presses is "Save & redraft",
+   which goes through `runRedraft`. The documents would never have staged from the UI at any gate
+   setting. Now one `runClaim` in `routes/shared.js` serves both paths, with four source-level
+   asserts that fail if either path grows its own copy again.
+2. Deploy restarts the server, so an env edit made *after* the deploy is not loaded. The first
+   "on" run still reported `mode=dry`. Worth remembering: edit `.env` BEFORE deploying, or restart
+   again after.
+3. `parcel_appearance` was stored in English only, so the model re-translated our standard sentence
+   on every claim and produced "bruin kartonnen doos". Now held as an `{nl, en}` pair to be quoted
+   verbatim.
+
+**`deploy.ps1` hardened the same day, after it failed on this feature's own last file.** It handed
+files to `axle-pull.ps1`, which routes by **basename** — it hunts for a file of that name under the
+app tree and copies over it. `sprocket.js` exists at BOTH `app\sprocket.js` and
+`app\routes\sprocket.js`, so axle-pull refused it as ambiguous and the change never landed. Deploy
+already knew the exact destination (it computes `$Dest` in step 1 to compare against), so the guess
+was never necessary: **step 2 now places every file by its own repo-relative path**, which also
+retires the "a brand-new subfolder file lands in the app root, move it by hand" caveat.
+`axle-pull.ps1` keeps its original Taildrop job and is simply out of the deploy path.
+**The worse half:** placement failed, deploy printed axle-pull's warning as ordinary output, then
+restarted and reported **DEPLOY OK** while the change had silently not been applied. Any placement
+failure (copy error, missing file after copy, failed `node --check`) now throws BEFORE the restart,
+matching the dependency check and the test-suite gate. Same rule throughout: never restart into a
+tree you did not fully write.
+Also fixed: `box-code\sprocket\*` now deploys to `C:\Axle\sprocket\`, where `sprocket.js` actually
+reads it (`__dirname\..\sprocket`, outside the app tree). It had been on `$neverDeploy` to avoid
+creating a dead duplicate in `app\sprocket\`, which meant the repo copy synced **nowhere** and
+editing the team's help doc reached no one. Verified in sync before switching the routing on.
+
+Also shipped 2026-08-15, independent of the above: **no em dashes in customer-facing drafts**
+(`applyDashStyle`, last in the gate chain, customer-facing slots only — `dash-style.test.js`,
+26 asserts), and the MyParcel closing line changed from asking what the next step in the
+investigation is to offering anything further and asking their timescale.
 
 ## Working notes
 

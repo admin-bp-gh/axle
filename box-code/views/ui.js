@@ -135,6 +135,9 @@ const STRINGS = {
     doc_order: "Order", doc_invoice: "Invoice", doc_quotation: "Quotation", doc_delivery: "Delivery", doc_creditnote: "Credit note",
     sugg_title: "Suggested documents", sugg_hint: "Documents this email seems to reference, found in SAP. Review and attach the ones you want — nothing is attached or sent automatically.",
     suggest_close_chip: "No reply needed?", suggest_close_title: "Axle suggests no email reply is needed. Review it and mark it Done if you agree — nothing closes automatically.",
+    ack_draft_chip: "Just acknowledge?", ack_draft_title: "Nothing here needs answering — Axle has written a short courtesy reply. Send it, or simply mark the item Done. Nothing goes out on its own.",
+    prev_draft_summary: "Draft for an earlier message in this thread",
+    prev_draft_hint: "The customer wrote again after this was drafted, so it is not an answer to their latest message. Kept for reference only — it cannot be sent.",
     sugg_add: "Attach", sugg_ref: "mentioned as", sugg_pick: "Several documents share this number — pick one:",
     sugg_other_cust: "Different customer — review before attaching", sugg_other_cust_hint: "These numbers were in the email but resolve to another customer's document. Attaching one needs an explicit confirm.",
     sugg_review: "Review", sugg_preview: "Preview", sugg_preview_title: "Open the document PDF in a new tab — nothing is attached.",
@@ -315,6 +318,9 @@ const STRINGS = {
     doc_order: "Order", doc_invoice: "Factuur", doc_quotation: "Offerte", doc_delivery: "Levering", doc_creditnote: "Creditnota",
     sugg_title: "Voorgestelde documenten", sugg_hint: "Documenten waarnaar deze e-mail lijkt te verwijzen, gevonden in SAP. Bekijk en voeg toe wat u wilt — er wordt niets automatisch bijgevoegd of verzonden.",
     suggest_close_chip: "Geen antwoord nodig?", suggest_close_title: "Axle stelt voor dat geen e-mailantwoord nodig is. Beoordeel het item en markeer het als gereed als u het ermee eens bent — er wordt niets automatisch gesloten.",
+    ack_draft_chip: "Alleen bevestigen?", ack_draft_title: "Hier hoeft niets beantwoord te worden — Axle heeft een korte beleefde reactie geschreven. Verstuur die, of markeer het item gewoon als gereed. Er gaat niets vanzelf de deur uit.",
+    prev_draft_summary: "Concept voor een eerder bericht in dit gesprek",
+    prev_draft_hint: "De klant heeft opnieuw geschreven nadat dit concept was gemaakt, dus het is geen antwoord op het laatste bericht. Alleen ter referentie bewaard — het kan niet worden verzonden.",
     sugg_add: "Bijvoegen", sugg_ref: "genoemd als", sugg_pick: "Meerdere documenten met dit nummer — kies er een:",
     sugg_other_cust: "Andere klant — controleer voor bijvoegen", sugg_other_cust_hint: "Deze nummers stonden in de e-mail maar horen bij het document van een andere klant. Bijvoegen vereist een expliciete bevestiging.",
     sugg_review: "Bekijken", sugg_preview: "Voorbeeld", sugg_preview_title: "Open de document-PDF in een nieuw tabblad — er wordt niets bijgevoegd.",
@@ -402,6 +408,15 @@ const statusLabel = (lang, s) => (STATUS_LABEL[lang] && STATUS_LABEL[lang][s]) |
 const statusWithRes = (lang, w) =>
   statusLabel(lang, w.status) +
   (w.resolution && (w.status === "done" || w.status === "archived") ? " · " + t(lang, "res_" + w.resolution) : "");
+// The "no reply needed" chip, rendered identically by the inbox and the item page. Since 2026-08-15
+// a suggest_close item may ALSO carry a short courtesy draft (see acknowledgement.js), and "No reply
+// needed?" beside a filled send box is a contradiction — so the label follows what is actually
+// there. Never rendered on a closed item: the suggestion is spent once someone has acted.
+const suggestCloseChip = (lang, w) => {
+  if (!w.suggest_close || w.status === "done" || w.status === "archived") return "";
+  const k = w.ack_draft ? "ack_draft" : "suggest_close";
+  return `<span class="chip sugg" title="${esc(t(lang, k + "_title"))}">${esc(t(lang, k + "_chip"))}</span>`;
+};
 const INTENT_LABEL = {
   en: { stock_price_enquiry: "Stock / price enquiry", order_status: "Order status", cancellation: "Cancellation", return_complaint: "Return / complaint", b2b_order: "B2B order", supplier: "Supplier", invoice: "Invoice", other: "Other" },
   nl: { stock_price_enquiry: "Voorraad / prijs", order_status: "Orderstatus", cancellation: "Annulering", return_complaint: "Retour / klacht", b2b_order: "B2B-order", supplier: "Leverancier", invoice: "Factuur", other: "Overig" },
@@ -902,7 +917,7 @@ const lazyQueue = (lang, qs) =>
 
 module.exports = {
   esc, UI_LANGS, DEFAULT_LANG, langOK, STRINGS, t,
-  titleCase, statusLabel, statusWithRes, intentLabel, kindLabel, langDisplay,
+  titleCase, statusLabel, statusWithRes, suggestCloseChip, intentLabel, kindLabel, langDisplay,
   ownerLabel, ownerChoices, TZ, ymdTZ, fmtTime, parseTS, fmtDateTime,
   linkify, splitQuoted, fmtSize, renderAttachments, renderMail, page,
   chipMenu, foldFooter, segmentQuoted, renderTimeline, ASSET_V,

@@ -35,6 +35,11 @@ $neverDeploy = @(
   "axle-send.sh",         # Mac-side helper
   "shared-domains.js"     # marked obsolete in its own header
 )
+# NOTE on Sprocket's help doc (axle-help.md): it briefly sat on the list above. sprocket.js reads
+# __dirname\..\sprocket = C:\Axle\sprocket, OUTSIDE the app tree, so deploying it normally would
+# have created a dead second copy in app\sprocket\. Blocking it was worse though: the repo copy
+# then synced nowhere, so editing it reached no one. It is now routed to its real home instead -
+# see the $dest line in step 1; step 2 then places every file by that exact path.
 
 $repo = "C:\Admin\Projects\Axle"
 $src  = Join-Path $repo "box-code"
@@ -61,7 +66,10 @@ function Say($msg, $colour = "Gray") {
 }
 
 # The suites worth running on every deploy: pure, fast, no live systems needed.
-$suites = @("accuracy-gates.test.js","fitment-gate.test.js","part-dossier.test.js","part-finder.test.js")
+$suites = @("accuracy-gates.test.js","fitment-gate.test.js","part-dossier.test.js","part-finder.test.js",
+            "draft-staleness.test.js","acknowledgement.test.js","dash-style.test.js",
+            "carrier-claim.test.js","claim-dossier.test.js","claim-statement.test.js",
+            "claim-attach.test.js","doc-suggest.test.js")
 
 try {
   Say "Running as: $([Security.Principal.WindowsIdentity]::GetCurrent().Name)"
@@ -74,7 +82,14 @@ try {
     Where-Object { $_.FullName -notmatch '\\node_modules\\' -and $neverDeploy -notcontains $_.Name } |
     ForEach-Object {
       $rel  = $_.FullName.Substring($src.Length).TrimStart('\')
-      $dest = Join-Path $app $rel
+      # Sprocket's help doc is the one thing that does NOT live in the app tree. sprocket.js reads
+      # __dirname\..\sprocket, i.e. C:\Axle\sprocket, deliberately: the doc is read fresh on every
+      # answer, so Brad can edit the live copy and the team sees it with no deploy and no restart.
+      # Copying it into C:\Axle\app\sprocket\ would create a second file nothing ever reads, so it
+      # was on $neverDeploy and the repo copy synced NOWHERE - an edit here reached no one.
+      # It now deploys to its real home, which makes the repo the source of record again.
+      # (Verified in sync before switching this on, 2026-08-15.)
+      $dest = if ($rel -like 'sprocket\*') { Join-Path (Split-Path $app -Parent) $rel } else { Join-Path $app $rel }
       $isNew = -not (Test-Path $dest)
       $differs = $isNew -or
                  ((Get-FileHash $_.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $dest -Algorithm SHA256).Hash)
@@ -82,7 +97,9 @@ try {
       # Default is UPDATES ONLY. A file absent from the box is usually repo-only (a dev helper, a
       # harness) rather than something waiting to be deployed, so adding it is an explicit choice.
       if ($isNew -and -not $IncludeNew) { $skippedNew += $rel; return }
-      $changed += [pscustomobject]@{ Rel = $rel; Path = $_.FullName; New = $isNew }
+      # Dest is carried through to step 2, which places by this exact path rather than guessing
+      # from the basename. See the comment there for why guessing was removed.
+      $changed += [pscustomobject]@{ Rel = $rel; Path = $_.FullName; New = $isNew; Dest = $dest }
     }
 
   if ($skippedNew.Count) {
@@ -146,18 +163,41 @@ try {
   Say ("  all relative requires in {0} changed file(s) resolve on the box." -f $changed.Count) "Green"
   if ($WhatIf) { Say "`n-WhatIf: stopping without changing anything." "Yellow"; return }
 
-  Say "`n=== 2. Staging + placing ===" "Cyan"
-  New-Item -ItemType Directory -Force "C:\Axle\_incoming" | Out-Null
-  foreach ($c in $changed) { Copy-Item $c.Path "C:\Axle\_incoming" -Force }
-  & C:\Axle\axle-pull.ps1 2>&1 | ForEach-Object { Say "  $_" }
-
-  # axle-pull routes by BASENAME. A brand-new file destined for a subfolder lands in the app root
-  # and must be moved once by hand - flag it rather than let it sit in the wrong place unnoticed.
+  # --- 2. Placing ------------------------------------------------------------------------------
+  # Placed DIRECTLY, by each file's own repo-relative path. This used to hand the files to
+  # axle-pull.ps1, which routes by BASENAME - it looks for a file of that name somewhere under the
+  # app tree and copies over it. That is a guess, and on 2026-08-15 it failed: `sprocket.js` exists
+  # BOTH at app\sprocket.js and app\routes\sprocket.js, so axle-pull refused the file as ambiguous
+  # and the change never landed. Deploy already KNOWS where each file belongs - it computed $Dest
+  # to compare against in step 1 - so guessing was never necessary. Placing by path also removes
+  # the "brand-new subfolder file lands in the app root" caveat entirely.
+  #
+  # axle-pull.ps1 keeps its original job (placing files Taildropped from the Mac); it is simply no
+  # longer in the deploy path.
+  Say "`n=== 2. Placing ===" "Cyan"
+  $placeFailed = @()
   foreach ($c in $changed) {
-    $dest = Join-Path $app $c.Rel
-    if (-not (Test-Path $dest)) {
-      Say ("  [!] {0} did not land at its expected path - check where axle-pull put it." -f $c.Rel) "Yellow"
+    $where = Split-Path $c.Dest -Parent
+    try {
+      New-Item -ItemType Directory -Force $where | Out-Null
+      Copy-Item $c.Path $c.Dest -Force
+    } catch {
+      Say ("  FAIL  {0}  ({1})" -f $c.Rel, $_.Exception.Message) "Red"
+      $placeFailed += $c.Rel; continue
     }
+    if (-not (Test-Path $c.Dest)) { Say ("  FAIL  {0}  (not at {1} after copy)" -f $c.Rel, $c.Dest) "Red"; $placeFailed += $c.Rel; continue }
+    if ([IO.Path]::GetExtension($c.Rel) -ieq ".js") {
+      & node --check $c.Dest 2>&1 | Out-Null
+      if ($LASTEXITCODE -ne 0) { Say ("  FAIL  {0}  (node --check failed)" -f $c.Rel) "Red"; $placeFailed += $c.Rel; continue }
+    }
+    Say ("  OK    {0}  -> {1}" -f $c.Rel, $where) "Green"
+  }
+  # A file that did not land must STOP the deploy. Previously axle-pull printed its own warning,
+  # deploy piped it through as ordinary output and carried on - so the run restarted the server and
+  # reported "DEPLOY OK" while a change had silently not been applied. Same failure family as the
+  # dependency check added earlier the same day: never restart into a tree you did not fully write.
+  if ($placeFailed.Count) {
+    throw ("{0} file(s) did not place: {1} - NOT restarting. Fix, then re-run." -f $placeFailed.Count, ($placeFailed -join ", "))
   }
 
   Say "`n=== 3. Test suites against the LIVE tree ===" "Cyan"

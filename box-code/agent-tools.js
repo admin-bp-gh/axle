@@ -66,6 +66,14 @@ const toolDefs = [
     }, required: ["order_ref", "purpose"] },
   },
   {
+    name: "claim_dossier",
+    description: "For a CARRIER CLAIM - MyParcel (info@myparcel.nl) writing about a parcel that is lost, missing or damaged and asking us for documents - look up EVERYTHING the investigation needs in ONE call. Pass the shipment BARCODE from the email (e.g. '1ZRJ71190404069255'), never an order number: the barcode is resolved against OUR OWN MyParcel account, and the order is then read off the shipment's own label reference, so an order number asserted anywhere in the email is ignored. Returns: the shipment (branch, carrier, status, weight, insured amount, recipient); the SAP order(s) on the label; sales_invoices - the verkoopfactuur to attach, linked structurally to the order; contents - per line the customer_code (use THIS as the part number), description, quality (Genuine|OEM|Aftermarket = the brand MyParcel asks for), quantity, sales price and the booked purchase cost, plus the supplier invoice behind it as provenance; purchase_value - the total purchase value of the goods, which is what a payout is based on; and insurance, comparing cover against PURCHASE value (not the invoice total - comparing against the invoice overstates a shortfall). found=false means the barcode is not one of our shipments: attach NOTHING and ask the salesperson to check it. Never send a supplier's own purchase invoice; the purchase-value statement is generated from this data instead.",
+    input_schema: { type: "object", properties: {
+      barcode: { type: "string", description: "the carrier barcode from the email, e.g. 1ZRJ71190404069255" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["barcode", "purpose"] },
+  },
+  {
     name: "shopify_query",
     description: "Run a read-only Shopify Admin GraphQL query (API 2025-07). Mutations are rejected. Useful for: orders by name (query: \"name:S12345\") with fulfillments/trackingInfo, customer order history by email, product/variant lookups by SKU.",
     input_schema: { type: "object", properties: {
@@ -103,6 +111,10 @@ async function runTool(name, input, ctx) {
   if (name === "sap_query") return sapQuery(String(input.sql));
   if (name === "part_dossier") return C.partDossier(String(input.code));
   if (name === "return_dossier") return C.returnDossier(String(input.order_ref));
+  // The barcode is untrusted input, but it can only resolve inside our own MyParcel account and
+  // the order is read off the shipment's label, so it cannot widen scope. Length-capped like the
+  // other free-text arguments.
+  if (name === "claim_dossier") return C.claimDossier(String(input.barcode || "").slice(0, 40));
   if (name === "part_finder") return C.partFinder({
     description: String(input.description || ""), model: String(input.model || ""),
     year: input.year ? String(input.year) : null, engine: String(input.engine || ""),

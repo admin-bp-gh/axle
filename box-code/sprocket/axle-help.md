@@ -131,6 +131,28 @@ How to use it:
 2. In the "Suggested documents" card, click "Attach" on the one you want.
 3. Send the reply to send it.
 
+## Carrier claims (MyParcel asking about a lost or missing parcel)
+Key: claim_autoattach
+
+What it does: When MyParcel writes about a parcel that has gone missing and asks for our invoices,
+Axle works out which shipment they mean from the barcode in their email, finds the order and the
+sales invoice for it, and attaches two documents to the draft for you: the sales invoice, and a
+purchase-value statement listing every part in that parcel with what it cost us. It also writes the
+reply, including the contents list and the box description MyParcel always asks for.
+
+Why a statement and not our supplier's invoice: a supplier invoice covers a whole delivery of parts
+that were not in this parcel, so we never send one. The statement covers exactly this parcel.
+
+How to use it:
+1. Open the item. Both PDFs are already under Attachments.
+2. Check them, remove either one if you don't want it, and edit the reply as usual.
+3. Send the reply to send them.
+
+Good to know: Axle can only ever attach documents belonging to the order that the barcode itself
+points to, so it cannot pull in another customer's paperwork. If the barcode is not one of our own
+shipments it attaches nothing and asks you to check it. Photos of the parcel or the product are
+still yours to add.
+
 ## Composing a brand-new email to a customer
 Key: compose_send
 

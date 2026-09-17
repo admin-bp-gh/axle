@@ -69,7 +69,7 @@ function Say($msg, $colour = "Gray") {
 $suites = @("accuracy-gates.test.js","fitment-gate.test.js","part-dossier.test.js","part-finder.test.js",
             "draft-staleness.test.js","acknowledgement.test.js","dash-style.test.js",
             "carrier-claim.test.js","claim-dossier.test.js","claim-statement.test.js",
-            "claim-attach.test.js","doc-suggest.test.js")
+            "claim-attach.test.js","doc-suggest.test.js","thread-read.test.js","unread-sweep.test.js")
 
 try {
   Say "Running as: $([Security.Principal.WindowsIdentity]::GetCurrent().Name)"

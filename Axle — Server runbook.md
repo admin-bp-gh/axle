@@ -293,6 +293,57 @@ Register-ScheduledTask -TaskName "Axle Ingest" -Force `
 (Weekly/Daily triggers don't accept `-RepetitionInterval` directly; build the repetition from a
 throwaway `-Once` trigger and assign `.Repetition`.)
 
+## Outlook ↔ Axle alignment — added 2026-08-15
+
+Three rules keep Axle's Open list and Outlook's unread mail saying the same thing. Worth knowing as
+a set, because a question about one is usually really a question about another.
+
+**1. Closing an item marks the WHOLE thread read** (`routes/shared.js markReadSafe` →
+`thread-read.js`). Send, Done, Archive and the handover forward all mark every unread message in
+the item's Outlook conversation, not just the newest. The exception is deliberate: mail belonging
+to a *different open* work item is left alone — Axle keys items by sender + normalised subject
+while Outlook keys a conversation by `conversationId`, so a supplier or colleague in the same
+thread is separate work. Capped at 25 messages per close, and audited as `mark_read_thread`.
+
+**2. Marking mail unread again reopens the item** (`outlook-close.js`, the reopen mirror). Two
+cases: an item *Axle* closed (`resolution = 'outlook'`) reopens unconditionally; an item a *human*
+closed (`done` / `phone` / `replied`) reopens only when the unread message is one Axle marked read
+at close time — the `read_marks` ledger. Archive and `forwarded` are never undone. Bounded to 30
+days (`REOPEN_DAYS`).
+
+> **Do not "improve" this with a timestamp.** The obvious test — was the message modified after we
+> closed it? — cannot work: **Exchange does not bump `lastModifiedDateTime` when `isRead` changes.**
+> Proved on the box with item #500 (two read-state transitions, stamp unmoved). That is why the
+> ledger exists. If a timestamp-like signal is ever genuinely needed, use the Graph
+> `/messages/delta` query with a stored token, which does report read-state changes.
+
+**3. Ingest sweeps unread mail, not just new mail** (`ingest.js withUnreadSweep` →
+`unread-sweep.js`). The watermark ("mail received since the last sync") cannot see mail that
+arrived in an unwatched folder and was **moved in** later: the move mints a new Graph id but keeps
+the original `receivedDateTime`. Each run therefore also reads "unread in the watched folders" and
+adds what the watermark missed — but ONLY on threads Axle has never seen, or mail newer than what
+the item already holds. Old unread mail on a known thread is rule 2's job, not ingest's; feeding it
+to ingest would re-point the item at stale text. Audited as `unread_sweep`.
+
+### Diagnostics (all read-only, run from `C:\Axle\app`)
+
+```powershell
+node outlook-close.js info --audit        # every unread message -> where it landed in Axle,
+                                          #   whether Axle marked it read, and a reopen verdict
+                                          #   that NAMES the clause that refused
+node outlook-close.js all --dry-run       # what the close/reopen passes would do, writing nothing
+node outlook-close.js --explain 500       # one item: why is it open, or why not
+node outlook-close.js info --missing 30   # mail that arrived but never became a work item
+node thread-read-scan.js [limit] [--all]  # per open item: what pressing Done would mark read
+                                          #   (--all also lists already-read thread messages)
+```
+
+`thread-read-scan.js` is a repo dev helper rather than part of the server; deploy keeps the box
+copy in sync now that it exists there. In the `--dry-run` table, `folders` shows how many monitored
+folders resolved: expect 2 for info@ and 1 for drachten@. **0 means the lookup failed** and the
+'moved' close rule was skipped that run; **blank/null means it never ran** because the mailbox had
+no open items to check.
+
 ## Log rotation (server.log + ingest.log)
 
 ### ingest.log — added 2026-07-27

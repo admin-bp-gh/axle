@@ -1,5 +1,141 @@
 # Axle — Status & Roadmap
 
+> **★ INGEST NOW SWEEPS UNREAD MAIL, NOT JUST NEW MAIL — 2026-08-15. BUILT, DEPLOYED &
+> LIVE-VERIFIED. Read-only against M365; no allow-list or send-path change.**
+>
+> **Live-verified 2026-08-15.** The stray admin@ mail became **item #1318** on the first scheduled
+> run after the deploy, and `--audit` moved it from `NOT IN AXLE` to `#1318 OPEN (new)`. A manual
+> re-run afterwards logged no sweep at all — the message is now the item's own newest, so the guard
+> correctly declines to re-add it. Nothing else was swept in: the other unread mail is either a
+> known spam sender or each item's newest message already. `reopened 0` on both mailboxes.
+>
+> **What happened.** An `admin@` mail ("Re: Allmakes 0001/00751910 | 301 469") landed in Tom's
+> folder on 14 Aug, Brad moved it to the info@ Inbox on 15 Aug, and it never became a work item.
+> `--audit` showed it as **NOT IN AXLE**.
+>
+> **Why.** Ingest is a watermark poll — "mail received since the last sync", across the watched
+> folders. An Exchange move **mints a new Graph id but keeps the original `receivedDateTime`**, and
+> the watermark passed 14 Aug 14:32 a day ago. So the message sits in a watched folder carrying a
+> timestamp Axle will never ask for again. The 10-minute overlap buffer exists to absorb mail-rule
+> lag measured in seconds, not a move a day later. This hits anything filed back to sales, or
+> dragged out of Archive — and it fails **silently**: only `--missing` would ever surface it. Rules
+> were not involved (`admin_forward` needs "FW:", this was "Re:", so info@'s `catch_all` takes it).
+>
+> **The fix.** Every run now also fetches "unread in the watched folders" and adds what the
+> watermark missed. One extra list call per folder per run; threads Axle already knows dedupe for
+> free (`skip: unchanged`), so there is no repeated LLM work. Best-effort: if the unread read
+> fails, the run continues on the watermark batch alone.
+>
+> **The guard, which is the whole reason `unread-sweep.js` is a module and not a one-line concat.**
+> Ingest treats a thread's newest message as THE message — it rewrites `latest_message_id` and
+> re-drafts from it. But the unread message in a thread is usually NOT the newest; it is the
+> customer's original mail several replies back, deliberately marked unread as a to-do (the #992
+> shape). A naive concat would reopen settled items and point them at stale text. So the sweep adds
+> only what Axle has never seen: **no work item for the thread** (the moved-mail case), or **newer
+> than what the item already holds**. Old unread mail on a known thread belongs to the reopen
+> mirror, which handles it without disturbing the item's newest message. Capped at 50 added per
+> run, with the overflow reported rather than dropped silently.
+>
+> **Files:** new `unread-sweep.js` + `unread-sweep.test.js` (9 cases; negative control run —
+> removing the older-mail guard fails THE GUARD case), `ingest.js`, `deploy.ps1` (suite added).
+> **New files need `-IncludeNew`.** Immediate remedy for the stray mail, using what already exists:
+> `node ingest.js info unread` (the one-time unread seed mode).
+
+> **★ ITEM 1308 (third fix) — closing an item now marks the WHOLE thread read in Outlook. BUILT
+> 2026-08-15, NOT YET DEPLOYED. No allow-list or send-path change; the permission is the one
+> mark-read already uses.**
+>
+> **What happened.** Brad replied and marked 1308 done. Outlook showed the latest message read and
+> the earlier one in the same thread still unread — Axle says handled, the mailbox says not.
+>
+> **Why.** `markReadSafe` PATCHed exactly one message: `work_items.latest_message_id`. An item is
+> keyed on the conversation and can stand behind several inbound emails (a customer who writes twice
+> before we answer), so everything older than the newest was left untouched. Worse than cosmetic:
+> the `outlook-close` reopen mirror's rule is *an item is live if ANY message in its thread is
+> unread*, so a just-finished item could be pulled straight back onto the list.
+>
+> **The fix.** After the newest message marks, `markReadSafe` asks Graph for the rest of that
+> message's Outlook conversation (`send.js conversationMessages` — two small reads, `$top=50`,
+> unread filtered client-side) and marks the unread remainder. New pure `thread-read.js` decides
+> which siblings qualify, and the guard is the point of it: Axle keys an item by sender + normalised
+> subject while Outlook keys a conversation by `conversationId`, so a supplier or colleague writing
+> into the same thread is a SEPARATE Axle item. Each sibling is resolved back through
+> `engine.threadGroup` — the same grouping ingest stored — and one belonging to a *different open*
+> item is left unread; anything else (this item's own mail, or a different closed item's) is marked.
+> Capped at 25 PATCHes per close, best-effort throughout: any Graph failure leaves the old behaviour
+> and writes a `mark_read_thread` audit row instead of failing the close in the user's face.
+>
+> **Files:** new `thread-read.js` + `thread-read.test.js` (10 cases: the 1308 shape, the open-item
+> guard, every open/closed status, the cap, inert bad input), `send.js`, `routes/shared.js`,
+> `outlook-close.js` (header note), `deploy.ps1` (suite added). **New files need `-IncludeNew`.**
+>
+> **DEPLOYED & LIVE-VERIFIED 2026-08-15** on item #500 (garagetroch.be, a 9-message return thread):
+> the earlier customer mail was flipped to unread, `thread-read-scan.js` predicted *"Done would mark
+> 1 extra"*, Done marked both. New repo-only dev helper `thread-read-scan.js` does that dry run for
+> any open item (`node thread-read-scan.js [limit] [--all]`, writes nothing).
+
+> **★ MARK-UNREAD NOW REOPENS A HUMAN'S CLOSE TOO — 2026-08-15, follow-on from the above. BUILT,
+> DEPLOYED & LIVE-VERIFIED. Read-only against M365; no allow-list or send-path change.**
+>
+> **Live-verified on #500 (2026-08-15).** Dry run before enabling: `reopened 0` on both mailboxes,
+> as the empty ledger requires — nothing closed before this shipped can resurrect. Then Reopen →
+> Done (which wrote the ledger rows) → marked unread in Outlook → Sync now, and the item came back
+> on the list.
+>
+> **What happened.** Straight after the fix above, Brad marked #500's newest mail unread in Outlook,
+> pressed Sync now, and the item did not come back. `--explain 500` showed why: `resolution: "done"`.
+>
+> **Why.** The reopen mirror only undid closes IT had made (`resolution = 'outlook'`); a human's
+> Done, Archive or sent reply was declared a decision Axle must never undo (2026-08-06). That rule
+> existed because our own closes left the REST of the thread unread, so anything wider resurrected
+> items on mail nobody had touched. **The fix above removed that premise**, so the rule stopped
+> earning its keep — and Brad's expectation is the plain one: unread in Outlook means open in Axle.
+>
+> **The dead end, recorded so it is not retried.** The obvious gate is "was the message modified
+> after the close?" — `lastModifiedDateTime > updated_at`. **Exchange does not move
+> `lastModifiedDateTime` on a read-state change.** Built it that way, deployed it, and the live
+> `--audit` on #500 showed the stamp still reading the *previous day's* 11:44 after two isRead
+> transitions minutes apart (Axle's PATCH to read at 13:41, Brad's mark-unread after). Reverted out
+> of `connectors.js`, with the reason left in the source at the point of temptation.
+>
+> **The fix.** `canReopen` now also undoes a **human** close (`done` / `phone` / `replied`), but only
+> when the unread message is one **Axle itself marked read** when it closed the item — a new
+> `read_marks` ledger (`mailbox`, `message_id`, `work_item_id`), written by `markReadSafe` for every
+> message it marks. If a message we marked read is unread again, a human did that; no clock
+> comparison, no timestamp. The ledger also gives the no-mass-resurrection property for free: items
+> closed before it existed have no rows, so the first run can only reopen what Axle closed after
+> this shipped. Still excluded: **Archive**
+> (a stronger gesture, and what a blocked sender's item carries) and **`forwarded`** (action #6 gave
+> the mail to the other mailbox, where ingest made a second item — reopening this one would put the
+> customer in two queues). Two reopen reasons now exist, `unread` and `unread-after-close`, and the
+> audit row names which. Also fixed in passing: `reopenItem`'s guarded UPDATE hardcoded
+> `resolution = 'outlook'`, so it would silently have refused every human-close reopen; and a human
+> close records no `pre_close_status`, so those fall back to the manual Reopen control's rule
+> (`ready` if a draft is waiting, else `new`) instead of always landing as unhandled.
+>
+> **Files:** `outlook-close.js`, `db.js` (new `read_marks` table), `routes/shared.js`
+> (`recordReadMark`), `connectors.js` (a comment where the `lastModifiedDateTime` temptation is),
+> `harness/harness-outlook-close.js` (**135 asserts**, 25 new). Negative controls run at each stage
+> and each failed the right tests: dropping the human-close branch (8 fail), ignoring the ledger
+> (8 fail), a ledger lookup blind to which item the row belongs to (2 fail), leaving the guarded
+> UPDATE hardcoded to `'outlook'` (5 fail).
+>
+> **New diagnostic:** `node outlook-close.js <box> --audit` now answers "I marked it unread and it
+> didn't come back" directly — per unread message it prints `axle_marked_read`, `item_closed` and a
+> `reopen` verdict that names the exact clause that refused (`whyNotReopen`).
+>
+> **Deploy order matters:** stop `Axle Ingest` first, deploy, then `node outlook-close.js all
+> --dry-run` to size the reopen before an unattended run can act on the new rule. Note the ledger
+> starts empty, so **#500 cannot be the test case** — its close predates it. Verify by reopening an
+> item, pressing Done again (which writes the ledger rows), then marking it unread.
+>
+> **Also fixed (spotted in the dry run):** info@ reported `folders 0` where drachten reported 1,
+> which reads as "the monitored-folder lookup failed, so the 'moved' rule was skipped". It had not
+> failed — the lookup sits below the "no open items" early return, and info@ had nothing to check,
+> so it never ran. A genuine failure and a lookup that never happened both reported 0. The report
+> now starts at `null` and only carries a number once a lookup actually ran, so 0 keeps meaning
+> what the comment says it means. Cosmetic; rides along with the next deploy.
+
 > **★ ITEM 1308 — two fixes: a superseded draft is no longer shown as the reply, and a thread that
 > needs no answer no longer closes in silence. BUILT, DEPLOYED & LIVE-VERIFIED 2026-08-15. No
 > allow-list or send-path change; nothing new can send itself.**

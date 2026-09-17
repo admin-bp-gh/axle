@@ -123,4 +123,53 @@ async function markRead(mailbox, messageId) {
   }
 }
 
-module.exports = { sendReply, markRead };
+// Every message in an inbound message's Outlook conversation. Read-only, and it exists for one
+// caller: markReadSafe, so closing an item can mark the WHOLE thread read rather than only its
+// newest mail (item #1308). It lives here rather than in connectors.js because it is part of the
+// mark-read write path and shares its permission (Mail.ReadWrite) and its degrade-gracefully
+// contract - returns {ok:false, reason}, never throws.
+//
+// Two calls: the conversationId of the message we know, then the conversation. The isRead filter
+// is applied CLIENT-side - a $filter combining conversationId and isRead is the kind of mixed
+// filter Graph is fussy about, and the payload is tiny either way ($select of five scalars,
+// capped at MAX_CONVERSATION). Not folder-scoped: a thread member sitting unread in Archive or
+// Deleted Items is still part of a handled conversation, and our own sent replies are read
+// already, so they never reach the caller.
+const MAX_CONVERSATION = 50;
+
+async function conversationMessages(mailbox, messageId, opts = {}) {
+  if (!mailbox || !messageId) return { ok: false, reason: "missing mailbox/messageId" };
+  try {
+    const tok = await token();
+    const head = await fetch(
+      `${GRAPH}${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}?$select=conversationId`,
+      { headers: { Authorization: `Bearer ${tok}` } });
+    const h = await head.json().catch(() => null);
+    if (!h || !h.conversationId) return { ok: false, reason: `no conversationId (HTTP ${head.status})` };
+
+    const cid = String(h.conversationId).replace(/'/g, "''");   // OData string escape
+    const filter = encodeURIComponent(`conversationId eq '${cid}'`);
+    const r = await fetch(
+      `${GRAPH}${encodeURIComponent(mailbox)}/messages?$filter=${filter}` +
+      `&$select=id,conversationId,subject,from,isRead&$top=${MAX_CONVERSATION}`,
+      { headers: { Authorization: `Bearer ${tok}` } });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d || !Array.isArray(d.value)) {
+      return { ok: false, reason: `HTTP ${r.status} ${JSON.stringify((d && d.error) || {}).slice(0, 200)}` };
+    }
+    const messages = d.value
+      .filter((m) => (opts.unreadOnly ? m.isRead === false : true))
+      .map((m) => ({
+        id: m.id,
+        conversationId: m.conversationId,
+        subject: m.subject || "",
+        from: (m.from && m.from.emailAddress) || { address: "unknown", name: "unknown" },
+        isRead: Boolean(m.isRead),
+      }));
+    return { ok: true, messages };
+  } catch (e) {
+    return { ok: false, reason: e.message.slice(0, 150) };
+  }
+}
+
+module.exports = { sendReply, markRead, conversationMessages };

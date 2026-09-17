@@ -193,8 +193,6 @@ const MONITORED = new Set([INBOX, FORM]);
   const at = Date.parse("2026-08-06T09:00:00Z");
   ok(OC.canReopen(wi(), at) === "unread", "an item this pass closed is eligible");
   ok(OC.canReopen(null, at) === null, "a message with no work item reopens nothing");
-  ok(OC.canReopen(wi({ resolution: "done" }), at) === null, "a human's Done is never reopened");
-  ok(OC.canReopen(wi({ resolution: "replied" }), at) === null, "a sent reply is never undone");
   ok(OC.canReopen(wi({ resolution: null }), at) === null, "a legacy close with no resolution stays closed");
   ok(OC.canReopen(wi({ status: "archived", resolution: "no_action" }), at) === null, "archived stays archived");
   ok(OC.canReopen(wi({ status: "new", resolution: null }), at) === null, "an already-open item is not reopened");
@@ -205,10 +203,51 @@ const MONITORED = new Set([INBOX, FORM]);
   ok(OC.canReopen(wi(), at + (OC.REOPEN_DAYS - 1) * 86400000) === "unread", "...but just inside it still reopens");
   ok(typeof OC.canReopen(wi(), NOW) === "string", "the default clock argument works");
 
+  // --- 2c. HUMAN closes, marked unread again (2026-08-15) --------------------------------
+  // The rule that changed: a human's Done / phone / sent reply IS undone, but only when the unread
+  // message is one AXLE marked read at close time (the read_marks ledger). The obvious test —
+  // "was the message modified after the close?" — is impossible: Exchange does not move
+  // lastModifiedDateTime on a read-state change (proved live on #500). The ledger is also what
+  // stops the first run resurrecting every item closed before it existed: they have no rows.
+  const OURS = true, NOT_OURS = false;
+  for (const res of ["done", "phone", "replied"]) {
+    ok(OC.canReopen(wi({ resolution: res }), at, OURS) === "unread-after-close",
+      `a human close ('${res}') whose mail AXLE marked read is reopened when it goes unread`);
+    ok(OC.canReopen(wi({ resolution: res }), at, NOT_OURS) === null,
+      `...but '${res}' mail Axle never marked read stays closed (never read, not un-read)`);
+    ok(OC.canReopen(wi({ resolution: res }), at) === null,
+      `...and '${res}' defaults to not-ours when the caller says nothing`);
+  }
+  ok(OC.canReopen(wi({ resolution: "forwarded" }), at, OURS) === null,
+    "a handover forward is never undone — the other mailbox now owns a second item for it");
+  ok(OC.canReopen(wi({ status: "archived", resolution: "no_action" }), at, OURS) === null,
+    "archive is a stronger act than Done: still never undone, however the mail is flagged");
+  ok(OC.canReopen(wi({ resolution: null }), at, OURS) === null,
+    "a legacy close with no resolution is still left alone");
+  ok(OC.canReopen(wi({ resolution: "done" }), at + (OC.REOPEN_DAYS + 1) * 86400000, OURS) === null,
+    "the 30-day window bounds human closes too");
+  ok(OC.canReopen(wi(), at, NOT_OURS) === "unread",
+    "our OWN close is unconditional — the ledger test does not apply to it");
+
+  // The ledger lookup itself: keyed by (mailbox, message), and tied to the item that closed.
+  // (work_item_id is a real foreign key, so these use real rows.)
+  const led = item({ status: "done", resolution: "done" });
+  const notLed = item({ status: "done", resolution: "done" });
+  db.prepare("INSERT INTO read_marks (mailbox, message_id, work_item_id) VALUES ('info', 'LEDGER-1', ?)").run(led.id);
+  ok(OC.markedReadByAxle("info", "LEDGER-1", led.id) === true, "a message Axle marked read is on the ledger");
+  ok(OC.markedReadByAxle("info", "LEDGER-1", notLed.id) === false, "...but only as evidence about the item that closed");
+  ok(OC.markedReadByAxle("drachten", "LEDGER-1", led.id) === false, "...and only in its own mailbox");
+  ok(OC.markedReadByAxle("info", "NOT-THERE", led.id) === false, "an unknown message is not on the ledger");
+  ok(OC.markedReadByAxle("info", null, led.id) === false, "a missing message id is inert");
+
   // A real pass, driven from a stubbed mailbox read. `msg` builds one unread message the way
   // connectors.getMessages maps them; the subject is what threadGroup keys on.
   const msg = (id, subject, from = "customer@example.com", received = "2026-08-06T09:00:00Z") =>
     ({ id, subject, from: { address: from, name: "C" }, received, text: "", hasAttachments: false });
+  // Stand in for markReadSafe: record that Axle marked this message read when it closed the item.
+  const ledger = (mailbox, messageId, itemId) =>
+    db.prepare("INSERT OR REPLACE INTO read_marks (mailbox, message_id, work_item_id) VALUES (?, ?, ?)")
+      .run(mailbox, messageId, itemId);
   const oc = (over) => item({ status: "done", resolution: "outlook", pre_close_status: "ready", ...over });
 
   const mine = oc({ conversation_key: "customer@example.com|klacht" });
@@ -229,7 +268,7 @@ const MONITORED = new Set([INBOX, FORM]);
   ok(row(mine.id).pre_close_status === null, "reopen clears pre_close_status");
   ok(audits(mine.id, "reopened_in_outlook") === 1, "reopen writes one audit row");
   ok(row(humanDone.id).status === "done" && row(humanDone.id).resolution === "done",
-    "the human-closed item is untouched by the run");
+    "a human-closed item whose mail is NOT on the read-marks ledger is untouched by the run");
   ok(row(stale.id).status === "done", "the out-of-window item is untouched");
   ok(row(otherBoxClosed.id).status === "done", "drachten's closed item untouched by an info run");
 
@@ -275,6 +314,53 @@ const MONITORED = new Set([INBOX, FORM]);
   });
   ok(row(legacy.id).status === "new", "a legacy close with no remembered status reopens as 'new'");
   ok(row(midDraft.id).status === "new", "'investigating' is never restored");
+
+  // A HUMAN close, marked unread again — the live case from item 500 (2026-08-15). Driven through
+  // the whole pass, not just canReopen, because the ledger lookup has to survive the mailbox read,
+  // the thread grouping and the guarded UPDATE (whose WHERE used to hardcode resolution 'outlook').
+  const byHand = item({ status: "done", resolution: "done", closed_ago: "-2 hours",
+                        conversation_key: "garage@example.com|return request" });
+  ledger("info", "H1", byHand.id);                    // Axle marked it read when the item closed
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}),
+    unread: [msg("H1", "RE: Return request", "garage@example.com")],
+  });
+  ok(r.reopened === 1, "a human-closed item marked unread again IS reopened (" + r.reopened + ")");
+  ok(row(byHand.id).status === "new", "...back on the queue");
+  ok(row(byHand.id).resolution === null, "...with the 'done' resolution cleared");
+  ok(/after a human close \(done\)/.test(
+    (db.prepare("SELECT detail FROM audit_log WHERE work_item_id = ? AND action = 'reopened_in_outlook'")
+      .get(byHand.id) || {}).detail || ""), "...and an audit row that says which kind of close it undid");
+
+  // Same shape, but Axle never marked that message read (an item closed before the ledger existed,
+  // or mail that was simply never opened): nothing to undo, and no mass resurrection on first run.
+  const stillDone = item({ status: "done", resolution: "done", closed_ago: "-2 hours",
+                           conversation_key: "never@example.com|never read" });
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}), unread: [msg("H2", "Never read", "never@example.com")],
+  });
+  ok(r.reopened === 0, "a human close with no ledger row stays closed — no mass resurrection");
+  ok(row(stillDone.id).status === "done", "...the item is untouched");
+
+  // Evidence is per item: a ledger row filed under a DIFFERENT item does not reopen this one.
+  const otherItem = item({ status: "done", resolution: "done", closed_ago: "-2 hours",
+                           conversation_key: "mixed@example.com|mixed" });
+  ledger("info", "H4", stillDone.id);   // a real row, but filed under a DIFFERENT item
+  r = await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}), unread: [msg("H4", "Mixed", "mixed@example.com")],
+  });
+  ok(r.reopened === 0, "a ledger row belonging to another item is not evidence about this one");
+
+  // A human-closed item with a draft waiting comes back 'ready', matching the manual Reopen
+  // control — the human Done route never recorded a pre_close_status to restore.
+  const withDraft = item({ status: "done", resolution: "replied", closed_ago: "-2 hours",
+                           conversation_key: "drafted@example.com|drafted" });
+  db.prepare("INSERT INTO drafts (work_item_id, version, body) VALUES (?, 1, 'x')").run(withDraft.id);
+  ledger("info", "H3", withDraft.id);
+  await OC.reconcileBox("info", {
+    monitored: MONITORED, states: stub({}), unread: [msg("H3", "Drafted", "drafted@example.com")],
+  });
+  ok(row(withDraft.id).status === "ready", "a human-closed item with a draft reopens as 'ready', not 'new'");
 
   // The two passes must not fight: closing an item does not also reopen it in the same run.
   const churn = item({ status: "ready", conversation_key: "churn@example.com|churn" });

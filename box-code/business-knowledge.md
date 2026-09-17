@@ -86,6 +86,11 @@
   "as pictured").
 
 ## Shipping
+- We do NOT ship to the United States. If a customer asks about shipping to, or ordering
+  from, the US (a US address, or an explicit "do you ship to the US" question), do not quote
+  shipping costs or proceed with a normal order/price reply. Politely explain we're unable to
+  ship there, and recommend they try sourcing the part locally in the US, or from a UK
+  supplier that ships direct.
 - MyParcel is the carrier platform. Carrier options differ per destination country - derive
   what we actually use for a country from recent MyParcel shipments to that country.
 - For lead-time questions to a country: look up recent MyParcel shipments to that country

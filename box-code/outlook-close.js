@@ -32,13 +32,18 @@
 // re-flagged as unread had silently dropped off the queue. (Found on the live box: #992, a
 // propshaft complaint, and #1091 — both unread in Outlook, both closed in Axle.)
 //
-// It is deliberately the NARROWEST possible mirror:
-//   * only items THIS pass closed (resolution = 'outlook'). A human's Done, Archive or a sent
-//     reply is a decision Axle must never undo — those carry 'done'/'no_action'/'replied' and
-//     are not candidates. This is the rule that keeps the two directions from fighting.
+// It is deliberately a NARROW mirror:
+//   * items THIS pass closed (resolution = 'outlook'), unconditionally — Axle closed it, Axle may
+//     reopen it.
+//   * items a HUMAN closed with Done / phone / a sent reply, but ONLY when the unread message is
+//     one AXLE itself marked read at close time (the read_marks ledger) — so it was deliberately
+//     un-read afterwards. Widened 2026-08-15 — see canReopen for why the blanket "never undo a
+//     human decision" rule stopped being right once closing began marking the whole thread read,
+//     and for why a timestamp cannot do this job. Archive and 'forwarded' are still never undone.
 //   * only within REOPEN_DAYS of the close.
 //   * the item returns to the status it was closed from (pre_close_status), so a draft that was
-//     'ready to send' comes back ready, not as unhandled 'new'.
+//     'ready to send' comes back ready, not as unhandled 'new'. A human close never recorded one,
+//     so those fall back to the manual Reopen control's rule: 'ready' if a draft is waiting.
 //
 // It runs FROM THE MAILBOX, not from the DB: one folder-scoped "give me the unread mail" read
 // per mailbox, then each unread message is matched back to its work item. That direction matters
@@ -77,7 +82,9 @@
 // Direction of travel (important): Axle → Outlook already exists (routes/shared.js markReadSafe
 // PATCHes isRead when an item is sent / marked done / archived). That path only ever touches
 // items that are ALREADY closed, and closed items are excluded from the worklist here, so the
-// two never fight.
+// two never fight. Since 2026-08-15 it marks the WHOLE thread read, not just the newest message
+// (thread-read.js) — which is what makes it agree with the live-thread rule below: an item Axle
+// closes no longer leaves unread mail behind for the reopen pass to find.
 //
 // Safety:
 //   * READ-ONLY against Microsoft 365 — C.getReadStates issues GETs only. The only write is to
@@ -144,39 +151,105 @@ function itemForMessage(box, msgId, convKey) {
       || (convKey ? db.prepare("SELECT * FROM work_items WHERE mailbox = ? AND conversation_key = ?").get(box, convKey) : null);
 }
 
+// Human closes this pass may undo, GIVEN the mail was marked unread after the close (see below).
+// Deliberately not the full set: 'no_action' only ever comes with status 'archived' (excluded
+// anyway, and it is what a blocked sender's item carries), and 'forwarded' means action #6 handed
+// the email to the other mailbox, where ingest made a SECOND item — reopening this one would put
+// the same customer in two queues.
+const HUMAN_CLOSES = new Set(["done", "phone", "replied"]);
+
 // May this item be reopened? Pure, so the whole rule is unit-testable without a mailbox. Returns
-// "unread" to reopen, or null with every uncertainty resolved in favour of leaving it alone.
+// a reason to reopen, or null with every uncertainty resolved in favour of leaving it alone.
 // Note there is no folder or read-state check here: the caller only ever passes items whose mail
 // came back from a folder-scoped UNREAD fetch, so both are already true by construction.
 // Injection-flagged items are not excluded — a flagged item can only have been closed by a
 // deliberate move or delete, so its mail being unread in a watched folder is deliberate too.
-function canReopen(w, nowMs = Date.now()) {
+//
+// TWO REOPEN REASONS (the second added 2026-08-15):
+//   "unread"             — undoing THIS pass's own close (resolution 'outlook'). Unconditional:
+//                          Axle closed it, so Axle may reopen it.
+//   "unread-after-close" — undoing a HUMAN's close (Done / phone / a sent reply). This used to be
+//                          forbidden outright, on the rule that a human decision is never undone.
+//                          What made that rule necessary was that our own closes left the REST of
+//                          the thread unread, so any wider reopen rule resurrected items on mail
+//                          nobody had touched. Since routes/shared.js marks the whole conversation
+//                          read on close (thread-read.js, same day), unread mail behind a closed
+//                          item is a deliberate act again — and Brad's expectation is the plain
+//                          one: marking it unread in Outlook means "this still needs doing".
+//
+// The gate on the second is `weMarkedItRead` — was this exact message on the read_marks ledger,
+// i.e. did AXLE mark it read when the item was closed? If so, its being unread now can only be a
+// human's doing. The obvious alternative, "was the message modified after the close?", is not
+// available: EXCHANGE DOES NOT BUMP lastModifiedDateTime ON A READ-STATE CHANGE. Proved on the
+// live box with item #500 — Axle PATCHed it to read at 13:41, Brad marked it unread minutes
+// later, and the stamp stayed on the previous day's 11:44 throughout. Do not try that again.
+//
+// The ledger also gives the no-mass-resurrection property for free: items closed before it existed
+// have no rows, so the first run after this ships can only reopen what Axle has closed since.
+function canReopen(w, nowMs = Date.now(), weMarkedItRead = false) {
   if (!w) return null;                                  // never ingested / another mailbox
   if (w.origin !== "inbound") return null;              // composed item: no inbound mail to unread
-  if (w.status !== "done") return null;                 // already open, or archived (a human act)
-  if (w.resolution !== "outlook") return null;          // THE guard: only undo our own closes
+  if (w.status !== "done") return null;                 // already open, or archived (a stronger act)
   const closedMs = Date.parse(String(w.updated_at || "").replace(" ", "T") + "Z");
   if (!Number.isFinite(closedMs)) return null;          // unparseable timestamp: leave it alone
   if (nowMs - closedMs > REOPEN_DAYS * 86400000) return null;
-  return "unread";
+  if (w.resolution === "outlook") return "unread";      // our own close: as before
+  if (!HUMAN_CLOSES.has(w.resolution)) return null;     // legacy null, 'forwarded', anything new
+  if (!weMarkedItRead) return null;                     // never read in the first place, not un-read
+  return "unread-after-close";
 }
 
-// Put one item back on the queue, at the status it was closed from. The WHERE repeats the
-// closed-by-this-pass condition so a human who pressed Reopen (or a new inbound that re-opened
-// the item) in the same instant always wins — the UPDATE reports 0 changes and we skip it.
-// 'investigating' is never restored: a mid-draft status from before the close is meaningless now,
-// and restoring it would make the item permanently invisible to the close pass.
-function reopenItem(w) {
-  const back = w.pre_close_status && w.pre_close_status !== "investigating" ? w.pre_close_status : "new";
+// Did Axle mark this message read when it closed this item? The ledger is keyed by message, so the
+// work_item_id is checked too: a message that has since been re-filed under a different item is
+// not evidence about this one.
+function markedReadByAxle(box, messageId, itemId) {
+  if (!messageId) return false;
+  const row = db.prepare("SELECT work_item_id FROM read_marks WHERE mailbox = ? AND message_id = ?")
+    .get(box, messageId);
+  return Boolean(row && row.work_item_id === itemId);
+}
+
+// The narrative half of canReopen, for the --audit diagnostic only: given an item the rule
+// REFUSED to reopen, say which clause refused it. Kept beside canReopen so the two stay in step;
+// it decides nothing and is never on the reconcile path.
+function whyNotReopen(w, weMarkedItRead) {
+  if (!w) return "no work item";
+  if (w.origin !== "inbound") return "composed item, no inbound mail";
+  if (w.status === "archived") return "archived — never undone";
+  if (w.status !== "done") return "already open";
+  const closedMs = Date.parse(String(w.updated_at || "").replace(" ", "T") + "Z");
+  if (!Number.isFinite(closedMs)) return "close time unparseable";
+  if (Date.now() - closedMs > REOPEN_DAYS * 86400000) return `closed more than ${REOPEN_DAYS} days ago`;
+  if (w.resolution === "outlook") return "(should have reopened — report this)";
+  if (!HUMAN_CLOSES.has(w.resolution)) return `resolution '${w.resolution || "none"}' is never undone`;
+  if (!weMarkedItRead) return "Axle never marked this message read (closed before the ledger, or the mark failed)";
+  return "(unknown — report this)";
+}
+
+// Put one item back on the queue, at the status it was closed from. The WHERE repeats the exact
+// close this decision was made against, so a human who pressed Reopen (or a new inbound that
+// re-opened the item) in the same instant always wins — the UPDATE reports 0 changes and we skip
+// it. 'investigating' is never restored: a mid-draft status from before the close is meaningless
+// now, and restoring it would make the item permanently invisible to the close pass.
+//
+// pre_close_status only exists on THIS pass's closes; the human Done route never wrote one. So a
+// human-closed item falls back to the rule the manual Reopen control in routes/item.js uses —
+// 'ready' if a draft is waiting, else 'new' — rather than dropping a drafted item back in as
+// unhandled.
+function reopenItem(w, reason = "unread") {
+  const back = w.pre_close_status && w.pre_close_status !== "investigating"
+    ? w.pre_close_status
+    : (db.prepare("SELECT COUNT(*) AS n FROM drafts WHERE work_item_id = ?").get(w.id).n ? "ready" : "new");
   const changed = db.prepare(
     `UPDATE work_items SET status = ?, resolution = NULL, pre_close_status = NULL,
             updated_at = datetime('now')
-      WHERE id = ? AND status = 'done' AND resolution = 'outlook'`
-  ).run(back, w.id).changes;
+      WHERE id = ? AND status = 'done' AND resolution = ?`
+  ).run(back, w.id, w.resolution).changes;
   if (!changed) return false;
   audit("system", "reopened_in_outlook", w.id,
-    `marked unread again in Outlook (${w.mailbox}@) — reopened to ${back} ` +
-    `(${String(w.subject || "").slice(0, 60)})`);
+    `marked unread again in Outlook (${w.mailbox}@) — reopened to ${back}` +
+    (reason === "unread-after-close" ? ` after a human close (${w.resolution})` : "") +
+    ` (${String(w.subject || "").slice(0, 60)})`);
   return true;
 }
 
@@ -214,11 +287,15 @@ async function reopenPass(box, mailbox, opts = {}) {
     if (!w) continue;
     out.live.add(w.id);     // unread mail in this thread: the close pass must not touch it
     if (done.has(w.id)) continue;
-    if (!canReopen(w)) continue;
+    // Per MESSAGE, not per item: on a human close the evidence is THIS message being on the
+    // read-marks ledger, and only some of a thread's mail will be. A message that fails the test
+    // leaves the item eligible for the next one.
+    const reason = canReopen(w, Date.now(), markedReadByAxle(box, m.id, w.id));
+    if (!reason) continue;
     done.add(w.id);
-    if (!opts.dryRun && !reopenItem(w)) continue;       // lost a race with a human: skip
+    if (!opts.dryRun && !reopenItem(w, reason)) continue;   // lost a race with a human: skip
     out.reopened++;
-    out.items.push({ ...w, reason: "unread" });
+    out.items.push({ ...w, reason });
   }
   return out;
 }
@@ -270,7 +347,7 @@ function closeItem(w, reason) {
 // opts.monitored — override the monitored folder-id set (harness).
 async function reconcileBox(box, opts = {}) {
   const report = {
-    box, enabled: enabled(), folders: 0, checked: 0, closed: 0,
+    box, enabled: enabled(), folders: null, checked: 0, closed: 0,
     read: 0, moved: 0, gone: 0, open: 0, unknown: 0,
     unread_seen: 0, reopened: 0, held_open: 0, skipped: null,
   };
@@ -300,8 +377,13 @@ async function reconcileBox(box, opts = {}) {
   //
   // report.folders makes that fail-safe VISIBLE. A silent fail-safe is indistinguishable from
   // "nothing was moved", so the count goes in every report and every log line: expect 2 for info@
-  // (Inbox + Shopify Contact Form) and 1 for drachten@. A 0 means the lookup failed and 'moved'
+  // (Inbox + Shopify Contact Form) and 1 for drachten@. A 0 means the lookup FAILED and 'moved'
   // was skipped this run — read and deleted still worked.
+  //
+  // NULL is different and must stay so: the lookup lives BELOW the "no open items" early return,
+  // so a mailbox with nothing to check never resolves its folders at all. That reported 0 too
+  // until 2026-08-15, which reads as a failure that never happened — the report now starts at
+  // null and only carries a number once a lookup actually ran.
   let monitored = opts.monitored;
   if (!monitored) {
     try {
@@ -483,12 +565,22 @@ async function auditBox(box) {
     else if (w.status === "archived") where = `#${w.id} archived (${w.resolution || "—"})`;
     else if (w.status === "done") where = `#${w.id} closed (${w.resolution || "—"})`;
     else where = `#${w.id} OPEN (${w.status})${w.injection_flag ? " [flagged]" : ""}`;
+    // Why did (or didn't) this unread message bring its item back? The inputs to the reopen
+    // decision, side by side: whether Axle marked this message read when it closed the item, when
+    // it closed it, and the verdict. Added 2026-08-15 — "I marked it unread and it didn't come
+    // back" is the question this diagnostic exists to answer.
+    const ours = w ? markedReadByAxle(box, m.id, w.id) : false;
     return {
       received: String(m.received || "").slice(0, 16).replace("T", " "),
       from: String(m.from.address || "").slice(0, 30),
       subject: String(m.subject || "").slice(0, 40),
       matched_by: w ? (byMsgId.get(box, m.id) ? "message id" : "thread key") : "—",
       axle: where,
+      axle_marked_read: w ? (ours ? "yes" : "no") : "—",
+      item_closed: w && w.status === "done" ? String(w.updated_at || "").slice(0, 16) : "—",
+      reopen: !w ? "—"
+            : (canReopen(w, Date.now(), ours)
+               || (w.status !== "done" ? "already open" : "no — " + whyNotReopen(w, ours))),
     };
   });
   return { box, unread_in_outlook: emails.length, folders, rows };
@@ -528,7 +620,8 @@ async function missingBox(box, days = 30) {
 
 module.exports = {
   reconcileBox, reconcileBoxes, candidates, decide, explain, auditBox, missingBox, enabled,
-  reopenPass, canReopen, itemForMessage, MAX_ITEMS, REOPEN_DAYS,
+  reopenPass, canReopen, whyNotReopen, markedReadByAxle, itemForMessage,
+  MAX_ITEMS, REOPEN_DAYS, HUMAN_CLOSES,
 };
 
 // CLI: node outlook-close.js [info|drachten|all] [--dry-run] [--list]

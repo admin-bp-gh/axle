@@ -7,8 +7,14 @@
 // Watermark model: each run reads every email that arrived since the last sync
 // (receivedDateTime >= the stored per-mailbox watermark, minus a small overlap buffer
 // to absorb mail-rule/move lag), across the mailbox's configured folders, then advances
-// the watermark to the newest message seen. No "unread" filter -- "new since last sync",
-// not "unread", is what's processed. The thread-level dedup makes the overlap free.
+// the watermark to the newest message seen. The thread-level dedup makes the overlap free.
+//
+// PLUS an unread sweep (2026-08-15). The watermark alone cannot see mail that arrived in an
+// unwatched folder and was MOVED IN later: the move mints a new Graph id but keeps the original
+// receivedDateTime, which the watermark has already passed, so it stays invisible forever. Each
+// run now also reads "unread in the watched folders" and adds what the watermark missed —
+// see withUnreadSweep below, and unread-sweep.js for the guard that keeps OLD unread mail on a
+// known thread out of it (that belongs to outlook-close's reopen mirror, not to ingest).
 //
 // Usage: node ingest.js [info|drachten|all] [unread]
 //   default is info@ only (the live mailbox). 'all' processes both mailboxes in one
@@ -29,6 +35,7 @@ const DS = require("./doc-suggest.js");
 const OUTLOOK = require("./outlook-close.js");   // Outlook -> Axle: close what was handled in Outlook
 const OBLOCK = require("./outlook-block.js");    // Axle -> Outlook: file blocked senders out of the inbox
 const ACK = require("./acknowledgement.js");     // no_reply courtesy line: when to keep it, and what may be in it
+const US = require("./unread-sweep.js");         // which unread mail the watermark missed may be added to a run
 const { db, audit, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
@@ -308,6 +315,43 @@ async function processThread(anthropic, key, msgs, ctx) {
   return { itemId, status, drafted: Boolean(result.draft || result.interim_draft), threadLen: msgs.length, tools: toolLog.length };
 }
 
+// The watermark fetch PLUS anything unread in the watched folders that it missed. The watermark
+// alone cannot see mail that arrived elsewhere and was moved in later: the move mints a new Graph
+// id but keeps the original receivedDateTime, which the watermark has passed. See unread-sweep.js
+// for the guard that stops old unread mail on a KNOWN thread being treated as new.
+//
+// Best-effort by contract: if the unread read fails, the run continues on the watermark batch
+// alone (today's behaviour) rather than failing the whole ingest.
+async function withUnreadSweep(mailbox, boxName, folders, sinceIso) {
+  const fresh = await C.getMessages(mailbox, { sinceIso, folders, maxPages: MAX_PAGES });
+  let unread;
+  try {
+    unread = await C.getMessages(mailbox, { unreadOnly: true, folders, maxPages: MAX_PAGES });
+  } catch (e) {
+    audit("system", "unread_sweep_error", null, `${boxName}: ${String(e.message || e).slice(0, 150)}`);
+    return fresh;
+  }
+  // One key per message, from the same grouping ingest stores, so the lookup matches what is there.
+  const keyOf = new Map();
+  for (const [key, msgs] of E.threadGroup(unread)) for (const m of msgs) keyOf.set(m.id, key);
+  const known = db.prepare("SELECT id, email_received FROM work_items WHERE mailbox = ? AND conversation_key = ?");
+  const plan = US.sweepAdditions(unread, new Set(fresh.map((m) => m.id)), (m) => keyOf.get(m.id),
+                                 (key) => (key ? known.get(boxName, key) : null));
+  if (plan.add.length) {
+    audit("system", "unread_sweep", null,
+      `${boxName}: ${plan.add.length} message(s) the watermark missed — ` +
+      plan.add.map((m) => `${m.from.address}/${String(m.subject).slice(0, 30)}`).join("; ").slice(0, 300));
+    console.log(`  unread sweep: +${plan.add.length} message(s) the watermark missed` +
+                (plan.skip.length ? ` (${plan.skip.length} left to the reopen mirror)` : ""));
+  }
+  const mergedOut = fresh.concat(plan.add)
+    .sort((a, b) => (a.received < b.received ? 1 : a.received > b.received ? -1 : 0));
+  // Carry the FRESH fetch's per-folder errors through (concat drops array properties). runBox holds
+  // the watermark when any folder failed, so a folder that 500'd is retried, not stepped over.
+  mergedOut.folderErrors = fresh.folderErrors || [];
+  return mergedOut;
+}
+
 async function runBox(anthropic, boxName, opts = {}) {
   const unreadSeed = !!opts.unreadSeed;
   const ruleset = rulesets[boxName];
@@ -321,9 +365,11 @@ async function runBox(anthropic, boxName, opts = {}) {
   }
   const emails = unreadSeed
     ? await C.getMessages(MAILBOX, { unreadOnly: true, folders, maxPages: MAX_PAGES })
-    : await C.getMessages(MAILBOX, { sinceIso, folders, maxPages: MAX_PAGES });
-  // Newest fetched receivedDateTime -> the new watermark (advanced after processing).
+    : await withUnreadSweep(MAILBOX, boxName, folders, sinceIso);
+  // Newest fetched receivedDateTime -> the new watermark (advanced after processing). Computed
+  // over the merged set, so a swept-in OLD message can only ever lower nothing: it is a max.
   const maxRecv = emails.reduce((m, e) => (e.received && e.received > m ? e.received : m), "");
+  const folderErrors = emails.folderErrors || [];   // non-empty => at least one folder didn't fetch
   const threads = E.threadGroup(emails);
   const summary = [];
   for (const [key, msgs] of threads) {
@@ -356,7 +402,13 @@ async function runBox(anthropic, boxName, opts = {}) {
   }
   // Advance the watermark to the newest message we fetched (only forward). Next run reads from
   // here minus the buffer, so we never reprocess old mail but never miss new mail either.
-  if (maxRecv) {
+  // BUT NOT when a folder failed to fetch: advancing past mail we could not read would skip it
+  // forever. Hold the watermark instead so the failed folder is retried next run.
+  if (folderErrors.length) {
+    audit("system", "watermark_held", null,
+      `${boxName}: folder fetch error(s) — ${folderErrors.map((f) => `${f.folder}: ${f.error}`).join("; ").slice(0, 250)}`);
+    console.log(`Watermark ${boxName} HELD — folder fetch error(s): ${folderErrors.map((f) => `${f.folder} -> ${f.error}`).join("; ")}`);
+  } else if (maxRecv) {
     const prev = getWatermark(boxName);
     if (!prev || maxRecv > prev) {
       setWatermark(boxName, maxRecv);
@@ -369,7 +421,17 @@ async function runBox(anthropic, boxName, opts = {}) {
 // scheduled task; the server's in-process manual Sync otherwise), so this just does the work.
 async function runBoxes(boxes, opts = {}) {
   const anthropic = opts.anthropic || new Anthropic();
-  for (const boxName of boxes) await runBox(anthropic, boxName, { unreadSeed: !!opts.unreadSeed });
+  for (const boxName of boxes) {
+    // Per-mailbox isolation: one mailbox failing must never stop the others in the same run. Before
+    // 2026-09-01 info@ ran first and a throw in its fetch aborted the whole run, so a Graph fault on
+    // info@ silently stalled drachten@ too (and froze the reconciliation passes below).
+    try {
+      await runBox(anthropic, boxName, { unreadSeed: !!opts.unreadSeed });
+    } catch (e) {
+      audit("system", "ingest_error", null, `${boxName}: ${String(e.message || e).slice(0, 200)}`);
+      console.error(`ERROR ${boxName}:`, e.message || e);
+    }
+  }
 
   // Outlook -> Axle reconciliation: anything the team handled in Outlook (i.e. marked read there)
   // drops off Axle's Open list. Deliberately runs AFTER ingest: a new inbound on an existing thread

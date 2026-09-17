@@ -12,6 +12,7 @@ const COMPOSE = require("../compose.js");          // Compose: compose-mode engi
 const SCEN = require("../scenarios.js");           // Compose: scenario library
 const DOCSUGGEST = require("../doc-suggest.js");   // Auto-attach: read-only resolve + scope filter
 const ACK = require("../acknowledgement.js");      // no_reply courtesy line: when to keep it, and what may be in it
+const TR = require("../thread-read.js");           // which other messages in the thread may be marked read
 const CA = require("../claim-attach.js");          // carrier claims: stage the invoice + purchase-value statement
 const CS = require("../claim-statement.js");       // the generated purchase-value statement
 const SAPDOC = require("../sap-doc-pdf.js");       // read-only Boyum print renderer
@@ -190,9 +191,70 @@ async function runRedraft(itemId, login) {
 
 // Mark the inbound email read in the shared mailbox (on send / done / archive).
 // No-op-safe: if Mail.ReadWrite isn't granted yet, it logs a skip and changes nothing.
+//
+// The WHOLE thread, not just the newest message (item #1308, 2026-08-15). A customer who writes
+// twice before we answer leaves two unread mails behind one work item; marking only
+// latest_message_id read left the earlier one unread in Outlook after the reply went out, and the
+// outlook-close reopen mirror ("any unread message in the thread => live") could then reopen the
+// item Brad had just finished. Which siblings are eligible is decided by thread-read.js.
 async function markReadSafe(login, w) {
-  const r = await SEND.markRead(MAILBOX_OF[w.mailbox], w.latest_message_id);
+  const mailbox = MAILBOX_OF[w.mailbox];
+  const r = await SEND.markRead(mailbox, w.latest_message_id);
   audit(login, "mark_read", w.id, r.ok ? "ok" : "skipped: " + r.reason);
+  if (r.ok) recordReadMark(w, w.latest_message_id);
+  // Only chase the rest of the thread once the newest message actually marked: if the permission
+  // or the message id is the problem, every sibling would fail identically and noisily.
+  if (r.ok) await markThreadReadSafe(login, w, mailbox);
+}
+
+// Remember that AXLE marked this message read, not a human. The reopen mirror reads this ledger:
+// a message on it that is unread again was deliberately un-read, which is the one signal Exchange
+// gives us — it does not move lastModifiedDateTime on a read-state change (see db.js read_marks).
+// Never allowed to break a close: a ledger write failing costs a future reopen, nothing more.
+function recordReadMark(w, messageId) {
+  if (!messageId) return;
+  try {
+    db.prepare(
+      `INSERT INTO read_marks (mailbox, message_id, work_item_id, marked_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT (mailbox, message_id)
+       DO UPDATE SET work_item_id = excluded.work_item_id, marked_at = excluded.marked_at`
+    ).run(w.mailbox, messageId, w.id);
+  } catch (e) {
+    audit("system", "read_mark_failed", w.id, String(e.message || e).slice(0, 150));
+  }
+}
+
+// Best-effort second half of markReadSafe. Never throws and never blocks the close: a Graph
+// hiccup here leaves the old behaviour (newest message read, siblings untouched) and an audit row.
+async function markThreadReadSafe(login, w, mailbox) {
+  try {
+    const found = await SEND.conversationMessages(mailbox, w.latest_message_id, { unreadOnly: true });
+    if (!found.ok) { audit(login, "mark_read_thread", w.id, "skipped: " + found.reason); return; }
+
+    // Same grouping ingest uses, so the key we look up is the key it stored.
+    const keyOf = new Map();
+    for (const [key, msgs] of E.threadGroup(found.messages)) for (const m of msgs) keyOf.set(m.id, key);
+    const byKey = db.prepare("SELECT id, status FROM work_items WHERE mailbox = ? AND conversation_key = ?");
+    const plan = TR.planThreadRead(
+      w,
+      found.messages.map((m) => ({ id: m.id, key: keyOf.get(m.id) })),
+      (key) => byKey.get(w.mailbox, key)
+    );
+    if (!plan.mark.length && !plan.skip.length) return;
+
+    let marked = 0, failed = 0;
+    for (const id of plan.mark) {
+      const r = await SEND.markRead(mailbox, id);
+      if (r.ok) { marked++; recordReadMark(w, id); } else failed++;
+    }
+    audit(login, "mark_read_thread", w.id,
+      `${marked} earlier message(s) in the thread marked read` +
+      (failed ? `, ${failed} failed` : "") +
+      (plan.skip.length ? `, ${plan.skip.length} left unread (${plan.skip.map((s) => s.why).join("; ").slice(0, 80)})` : ""));
+  } catch (e) {
+    audit(login, "mark_read_thread", w.id, "skipped: " + String(e.message || e).slice(0, 150));
+  }
 }
 
 // --- Compose ("New email") helpers ---------------------------------------------

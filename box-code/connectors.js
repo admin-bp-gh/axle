@@ -53,7 +53,40 @@ async function graphToken() {
   return graphTokenCache.token;
 }
 
-const MSG_SELECT = "id,conversationId,subject,from,receivedDateTime,body,categories,hasAttachments";
+// NOTE, so it is not tried again: lastModifiedDateTime is deliberately NOT selected here. It looks
+// like the way to tell "someone marked this unread again" from "this was never read", but Exchange
+// does not move it on a read-state change — proved on the live box 2026-08-15, item #500 (two
+// isRead transitions, stamp unchanged). outlook-close uses the read_marks ledger instead.
+//
+// LIST select is metadata ONLY — deliberately NO `body`. Selecting `body` in a *filtered* message
+// list is a known Graph 500 trigger ("An internal server error occurred. The operation failed.").
+// On 2026-08-31 a single un-serialisable message inside the since-window failed the whole list page,
+// so every ingest run threw before processing anything; the watermark could not advance, the window
+// never cleared, and BOTH mailboxes deadlocked for ~21h. We now list metadata only and hydrate each
+// body individually (fetchMessageBody), where one bad body is skipped instead of sinking the batch.
+const MSG_LIST_SELECT = "id,conversationId,subject,from,receivedDateTime,categories,hasAttachments";
+
+// All Graph reads funnel through here for one shared thing the raw fetch lacked: a hard timeout.
+// Before 2026-09-01 a stalled Graph call hung the whole ingest run silently (the run just never
+// finished) instead of failing cleanly. AbortController turns a stall into a normal error.
+const GRAPH_TIMEOUT_MS = 30000;
+async function graphGetJson(url, { timeoutMs = GRAPH_TIMEOUT_MS } = {}) {
+  const token = await graphToken();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Prefer: "outlook.body-content-type=\"text\"" },
+      signal: ac.signal,
+    });
+    return await r.json();
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error(`Graph request timed out after ${timeoutMs}ms: ${url.slice(0, 120)}`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function mapMessage(m) {
   return {
@@ -90,31 +123,44 @@ async function resolveFolderId(mailbox, name) {
   return f.id;
 }
 
-// Fetch all messages in one folder with receivedDateTime >= sinceIso (newest first),
-// following @odata.nextLink pages up to maxPages. Server-side filter + ordering on the
-// same property is allowed; pagination ends naturally once the filter is exhausted.
-// When unreadOnly is set, the filter is on isRead instead, and $orderby is dropped --
-// Graph rejects ordering by receivedDateTime while filtering on a different property
-// (isRead). getMessages re-sorts the merged result newest-first client-side regardless.
+// Fetch all messages in one folder with receivedDateTime >= sinceIso, following @odata.nextLink
+// pages up to maxPages. METADATA ONLY (no body — see MSG_LIST_SELECT). $orderby is dropped on BOTH
+// paths: Graph returns messages newest-first by default, getMessages re-sorts client-side anyway,
+// and $orderby alongside $filter+$select(body) was part of the shape that 500'd. When unreadOnly is
+// set the filter is on isRead instead of receivedDateTime.
 async function fetchFolderSince(mailbox, folderRef, sinceIso, maxPages, unreadOnly) {
-  const token = await graphToken();
   const folderId = await resolveFolderId(mailbox, folderRef);
   const filter = unreadOnly
     ? "&$filter=isRead eq false"
     : (sinceIso ? `&$filter=receivedDateTime ge ${sinceIso}` : "");
-  const orderby = unreadOnly ? "" : "&$orderby=receivedDateTime desc";
   let url =
     `https://graph.microsoft.com/v1.0/users/${mailbox}/mailFolders/${folderId}/messages` +
-    `?$top=50${orderby}${filter}&$select=${MSG_SELECT}`;
+    `?$top=50${filter}&$select=${MSG_LIST_SELECT}`;
   const out = [];
   for (let page = 0; url && page < (maxPages || 10); page++) {
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: "outlook.body-content-type=\"text\"" } });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error.message);
+    const data = await graphGetJson(url);
+    if (data.error) throw new Error(`${folderRef} p${page}: ${data.error.message}`);
     out.push(...(data.value || []));
     url = data["@odata.nextLink"] || null;
   }
   return out;
+}
+
+// Hydrate ONE message's body, tolerating the Graph 500 a single un-serialisable body can throw.
+// Returns a Graph body object ({contentType, content}) or null. Null is safe: mapMessage's bodyText
+// treats it as empty, so the message still becomes a work item (with no text) instead of failing the
+// whole run — the exact failure mode that deadlocked ingest before 2026-09-01.
+async function fetchMessageBody(mailbox, messageId) {
+  try {
+    const data = await graphGetJson(
+      `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${encodeURIComponent(messageId)}?$select=body`
+    );
+    if (data.error) throw new Error(data.error.message);
+    return data.body || null;
+  } catch (e) {
+    console.error(`  body hydrate failed for ${String(messageId).slice(0, 24)}…: ${e.message}`);
+    return null;
+  }
 }
 
 // Read new mail across one or more folders. opts:
@@ -133,8 +179,20 @@ async function getMessages(mailbox, opts = {}) {
   const maxPages = opts.maxPages || 10;
   const seen = new Set();
   const merged = [];
+  // Per-folder isolation: one folder's list 500'ing must not lose the mail in the others. We fetch
+  // each folder independently, record which failed, and press on with what we got. The caller
+  // (ingest.runBox) reads folderErrors and HOLDS the watermark when any folder failed, so a skipped
+  // folder's mail is retried next run rather than being stepped over.
+  const folderErrors = [];
   for (const f of folders) {
-    const rows = await fetchFolderSince(mailbox, f, sinceIso, maxPages, unreadOnly);
+    let rows;
+    try {
+      rows = await fetchFolderSince(mailbox, f, sinceIso, maxPages, unreadOnly);
+    } catch (e) {
+      folderErrors.push({ folder: f, error: String(e.message || e).slice(0, 200) });
+      console.error(`  folder fetch failed [${mailbox} / ${f}]: ${e.message}`);
+      continue;
+    }
     for (const m of rows) {
       if (seen.has(m.id)) continue;
       seen.add(m.id);
@@ -143,7 +201,13 @@ async function getMessages(mailbox, opts = {}) {
   }
   merged.sort((a, b) => (a.receivedDateTime < b.receivedDateTime ? 1 : a.receivedDateTime > b.receivedDateTime ? -1 : 0));
   const capped = opts.limit ? merged.slice(0, opts.limit) : merged;
-  return capped.map(mapMessage);
+  // Bodies are not in the list result (MSG_LIST_SELECT) — hydrate each one here, tolerantly. One
+  // per message: cheap in steady state (few new mails/run), bounded on a catch-up, and a single
+  // un-serialisable body is skipped rather than failing the batch.
+  for (const m of capped) m.body = await fetchMessageBody(mailbox, m.id);
+  const out = capped.map(mapMessage);
+  out.folderErrors = folderErrors;   // [] when every folder fetched cleanly; read by ingest.runBox
+  return out;
 }
 
 // Attachment metadata for one message (real file attachments only, inline images skipped).

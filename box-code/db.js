@@ -103,6 +103,28 @@ CREATE TABLE IF NOT EXISTS draft_attachments (
   added_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Every inbound message Axle itself marked READ in Outlook when an item was closed (send / Done /
+-- Archive / handover). This is the ledger the reopen mirror reads: if a message WE marked read is
+-- unread again, a human did that deliberately, and the item comes back (outlook-close.canReopen).
+--
+-- Why a ledger and not a timestamp: the obvious test — "was the message modified after we closed
+-- it?" — cannot work. Exchange does NOT bump lastModifiedDateTime when isRead changes. Proved on
+-- the live box 2026-08-15 with item #500: Axle PATCHed the message to read at 13:41 and Brad
+-- marked it unread minutes later, and lastModifiedDateTime stayed at the previous day's 11:44
+-- through both. The state transition itself is the only reliable evidence, so we record our own
+-- side of it. Rows predate nothing: an item closed before this table existed has none, which is
+-- exactly why enabling this cannot resurrect old work.
+--
+-- Keyed on (mailbox, message_id): one message belongs to one item, and re-closing an item after a
+-- reopen replaces the row rather than duplicating it.
+CREATE TABLE IF NOT EXISTS read_marks (
+  mailbox      TEXT NOT NULL,                   -- 'info' | 'drachten'
+  message_id   TEXT NOT NULL,                   -- Graph id of the message Axle marked read
+  work_item_id INTEGER NOT NULL REFERENCES work_items(id),
+  marked_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (mailbox, message_id)
+);
+
 -- Single-row cross-process lock for mailbox ingest. Both the scheduled task and the
 -- manual "Sync now" button acquire this before running, so two ingests never overlap.
 -- running=1 while a run is in flight; a stale lock (>10 min) is considered abandoned.

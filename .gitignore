@@ -8,3 +8,5 @@ dist/
 Backups/
 # One-off sap-doc-pdf skill packaging run - build output, not Axle source.
 _sap-doc-pdf-run/
+render/
+

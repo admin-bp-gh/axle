@@ -76,6 +76,24 @@ try {
   if (-not (Test-Path $src)) { throw "repo source missing: $src" }
   if (-not (Test-Path $app)) { throw "live tree missing: $app" }
 
+  Say "`n=== 0. Git pre-flight ===" "Cyan"
+  # Two people commit here (Brad on the box, Vera from her Mac), so a deploy must come from a clean,
+  # current checkout: unrecorded changes would be deployed without ever being in Git, and a box
+  # behind GitHub would silently leave out someone's pushed work. `git fetch` only downloads the
+  # latest history; it changes no files. Emergency bypass:  $env:AXLE_SKIP_GIT_GUARD = 1
+  Push-Location $repo
+  Remove-Item .git\index.lock -Force -ErrorAction SilentlyContinue   # left behind by Claude's sandbox reads
+  $dirty  = git status --porcelain
+  git fetch --quiet origin
+  $behind = git rev-list --count HEAD..origin/main
+  $commit = git rev-parse --short HEAD
+  Pop-Location
+  if (-not $env:AXLE_SKIP_GIT_GUARD) {
+    if ($dirty)        { throw "Unrecorded changes in the repo - commit (or stash) them first:`n$($dirty -join "`n")" }
+    if ($behind -gt 0) { throw "GitHub is $behind commit(s) ahead of this box - run `git pull` first." }
+  }
+  Say "  clean, current, at $commit."
+
   Say "`n=== 1. Comparing repo -> box ===" "Cyan"
   $changed = @(); $skippedNew = @()
   Get-ChildItem $src -Recurse -File |
@@ -222,6 +240,10 @@ try {
   if (-not $after) { throw "Server is DOWN after restart - check C:\Axle\logs\server.log" }
   Say "  before PID $before / after PID $after" "Green"
   if ($before -and $before -eq $after) { Say "  WARNING: same PID - it may not have restarted." "Yellow" }
+
+  # Stamp which commit is live, so "what is running?" is a file read, not a guess. Written only
+  # after a successful restart, so a failed deploy never claims a version it did not ship.
+  "$commit  deployed $(Get-Date -Format 'yyyy-MM-dd HH:mm')  by $env:USERNAME" | Set-Content (Join-Path $app "VERSION.txt") -Encoding ascii
 
   Say "`nDEPLOY OK - now hard-refresh Axle over Tailscale and check the change on a real item." "Green"
 }

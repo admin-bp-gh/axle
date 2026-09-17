@@ -23,7 +23,9 @@
 # the running server alone (safe for test-only or asset-only changes).   -IncludeNew  also send
 # files the box does not have yet.
 
-param([switch]$WhatIf, [switch]$NoRestart, [switch]$IncludeNew)
+param([switch]$WhatIf, [switch]$NoRestart, [switch]$IncludeNew, [switch]$NoPause)
+# -NoPause: skip the "Press Enter" at the end. Needed when run over SSH from Vera's Mac:
+#   ssh bradmin@axle-box.tail58a804.ts.net "cd C:\Admin\Projects\Axle; git pull --ff-only; .\deploy.ps1 -NoPause"
 
 # Files that live in the repo but must NEVER be pushed to the box. On its first run (2026-08-12)
 # this script treated "absent from the live tree" as "deploy it" and pushed 14 such files,
@@ -54,6 +56,7 @@ if (-not $isAdmin) {
   if ($WhatIf)     { $argList += "-WhatIf" }
   if ($NoRestart)  { $argList += "-NoRestart" }
   if ($IncludeNew) { $argList += "-IncludeNew" }
+  if ($NoPause)    { $argList += "-NoPause" }
   Start-Process powershell -Verb RunAs -ArgumentList $argList
   Start-Sleep -Seconds 3     # keep this window up briefly so a failed relaunch is visible
   exit
@@ -253,5 +256,5 @@ catch {
 }
 finally {
   Write-Host "`nFull log: $log"
-  Read-Host "`nPress Enter to close"
+  if (-not $NoPause) { Read-Host "`nPress Enter to close" }
 }

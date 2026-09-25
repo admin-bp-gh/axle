@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Axle M1 mobile</title>
+<style>
+/* Axle M1 mobile: hi-fi clickable phone mock. Built on the locked tokens (box-code/assets/tokens.css),
+   primitives follow box-code/assets/components.css. Light theme only. */
+:root {
+  /* -- neutrals (Polaris cool grey) -- */
+  --bg: #f1f1f1;            /* page background */
+  --surface: #ffffff;       /* cards, table rows */
+  --surface-2: #fafafa;     /* table heads, subtle fills, hover/selected */
+  --ink: #303030;           /* primary text */
+  --ink-2: #616161;         /* secondary text */
+  --muted: #616161;         /* muted text */
+  --faint: #8a8a8a;         /* placeholders, disabled */
+  --border: #e3e3e3;        /* hairlines (cards, rows) */
+  --border-2: #d4d4d4;      /* control borders (kept a touch stronger for affordance) */
+  --border-sub: #ebebeb;    /* subtle inner dividers (card heads, separators) */
+
+  /* -- brand: near-black (Shopify primary buttons) -- */
+  --brand: #303030;
+  --brand-hover: #1a1a1a;   /* hover / active */
+
+  /* -- accent: deep green: ACCENT ONLY (brand mark + success). Never a primary button. -- */
+  --accent: #008060;
+  --accent-strong: #006e52; /* accent hover / active */
+  --accent-soft: #e3f9ec;   /* soft success fills */
+  --accent-ring: #005bd3;   /* focus ring: Polaris focus indicator (high contrast everywhere) */
+
+  /* -- status hues (chips, banners): Polaris badge tones -- */
+  --ok-bg: #e3f9ec;    --ok-fg: #0c5132;    /* ready / success */
+  --warn-bg: #ffeaba;  --warn-fg: #5a4200;  /* needs answer / attention */
+  --info-bg: #e1eeff;  --info-fg: #00405e;  /* investigating / info */
+  --new-bg: #ededed;   --new-fg: #616161;   /* new / neutral */
+  --off-bg: #f1f1f1;   --off-fg: #616161;   /* done / archived (AA-legible) */
+  --bad-bg: #ffe9e8;   --bad-fg: #8e1f0b;   /* injection / critical */
+  --mark: #ffe066;                          /* search hits */
+
+  /* -- spacing (8px grid) -- */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+
+  /* -- type (Polaris system stack, 13px/20px body) -- */
+  --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --fs-xs: 12px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 20px;
+  --lh: 1.54;   /* 13px body -> ~20px line */
+
+  /* -- shape (Polaris radii) -- */
+  --r-ctl: 8px;    /* buttons, inputs */
+  --r-card: 12px;  /* cards, modals */
+  --r-chip: 8px;   /* badges: Polaris rounded rect, not a full pill */
+
+  /* -- elevation (calm: a hairline + a faint card lift; floating layers lift more) -- */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .04); /* subtle Polaris card shadow */
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, .10);
+  --shadow-modal: 0 10px 40px rgba(0, 0, 0, .3);
+  --shadow-bar: 0 -2px 10px rgba(0, 0, 0, .06);
+}
+/* M1 phone additions (mock only, not in tokens.css): tap size, tap spacing, iOS no-zoom input size, scrim, bar height */
+:root { --tap: 44px; --gap-tap: 8px; --fs-input: 16px; --scrim: rgba(48, 48, 48, .5); --bar-h: 48px; }
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; font-family: var(--font); font-size: var(--fs-base); line-height: var(--lh); color: var(--ink); background: var(--bg); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: inherit; -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: default; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
+.muted { color: var(--muted); }
+.hint { font-size: var(--fs-sm); margin: var(--s1) 0 0; }
+.m0 { margin: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
+.ic { width: 20px; height: 20px; flex: none; display: block; }
+.ic.sm { width: 16px; height: 16px; }
+.ic.xs { width: 12px; height: 12px; }
+.grow1 { flex: 1 1 auto; min-width: 0; }
+
+/* ---------- controls (every target >= --tap, >= --gap-tap apart) ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s4); border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); font-size: var(--fs-base); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.btn.block { display: flex; width: 100%; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--surface); }
+.btn.go { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn:disabled { color: var(--faint); background: var(--surface-2); }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: var(--tap); height: var(--tap); flex: none; border-radius: var(--r-ctl); color: var(--ink); }
+.iconbtn.outline { border: 1px solid var(--border-2); background: var(--surface); }
+.iconbtn.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.iconbtn:disabled { color: var(--faint); }
+.inp { display: block; width: 100%; min-height: var(--tap); padding: 10px var(--s3); font-size: var(--fs-input); line-height: 1.4; border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); }
+.inp::placeholder, .ta::placeholder { color: var(--faint); }
+.ta { display: block; width: 100%; min-height: 88px; padding: 10px var(--s3); font-size: var(--fs-input); line-height: 1.5; border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); resize: none; overflow: hidden; }
+.ta.fb { min-height: 72px; }
+.inp:focus, .ta:focus, .ta.focused { outline: 2px solid var(--accent-ring); outline-offset: 1px; border-color: var(--accent-ring); }
+.flabel2 { display: block; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 700; margin: var(--s3) 0 var(--s1); }
+.fldhint { margin: 0 0 var(--s2); }
+.rowbtns { display: flex; flex-wrap: wrap; gap: var(--gap-tap); margin-top: var(--s2); }
+.seg { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s2); border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink-2); font-size: var(--fs-base); text-align: center; }
+.seg.on { background: var(--ink); border-color: var(--ink); color: var(--surface); font-weight: 600; }
+.segrow { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--gap-tap); }
+
+/* ---------- chips / badges (as components.css) ---------- */
+.chip { display: inline-block; padding: 2px 10px; border-radius: var(--r-chip); font-size: var(--fs-xs); font-weight: 600; background: var(--new-bg); color: var(--new-fg); white-space: nowrap; }
+.chip.s-ready { background: var(--ok-bg); color: var(--ok-fg); }
+.chip.s-awaiting_input { background: var(--warn-bg); color: var(--warn-fg); }
+.chip.s-investigating { background: var(--info-bg); color: var(--info-fg); animation: ax-pulse 1.6s ease-in-out infinite; }
+.chip.s-new { background: var(--new-bg); color: var(--new-fg); }
+.chip.s-done { background: var(--off-bg); color: var(--off-fg); }
+.chip.origin { background: var(--info-bg); color: var(--info-fg); }
+.chip.prio1 { background: var(--bad-bg); color: var(--bad-fg); }
+.chip.ctl { background: var(--surface); color: var(--ink); border: 1px solid var(--border-2); }
+.chip .caret { font-size: var(--fs-xs); margin-left: var(--s1); }
+.badge { display: inline-flex; align-items: center; gap: 2px; padding: 1px var(--s2); border-radius: var(--r-chip); font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }
+.badge.edited { background: var(--warn-bg); color: var(--warn-fg); }
+.badge.prio1 { background: var(--bad-bg); color: var(--bad-fg); }
+.badge.att { background: var(--info-bg); color: var(--info-fg); }
+.hbadge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--surface); font-size: var(--fs-xs); font-weight: 700; line-height: 18px; text-align: center; }
+.st-ok, .st-warn { font-size: var(--fs-xs); font-weight: 600; padding: 2px var(--s2); border-radius: var(--r-chip); white-space: nowrap; }
+.st-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.st-warn { background: var(--warn-bg); color: var(--warn-fg); }
+
+/* ---------- motion ---------- */
+@keyframes ax-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes ax-spin { to { transform: rotate(360deg); } }
+@keyframes ax-shimmer { to { background-position-x: -200%; } }
+@keyframes ax-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ax-fade { from { opacity: 0; } to { opacity: 1; } }
+.spin { display: inline-block; flex: none; width: 13px; height: 13px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: ax-spin .8s linear infinite; }
+.sk { display: block; height: 12px; border-radius: var(--r-chip); background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: ax-shimmer 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .sk, .spin, .chip.s-investigating, .sheet, .scrim, .cmp { animation: none !important; } }
+
+/* ---------- phone shell ---------- */
+.phone { position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.scr { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.appbar { flex: none; display: flex; align-items: center; gap: var(--s1); height: calc(var(--bar-h) + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) var(--s1) 0; background: var(--surface); border-bottom: 1px solid var(--border); }
+.brand { flex: 1 1 auto; display: inline-flex; align-items: center; gap: var(--s2); padding-left: var(--s3); font-weight: 700; font-size: var(--fs-lg); color: var(--ink); }
+.brand::before { content: ""; width: 16px; height: 16px; border-radius: calc(var(--r-ctl) / 2); background: var(--accent); flex: none; }
+.ab-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ab-title.pl { padding-left: var(--s3); }
+
+/* ---------- queue ---------- */
+.qhead { flex: none; display: flex; flex-direction: column; gap: var(--gap-tap); padding: var(--s2) var(--s4) var(--s1); background: var(--surface); border-bottom: 1px solid var(--border); }
+.qrow { display: flex; gap: var(--gap-tap); }
+.qtabs { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap-tap); }
+.qtab { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: var(--tap); min-width: var(--tap); padding: 2px; line-height: 1.25; border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink-2); font-size: var(--fs-xs); }
+.qtab .ql { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qtab .n { font-weight: 700; color: var(--ink); }
+.qtab.on { background: var(--ink); border-color: var(--ink); color: var(--surface); font-weight: 600; }
+.qtab.on .n { color: var(--surface); }
+.qsearch { display: flex; gap: var(--gap-tap); }
+.qsearch .inp { flex: 1 1 auto; min-width: 0; }
+.qlive { display: flex; align-items: center; gap: var(--s2); min-height: var(--tap); font-size: var(--fs-xs); color: var(--muted); }
+.qlive .btn { font-size: var(--fs-base); padding: 0 var(--s3); }
+.livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.qlist { display: flex; flex-direction: column; gap: var(--gap-tap); padding: var(--s3) var(--s4) calc(56px + var(--s6) + env(safe-area-inset-bottom, 0px)); }
+.qcard { display: block; width: 100%; min-height: 72px; padding: 10px var(--s3); text-align: left; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
+.qcard > span { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.q-from { font-weight: 600; font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.q-time { font-size: var(--fs-xs); white-space: nowrap; flex: none; }
+.q-subj { font-size: var(--fs-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.q-badges { display: inline-flex; gap: var(--s1); flex: none; }
+.qcard > span.q-l3 { margin-top: var(--s1); align-items: center; }
+.q-sum { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.q-l3 .chip { flex: none; }
+.qcard.skel { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); }
+.qempty { text-align: center; padding: var(--s6) var(--s4); }
+.qempty p { margin: 0 0 var(--s3); font-size: var(--fs-md); }
+.center { text-align: center; }
+.fab { position: absolute; z-index: 5; right: var(--s4); bottom: calc(var(--s4) + env(safe-area-inset-bottom, 0px)); display: inline-flex; align-items: center; gap: var(--s2); height: 56px; padding: 0 20px 0 var(--s4); border-radius: var(--s4); background: var(--brand); color: var(--surface); font-size: var(--fs-md); font-weight: 600; box-shadow: var(--shadow-pop); }
+
+/* ---------- item ---------- */
+.chiprow { display: flex; gap: var(--gap-tap); overflow-x: auto; padding: 6px var(--s4) 0; /* 6px keeps the chip hit areas >= --gap-tap below the app-bar buttons */ background: var(--surface); border-bottom: 1px solid var(--border); scrollbar-width: none; }
+.chiprow::-webkit-scrollbar { display: none; }
+.chipcell { flex: none; display: inline-flex; align-items: center; min-height: var(--tap); min-width: var(--tap); }
+.chipcell .chip { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; }
+.chipcell .sk { width: 96px; height: 32px; }
+.pad { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3) var(--s4) var(--s5); }
+.cdbtn { justify-content: space-between; }
+.box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: var(--s3) var(--s4); box-shadow: var(--shadow-card); }
+.box h3 { margin: 0; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); font-weight: 700; }
+.box h3 .h3n { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--muted); }
+.boxhead { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); min-height: 20px; margin-bottom: var(--s2); }
+.boxhead .spacer { flex: 1 1 auto; }
+.saved { font-size: var(--fs-xs); color: var(--muted); }
+ol.qs { margin: 0; padding-left: 20px; font-size: var(--fs-md); line-height: 1.45; }
+.note { display: flex; align-items: center; gap: var(--s2); padding-left: var(--s3); margin-bottom: var(--s2); border-radius: var(--r-ctl); background: var(--info-bg); color: var(--info-fg); font-size: var(--fs-base); font-weight: 600; }
+.note span { flex: 1 1 auto; }
+.note .iconbtn { color: var(--info-fg); }
+.trbox { margin-top: var(--s3); padding: 10px var(--s3); border-radius: var(--r-ctl); background: var(--info-bg); border-left: 3px solid var(--info-fg); }
+.trbox h4 { margin: 0 0 var(--s1); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--info-fg); }
+.trbox pre.mail { color: var(--info-fg); }
+.msg { border: 1px solid var(--border); border-radius: var(--r-ctl); padding: var(--s3); background: var(--surface); }
+.msg-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); font-size: var(--fs-sm); margin-bottom: var(--s2); }
+pre.mail { margin: 0; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font-family: inherit; font-size: var(--fs-md); line-height: 1.5; }
+pre.mail.fade { -webkit-mask-image: linear-gradient(180deg, var(--ink) 75%, transparent); mask-image: linear-gradient(180deg, var(--ink) 75%, transparent); }
+.foldrow { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); width: 100%; min-height: var(--tap); margin-top: var(--gap-tap); padding: 0 var(--s3); border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-base); font-weight: 600; text-align: left; }
+.foldrow.card { margin-top: 0; padding: 0 var(--s4); background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
+.quoted { background: var(--surface-2); }
+.quoted pre.mail { color: var(--ink-2); font-size: var(--fs-base); }
+.attchips { display: flex; flex-wrap: wrap; gap: var(--gap-tap); margin-top: var(--s3); }
+.attchip { display: inline-flex; align-items: center; gap: var(--s2); max-width: 100%; min-height: var(--tap); padding: 0 var(--s3); border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface-2); color: var(--ink); font-size: var(--fs-sm); font-weight: 600; }
+.attchip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attchip.out { padding-right: 0; }
+.cf { margin-bottom: var(--s3); padding: var(--s3); border-radius: var(--r-ctl); background: var(--surface-2); border: 1px solid var(--border-sub); }
+.cf-lbl { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 700; }
+.cf-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2); margin: var(--s1) 0; font-size: var(--fs-md); }
+.cf-q { margin: 0 0 var(--s3); font-size: var(--fs-md); }
+.banner { display: flex; align-items: center; gap: var(--s2); padding: 10px 14px; border-radius: var(--r-ctl); background: var(--info-bg); color: var(--info-fg); font-weight: 600; }
+.skbox { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------- item bottom bar (thumb zone) ---------- */
+.ibar { flex: none; z-index: 4; display: flex; flex-direction: column; gap: var(--gap-tap); padding: var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--border-2); box-shadow: var(--shadow-bar); }
+.phone.kb .ibar { padding-bottom: var(--s2); }
+.recip { display: flex; align-items: center; gap: var(--s2); width: 100%; min-height: var(--tap); padding: 6px var(--s3); border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); font-size: var(--fs-base); text-align: left; }
+.recip .to { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.recip .src { flex: none; font-size: var(--fs-xs); color: var(--muted); padding: 1px 6px; border-radius: var(--r-chip); background: var(--surface-2); border: 1px solid var(--border-sub); }
+.recip.need { background: var(--warn-bg); border-color: var(--warn-fg); color: var(--warn-fg); font-weight: 600; }
+.recip:disabled { color: var(--faint); }
+.ibar-row { display: flex; gap: var(--gap-tap); }
+.send { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); border: 1px solid var(--accent); border-radius: var(--r-ctl); background: var(--accent); color: var(--surface); font-size: var(--fs-md); font-weight: 600; }
+.send:disabled { background: var(--new-bg); border-color: var(--border-2); color: var(--faint); }
+
+/* ---------- drawn keyboard (no images) ---------- */
+.kbd { flex: none; height: 291px; padding: var(--s2) 3px 0; background: var(--border-2); display: flex; flex-direction: column; gap: var(--s3); }
+.krow { display: flex; gap: 6px; height: 42px; }
+.krow.r2 { padding: 0 18px; }
+.k { flex: 1 1 0; display: flex; align-items: center; justify-content: center; border-radius: calc(var(--r-ctl) - 3px); background: var(--surface); box-shadow: 0 1px 0 var(--faint); font-size: var(--fs-xl); color: var(--ink); }
+.k.fn { background: var(--faint); color: var(--surface); font-size: var(--fs-base); }
+.k.w15 { flex-grow: 1.4; } .k.w25 { flex-grow: 2.4; } .k.sp { flex-grow: 5; font-size: var(--fs-base); }
+
+/* ---------- bottom sheet primitive ---------- */
+.scrim { position: absolute; inset: 0; z-index: 20; background: var(--scrim); animation: ax-fade .15s ease; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 21; display: flex; flex-direction: column; max-height: calc(100% - var(--bar-h) - env(safe-area-inset-top, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--surface); border-radius: var(--r-card) var(--r-card) 0 0; box-shadow: var(--shadow-modal); animation: ax-up .2s ease; }
+.sheet.full { top: calc(env(safe-area-inset-top, 0px) + var(--s2)); max-height: none; background: var(--bg); }
+.grab { flex: none; width: 36px; height: 5px; margin: var(--s2) auto 0; border-radius: 3px; background: var(--border-2); }
+.sheet-head { flex: none; display: flex; align-items: center; gap: var(--s2); min-height: 52px; padding: 0 var(--s2) 0 var(--s4); border-bottom: 1px solid var(--border-sub); }
+.sheet-head h2 { flex: 1 1 auto; margin: 0; font-size: var(--fs-lg); }
+.sheet-back { flex: none; display: flex; align-items: center; min-height: 52px; padding: 0 var(--s2); border-bottom: 1px solid var(--border); background: var(--surface); border-radius: var(--r-card) var(--r-card) 0 0; }
+.backbtn { display: inline-flex; align-items: center; gap: var(--s1); min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s2); border-radius: var(--r-ctl); font-weight: 600; font-size: var(--fs-md); color: var(--ink); }
+.sheet-title { margin: 0 0 var(--s1); font-size: var(--fs-xl); }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--gap-tap); padding: var(--s3) var(--s4) var(--s4); }
+.sheet.full .sheet-body { gap: var(--s3); }
+.sheet-foot { flex: none; display: flex; flex-direction: column; gap: var(--gap-tap); padding: var(--s3) var(--s4); border-top: 1px solid var(--border-sub); }
+.srow { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: var(--tap); padding: 0 var(--s3); border: 1px solid var(--border-sub); border-radius: var(--r-ctl); background: var(--surface-2); color: var(--ink); font-size: var(--fs-md); text-align: left; cursor: pointer; }
+.srow.on { border-color: var(--ink); font-weight: 600; }
+.srow .code { width: 28px; flex: none; font-weight: 700; }
+.srow.two { min-height: 56px; }
+.srow .lines { display: flex; flex-direction: column; min-width: 0; padding: 6px 0; line-height: 1.3; }
+.srow .lines b { font-weight: 600; }
+.srow .lines span { font-size: var(--fs-xs); color: var(--muted); }
+.srow.danger .lines b { color: var(--bad-fg); }
+.srow.radio input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--ink); }
+.srow .small { font-size: var(--fs-xs); }
+.slabel { margin: var(--s2) 0 0; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; }
+.slabel:first-child { margin-top: 0; }
+.who { min-height: var(--tap); display: flex; align-items: center; gap: var(--s1); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--border-sub); }
+.otherbox { display: flex; gap: var(--gap-tap); }
+.otherbox .inp { flex: 1 1 auto; min-width: 0; }
+.err { margin: 0; color: var(--bad-fg); font-size: var(--fs-sm); font-weight: 600; }
+.sheet-text { margin: 0; font-size: var(--fs-md); overflow-wrap: anywhere; }
+
+/* ---------- context sheet / customer ---------- */
+.cusname { margin: var(--s2) 0 0; font-size: var(--fs-md); font-weight: 600; }
+.cussub { margin: 2px 0 var(--s2); font-size: var(--fs-sm); }
+.kvs { margin: 0 0 var(--s3); }
+.kv { display: flex; justify-content: space-between; gap: var(--s3); padding: var(--s2) 0; border-bottom: 1px solid var(--border-sub); }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-weight: 600; text-align: right; }
+.docrow { padding: var(--s3) 0; border-bottom: 1px solid var(--border-sub); }
+.docrow:last-child { border-bottom: 0; padding-bottom: 0; }
+.docrow .dt { margin: 0; font-weight: 600; font-size: var(--fs-md); }
+.docrow .ds { margin: 2px 0 0; font-size: var(--fs-sm); }
+.abn { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--gap-tap); margin: var(--s2) 0 var(--gap-tap); }
+.abn .flabel2 { margin-top: 0; }
+ul.chk { margin: 0; padding-left: 18px; }
+ul.chk li { padding: 3px 0; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+.stat { padding: 10px var(--s3); border-radius: var(--r-ctl); background: var(--surface); border: 1px solid var(--border); }
+.stat p { margin: 0; }
+.stat .l { font-size: var(--fs-xs); color: var(--muted); }
+.stat .v { font-size: var(--fs-md); font-weight: 600; }
+.cushead h2 { margin: 0; font-size: var(--fs-xl); }
+.cushead p { margin: 2px 0 0; }
+.orow { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2); padding: var(--s2) 0; border-bottom: 1px solid var(--border-sub); font-size: var(--fs-md); }
+.orow:last-child { border-bottom: 0; }
+.orr { display: inline-flex; align-items: center; gap: var(--s2); }
+
+/* ---------- compose (stays a modal: full-screen on the phone) ---------- */
+.cmp { position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column; background: var(--surface); animation: ax-up .22s ease; }
+.cmp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--s4); }
+.fld { margin: 0 0 var(--s4); }
+.fld > .flabel2:first-child { margin-top: 0; }
+.whorow { display: flex; gap: var(--gap-tap); }
+.whorow .inp { flex: 1 1 auto; min-width: 0; }
+.qschips { display: flex; flex-wrap: wrap; gap: var(--gap-tap); }
+.schip { min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s3); border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-base); }
+.schip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.fldrow { display: flex; gap: var(--s3); }
+.fldrow .fld { flex: 1 1 0; min-width: 0; }
+.resolve { margin-top: var(--gap-tap); padding: 10px var(--s3); border: 1px solid var(--border); border-radius: var(--r-ctl); font-size: var(--fs-base); display: flex; flex-direction: column; gap: var(--gap-tap); }
+.resolve p { margin: 0; }
+.rok { color: var(--accent); font-weight: 600; }
+.rwarn { color: var(--warn-fg); font-weight: 600; }
+.rbad { color: var(--bad-fg); font-weight: 600; }
+.busyline { display: flex; align-items: center; gap: var(--s2); color: var(--muted); }
+.cmp-foot { flex: none; display: flex; gap: var(--gap-tap); padding: var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--border-2); box-shadow: var(--shadow-bar); }
+.cmp-foot .btn { flex: 1 1 0; min-width: 0; }
+
+/* ---------- error / audit ---------- */
+.errbox { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: var(--gap-tap); min-height: 100%; padding: var(--s5) var(--s4); text-align: center; }
+.errbox h2 { margin: 0; font-size: var(--fs-xl); }
+.errbox p { margin: 0 0 var(--s3); }
+.erric { align-self: center; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--bad-bg); color: var(--bad-fg); font-weight: 700; font-size: var(--fs-xl); }
+.hscroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface); }
+.hscroll table { border-collapse: collapse; min-width: 620px; width: 100%; font-size: var(--fs-base); }
+.hscroll th, .hscroll td { text-align: left; padding: var(--s2) 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.hscroll th { background: var(--surface-2); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .03em; color: var(--ink-2); }
+
+/* ---------- toast ---------- */
+.toast { position: absolute; z-index: 40; left: var(--s4); right: var(--s4); top: calc(var(--bar-h) + env(safe-area-inset-top, 0px) + var(--s2)); padding: 10px 14px; border-radius: var(--r-ctl); background: var(--ink); color: var(--surface); font-size: var(--fs-base); box-shadow: var(--shadow-pop); pointer-events: none; opacity: 0; transform: translateY(-6px); transition: opacity .2s, transform .2s; }
+.toast.show { opacity: 1; transform: none; }
+
+/* ---------- wide: gallery of 393 x 852 frames ---------- */
+body.m-wide { background: var(--bg); }
+.gal { max-width: 1960px; margin: 0 auto; padding: var(--s5) var(--s5) var(--s6); }
+.gal-head h1 { margin: 0 0 var(--s1); font-size: var(--fs-xl); }
+.gal-head p { margin: 0 0 var(--s3); max-width: 900px; color: var(--ink-2); }
+.gal-w { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-tap); margin-bottom: var(--s5); }
+.grid { --pw: 393px; --ph: 852px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s6) var(--s5); }
+.frame { margin: 0; width: var(--pw); }
+.frame figcaption { min-height: 40px; margin: 0 0 var(--s2); font-size: var(--fs-sm); color: var(--ink-2); }
+.frame figcaption b { color: var(--ink); }
+.frame .phone { width: var(--pw); height: var(--ph); border: 1px solid var(--border-2); border-radius: calc(var(--r-card) * 3); box-shadow: var(--shadow-pop); }
+
+/* ---------- narrow: one screen full-screen + Frames pill ---------- */
+html.m-narrow, body.m-narrow { height: 100%; overflow: hidden; overscroll-behavior: none; }
+.phone.full { width: 100%; height: 100vh; height: 100dvh; }
+.fpill { position: fixed; z-index: 150; left: var(--s2); top: 50%; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s3); border-radius: 22px; background: var(--ink); color: var(--surface); opacity: .82; font-size: var(--fs-xs); font-weight: 700; box-shadow: var(--shadow-pop); }
+.flist { position: fixed; inset: 0; z-index: 200; display: flex; align-items: flex-end; background: var(--scrim); }
+.flist[hidden] { display: none; }
+.flpanel { width: 100%; max-height: 88%; display: flex; flex-direction: column; background: var(--surface); border-radius: var(--r-card) var(--r-card) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.flpanel .srow { font-size: var(--fs-base); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+  'use strict';
+
+  /* ================= content (live wording, register and screenshots) ================= */
+  var TABS = [['open', 'Open', '6'], ['done', 'Done', '1532'], ['archived', 'Archived', '78'], ['all', 'All', '1616']];
+  var TOTAL = { done: 1532, archived: 78, all: 1616 };
+  var ST = { awaiting_input: 'Needs your answer', ready: 'Ready to send', 'new': 'New', done: 'Done', investigating: 'Drafting…' };
+
+  var CARDS = [
+    { id: '2222', from: 'Budget Parts (Shopify)', time: 'Today 5:24pm', subj: 'New customer message on 24 September 2026 at 17:22', sum: 'Customer asks if part ASR 1714 is for the left side.', st: 'awaiting_input', att: 0, p1: false },
+    { id: 'jn', from: 'Jurgen Nijhof', time: 'Today 1:49pm', subj: 'Dopje', sum: 'Customer inquires about availability of a smaller-than-standard part.', st: 'awaiting_input', att: 1, p1: false },
+    { id: 'fp', from: 'Fabian Pouw', time: 'Today 1:41pm', subj: 'Uitlaatsysteem', sum: 'Customer inquiring about exhaust system and accessories.', st: 'awaiting_input', att: 0, p1: false },
+    { id: '2211', from: 'JitsArt', time: 'Today 5:56pm', subj: 'Re: Budget Parts BV | Klantofferte 100525', sum: 'Business customer (JitsArt atelier) confirms quote acceptance and payment.', st: 'ready', att: 2, p1: true },
+    { id: 'wp', from: 'Wijnkoperij en Restaurant de Prinsen', time: 'Today 12:45pm', subj: 'Re: Incomplete bestelling', sum: 'Business customer (wine shop/restaurant) inquiring how to order the missing items.', st: 'ready', att: 1, p1: false },
+    { id: 'vm', from: 'voicemail@hipservice.nl', time: 'Today 4:44pm', subj: 'Voice Message Attached from 0650457755 - 0650457755', sum: 'Automated voicemail notification from a third-party service with attachment.', st: 'new', att: 0, p1: false }
+  ];
+
+  var MAIL_2222 = "You received a new message from your online store's contact form.\nCountry Code:\n\nNL\n\nName:\n\nBram Geerets\n\nEmail:\n\ninfo@geeretstechniek.nl\n\nPhone:\n\n0639470602\n\nMessage:\n\nHallo,\nIs onderdeel ASR 1714 voor de linkerkant?\n\nGr Bram Geerets\n\n[https://cdn.shopify.com/shopifycloud/shopify/assets/mailer/m...545.png]\nYou can enable spam filtering for contact forms in online store preferences.";
+  var DRAFT_2222 = "Hallo Bram,\n\nDe ASR1714 Wing Panel is een voorscherm voor de Discovery 1 (1989-1998). Voorschermen zijn voor links en rechts verschillend, en kunnen ook per bouwjaar wisselen. We checken even in de catalogus welke kant dit nummer dekt en komen bij je terug.\n\nMet vriendelijke groet,\nTeam Budget Parts | Gouda";
+  var TR_2222 = "Hello Bram,\n\nThe ASR1714 Wing Panel is a front wing for the Discovery 1 (1989-1998). Front wings differ between left and right, and can also change by model year. We are checking in the catalogue which side this number covers and will get back to you.\n\nKind regards,\nTeam Budget Parts | Gouda";
+  var MAIL_2211 = "Hoi Jack,\n\nDankjewel. Ik heb het bedrag inmiddels overgemaakt onder vermelding van offertenummer 100525.\n\nIk ontvang graag nog de factuur per e-mail en zie de bestelling graag tegemoet.\n\nAlvast bedankt!\n\nGroet,\n\nTibo\n\n--------\nJitsArt atelier\nTibo van de Zand\nE.: info@jitsart.com\nT.: +31 (0)30 - 2202378\nM.: +31 (0)6 - 30007368\nW.: www.jitsart.nl / www.jitsart.com\n\nA.: De Holle Bilt 16-18, 3732 HM De Bilt (NL)";
+  var DRAFT_2211 = "Hoi Tibo,\n\nBedankt, betaling ontvangen. Zodra die is bijgeschreven verwerken we de bestelling en sturen we de factuur per e-mail mee.\n\nDe bestelling gaat naar:\nJitsArt\nDe Holle Bilt 16\n3732 HM De Bilt\n\nAls er nog iets is, hoor ik het graag.\n\nMet vriendelijke groet,\nTeam Budget Parts | Gouda";
+  var TR_2211 = "Hi Tibo,\n\nThanks, payment received. As soon as it has been credited we will process the order and send the invoice by email.\n\nThe order goes to:\nJitsArt\nDe Holle Bilt 16\n3732 HM De Bilt\n\nIf there is anything else, just let me know.\n\nKind regards,\nTeam Budget Parts | Gouda";
+
+  var ITEMS = {
+    2222: {
+      id: 2222, title: 'New customer message on 24 September 2026 at 17:22', st: 'awaiting_input', cf: true,
+      chips: [['origin', 'Contact form'], ['s-awaiting_input', 'Needs your answer'], ['', 'Priority 2'], ['', 'Stock / price enquiry']],
+      question: 'Please check in the JLR EPC or Discovery 1 catalogue which side (left or right) ASR1714 covers, so we can confirm this to the customer before sending the interim draft.',
+      subject: 'Uw bericht aan RoverParts.eu', draft: DRAFT_2222, tr: TR_2222,
+      from: 'Budget Parts (Shopify)', at: 'Today 5:22pm', mail: MAIL_2222, inbound: [],
+      earlier: 'The 63 quoted lines are folded here; their text is not part of the mock.',
+      recipOpts: [{ addr: 'info@geeretstechniek.nl', src: 'from form' }], recip: null,
+      checked: ['Contact form parsed: Bram Geerets, NL, info@geeretstechniek.nl, 0639470602', 'Customer matched in SAP', 'ASR1714 Wing Panel: front wing, Discovery 1 (1989-1998)', 'Side (left or right) not recorded for ASR1714: question raised for you']
+    },
+    2211: {
+      id: 2211, title: 'Re: Budget Parts BV | Klantofferte 100525', st: 'ready', cf: false,
+      chips: [['s-ready', 'Ready to send'], ['prio1', 'Priority 1'], ['', 'B2B order']],
+      question: '', subject: '', draft: DRAFT_2211, tr: TR_2211,
+      from: 'JitsArt', at: 'Today 5:55pm', mail: MAIL_2211, inbound: [{ name: '0650457755_20260924.mp3', size: '312 KB' }],
+      earlier: 'Op 24 sep 2026 om 15:50 heeft Budget Parts | Gouda <info@budget-parts.nl> het volgende geschreven:\n\nOh ja je kan natuurlijk ook direct bestellen via onze webshop. Mogelijk gaat dat nog sneller.\n\n(The remaining quoted lines are not part of the mock.)',
+      recipOpts: [{ addr: 'info@jitsbakker.com', src: 'thread sender' }], recip: { addr: 'info@jitsbakker.com', src: 'thread sender' },
+      checked: ['Customer matched in SAP: K131347 JitsArt atelier', 'Quotation 100525 found: €234.86, 24 Sep 2026', 'Order 230905 found: open, €234.86', 'Customer language: NL']
+    }
+  };
+  var LANGS = [['NL', 'Dutch'], ['EN', 'English'], ['DE', 'German'], ['FR', 'French'], ['ES', 'Spanish']];
+  var OWNERS = ['Sales (Gouda)', 'Jack', 'Tom', 'Sales (Drachten)', 'Rob', 'Huub'];
+  var QUICK = ['Awaiting payment', 'Stock shortfall / our mistake', 'Order / ETA update', 'Missing details to dispatch', 'Part discontinued / superseded', 'Quote / sourcing offer'];
+  var MORE = [
+    ['redraft', 'Save & redraft', 'Save your edits and let Axle redraft'],
+    ['done', 'Mark done', 'Completed, reply sent or not needed'],
+    ['phone', 'Resolved by phone', 'Completed without an email, e.g. you called the customer'],
+    ['archive', 'Archive', 'No action was needed'],
+    ['forward', 'Forward to Drachten', 'Hand this thread to the other mailbox'],
+    ['block', 'Block sender', 'Stop future emails from this sender reaching Axle and the Outlook inbox']
+  ];
+  var AUDIT = [
+    ['33688', '2026-09-24 16:20:10', 'admin@budget-parts.nl', 'view_audit'],
+    ['33686', '2026-09-24 16:17:51', 'admin@budget-parts.nl', 'view_inbox'],
+    ['33685', '2026-09-24 16:17:51', 'admin@budget-parts.nl', 'view_item'],
+    ['33684', '2026-09-24 16:17:48', 'admin@budget-parts.nl', 'view_inbox'],
+    ['33683', '2026-09-24 16:16:24', 'admin@budget-parts.nl', 'view_inbox']
+  ];
+
+  /* ================= frames / hash routes ================= */
+  var ROUTES = [
+    ['queue', 'Queue, Open tab', { s: 'queue' }],
+    ['search-empty', 'Queue, search with no matches', { s: 'queue', searchOpen: true, q: 'zzqqxx' }],
+    ['done', 'Queue, Done tab with Load more', { s: 'queue', tab: 'done' }],
+    ['menu', 'Menu sheet', { s: 'queue', sheet: 'menu' }],
+    ['filters', 'Filters sheet', { s: 'queue', sheet: 'filters' }],
+    ['compose', 'Compose a new email (modal, full-screen on the phone)', { s: 'queue', modal: 'compose' }],
+    ['item-2222', 'Item #2222: Needs your answer, no recipient yet', { s: 'item', id: 2222 }],
+    ['language', 'Language sheet', { s: 'item', id: 2222, sheet: 'language' }],
+    ['owner', 'Owner sheet', { s: 'item', id: 2222, sheet: 'owner' }],
+    ['recipient', 'Recipient sheet: Send to', { s: 'item', id: 2222, sheet: 'recipient' }],
+    ['overflow', 'More actions sheet', { s: 'item', id: 2222, sheet: 'overflow' }],
+    ['restored', 'Item #2222: unsaved edits restored', { s: 'item', id: 2222, restored: true }],
+    ['item-2211', 'Item #2211: Ready to send', { s: 'item', id: 2211 }],
+    ['keyboard', 'Keyboard up: bar above the keyboard, editor focused', { s: 'item', id: 2211, kb: true }],
+    ['confirm-send', 'Send confirm', { s: 'item', id: 2211, sheet: 'confirm' }],
+    ['context', 'Customer & docs sheet (full height)', { s: 'item', id: 2211, sheet: 'context' }],
+    ['customer', 'Customer overview page', { s: 'customer', id: 2211 }],
+    ['skeleton', 'Loading skeleton', { s: 'skeleton' }],
+    ['drafting', 'Drafting… state', { s: 'drafting', id: 2222 }],
+    ['error', 'Load error', { s: 'error' }],
+    ['audit', 'Audit: best on desktop', { s: 'audit' }]
+  ];
+  var ROUTE = {};
+  ROUTES.forEach(function (r) { ROUTE[r[0]] = { cap: r[1], v: r[2] }; });
+  var VKEYS = ['s', 'id', 'sheet', 'tab', 'modal', 'q', 'searchOpen', 'kb', 'restored'];
+
+  function norm(v) {
+    return { s: v.s || 'queue', id: v.id || null, sheet: v.sheet || null, tab: v.tab || 'open', modal: v.modal || null,
+      q: v.q || '', searchOpen: !!v.searchOpen, kb: !!v.kb, restored: !!v.restored };
+  }
+  function tokenFor(v) {
+    for (var i = 0; i < ROUTES.length; i++) {
+      var r = norm(ROUTES[i][2]), same = true;
+      for (var k = 0; k < VKEYS.length; k++) { if (r[VKEYS[k]] !== v[VKEYS[k]]) { same = false; break; } }
+      if (same) return ROUTES[i][0];
+    }
+    if (v.s === 'queue') return v.tab === 'done' ? 'done' : 'queue';
+    if (v.s === 'item') return 'item-' + v.id;
+    return v.s;
+  }
+
+  /* ================= helpers ================= */
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function svg(p, cls) { return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 20 20" aria-hidden="true" focusable="false">' + p + '</svg>'; }
+  var SK = 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+  var I = {
+    back: svg('<path d="M12.5 4 6.5 10l6 6" ' + SK + '/>'),
+    menu: svg('<path d="M3 5.5h14M3 10h14M3 14.5h14" ' + SK + '/>'),
+    search: svg('<circle cx="8.5" cy="8.5" r="5.5" ' + SK + '/><path d="m12.7 12.7 4.3 4.3" ' + SK + '/>'),
+    x: svg('<path d="M5 5l10 10M15 5 5 15" ' + SK + '/>'),
+    filter: svg('<path d="M3 5.5h14M5.5 10h9M8 14.5h4" ' + SK + '/>', 'sm'),
+    right: svg('<path d="m7.5 4 6 6-6 6" ' + SK + '/>', 'sm'),
+    down: svg('<path d="m4 7.5 6 6 6-6" ' + SK + '/>', 'sm'),
+    up: svg('<path d="m4 12.5 6-6 6 6" ' + SK + '/>', 'sm'),
+    more: svg('<circle cx="4.5" cy="10" r="1.7" fill="currentColor"/><circle cx="10" cy="10" r="1.7" fill="currentColor"/><circle cx="15.5" cy="10" r="1.7" fill="currentColor"/>'),
+    clip: svg('<path d="M13.5 6.5 7.8 12.2a1.8 1.8 0 0 0 2.5 2.5l6-6a3.4 3.4 0 0 0-4.8-4.8l-6.2 6.2a5 5 0 0 0 7.1 7.1l4.6-4.6" ' + SK + '/>', 'xs'),
+    clipm: svg('<path d="M13.5 6.5 7.8 12.2a1.8 1.8 0 0 0 2.5 2.5l6-6a3.4 3.4 0 0 0-4.8-4.8l-6.2 6.2a5 5 0 0 0 7.1 7.1l4.6-4.6" ' + SK + '/>', 'sm'),
+    check: svg('<path d="m4.5 10.5 3.5 3.5 7.5-8" ' + SK + '/>'),
+    sync: svg('<path d="M16 10a6 6 0 1 1-1.8-4.3M16 3.5v3.2h-3.2" ' + SK + '/>'),
+    phone: svg('<path d="M6.5 3h-2A1.5 1.5 0 0 0 3 4.6C3.3 11 9 16.7 15.4 17a1.5 1.5 0 0 0 1.6-1.5v-2l-3.3-1.3-1.6 1.6a9 9 0 0 1-4.9-4.9l1.6-1.6z" ' + SK + '/>', 'sm'),
+    plus: svg('<path d="M10 4v12M4 10h12" ' + SK + '/>'),
+    file: svg('<path d="M6 2.5h5.5L15 6v11.5H6zM11.5 2.5V6H15" ' + SK + '/>', 'sm')
+  };
+  function nowLabel() {
+    var d = new Date(), h = d.getHours(), m = d.getMinutes(), ap = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12; return h + ':' + (m < 10 ? '0' : '') + m + ap;
+  }
+  function fmtSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+  function grow(el) { if (!el.offsetParent) return; el.style.height = 'auto'; el.style.height = (el.scrollHeight + 2) + 'px'; }
+  function growAll(root) { var t = root.querySelectorAll('textarea.grow'); for (var i = 0; i < t.length; i++) grow(t[i]); }
+  function validEmail(s) { return /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(s); }
+
+  function freshData() {
+    var items = {};
+    Object.keys(ITEMS).forEach(function (k) {
+      var X = ITEMS[k];
+      items[k] = { reply: X.draft, subject: X.subject, feedback: '', edited: false, saved: '6:12pm',
+        recip: X.recip ? { addr: X.recip.addr, src: X.recip.src } : null, pick: '0', other: '',
+        lang: 'NL', owner: 'Sales (Gouda)', showTr: false, fullMsg: false, earlier: false, checked: false,
+        out: [], restoredDismissed: false };
+    });
+    return { items: items, ui: 'EN', f: { mailbox: 'All', sort: 'Needs me first', show: 'All' },
+      c: { who: '', subject: '', instr: '', lang: 'Auto', from: 'info@', chip: '', files: [], found: null } };
+  }
+
+  /* ================= Phone: one independently interactive screen stack ================= */
+  var uidN = 0;
+  function Phone(el, token, narrow) {
+    var self = this;
+    this.el = el; this.narrow = narrow; this.uid = 'p' + (++uidN) + '-';
+    this.d = freshData(); this.lastQueue = null; this._key = null; this._sheet = null;
+    el.classList.add('phone');
+    el.innerHTML = '<div class="scr"></div><div class="mlayer"></div><div class="slayer"></div><div class="toast" role="status" aria-live="polite"></div>';
+    this.scr = el.children[0]; this.ml = el.children[1]; this.sl = el.children[2]; this.toastEl = el.children[3];
+    el.addEventListener('click', function (e) { self.onClick(e); });
+    el.addEventListener('input', function (e) { self.onInput(e); });
+    el.addEventListener('change', function (e) { self.onChange(e); });
+    el.addEventListener('focusin', function (e) { self.onFocus(e); });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Escape') self.escape(); });
+    this.setToken(token, true);
+  }
+  var P = Phone.prototype;
+
+  P.setToken = function (token, first) {
+    var r = ROUTE[token] || ROUTE.queue;
+    this.v = norm(r.v);
+    this.applyFlags();
+    this.render(first ? 'replace' : 'none');
+  };
+  P.applyFlags = function () {
+    if (this.v.restored && this.d.items[this.v.id]) { var it = this.d.items[this.v.id]; it.edited = true; it.restoredDismissed = false; }
+  };
+  P.item = function () { return this.d.items[this.v.id]; };
+  P.go = function (v, replace) {
+    var prev = this.v, nv = norm(v);
+    clearTimeout(this._t);
+    if (prev && prev.s === 'queue' && nv.s !== 'queue') this.lastQueue = { s: 'queue', tab: prev.tab, q: prev.q, searchOpen: prev.searchOpen };
+    this.v = nv; this.applyFlags();
+    this.render(replace ? 'replace' : 'push');
+  };
+  P.toQueue = function () { this.go(this.lastQueue || { s: 'queue' }); };
+  P.toast = function (msg) {
+    var t = this.toastEl; t.textContent = msg; t.classList.add('show');
+    clearTimeout(this._tt); this._tt = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  };
+  P.sync = function (mode) {
+    if (!this.narrow || mode === 'none') return;
+    var t = tokenFor(this.v);
+    if (location.hash.slice(1) === t) return;
+    try {
+      if (mode === 'push') history.pushState(null, '', '#' + t); else history.replaceState(null, '', '#' + t);
+    } catch (e) { /* file:// in some browsers */ }
+  };
+
+  P.render = function (mode) {
+    var v = this.v, key = v.s + '|' + v.id + '|' + v.tab;
+    var sc = this.scr.querySelector('.scroll'), top = (sc && key === this._key) ? sc.scrollTop : 0;
+    this.el.classList.toggle('kb', v.kb);
+    this.scr.innerHTML = this.screenHTML();
+    this.renderModal();
+    this.renderSheet('none');
+    growAll(this.scr);
+    var sc2 = this.scr.querySelector('.scroll');
+    if (sc2) sc2.scrollTop = top;
+    if (v.kb && key !== this._key && sc2) {
+      var ta = this.scr.querySelector('textarea.reply');
+      if (ta) sc2.scrollTop = Math.max(0, ta.offsetTop - 96);
+    }
+    this._key = key;
+    this.sync(mode || 'replace');
+  };
+  P.renderModal = function () {
+    if (this.v.modal === 'compose') {
+      if (!this.ml.firstChild) { this.ml.innerHTML = this.composeHTML(); growAll(this.ml); }
+    } else this.ml.innerHTML = '';
+  };
+  P.renderSheet = function (mode) {
+    var sb = this.sl.querySelector('.sheet-body'), top = (sb && this.v.sheet === this._sheet) ? sb.scrollTop : 0;
+    var opening = this.v.sheet && this.v.sheet !== this._sheet;
+    this.sl.innerHTML = this.v.sheet ? this.sheetHTML() : '';
+    var sb2 = this.sl.querySelector('.sheet-body'); if (sb2) sb2.scrollTop = top;
+    this._sheet = this.v.sheet;
+    if (opening && this.narrow) { var f = this.sl.querySelector('[data-act="close"].iconbtn, .backbtn'); if (f) f.focus({ preventScroll: true }); }
+    if (mode !== 'none') this.sync('replace');
+  };
+  P.openSheet = function (s) { this.v.sheet = s; this.renderSheet(); };
+  P.closeSheet = function () { this.v.sheet = null; this.renderSheet(); };
+  P.escape = function () {
+    if (this.v.sheet) this.closeSheet();
+    else if (this.v.modal) { this.v.modal = null; this.renderModal(); this.sync('replace'); }
+  };
+
+  /* ---------- screens ---------- */
+  P.screenHTML = function () {
+    switch (this.v.s) {
+      case 'item': return this.itemHTML(false);
+      case 'drafting': return this.itemHTML(true);
+      case 'customer': return this.customerHTML();
+      case 'skeleton': return this.skeletonHTML();
+      case 'error': return this.errorHTML();
+      case 'audit': return this.auditHTML();
+      default: return this.queueHTML();
+    }
+  };
+  function barBrand() {
+    return '<header class="appbar"><span class="brand">Axle</span><button type="button" class="iconbtn" data-act="sheet" data-arg="menu" aria-label="Menu">' + I.menu + '</button></header>';
+  }
+  function barBack(title, backLabel) {
+    return '<header class="appbar"><button type="button" class="iconbtn" data-act="back" aria-label="' + (backLabel || 'Back to inbox') + '">' + I.back + '</button>' +
+      '<h1 class="ab-title">' + title + '</h1><button type="button" class="iconbtn" data-act="sheet" data-arg="menu" aria-label="Menu">' + I.menu + '</button></header>';
+  }
+
+  P.queueHTML = function () {
+    var v = this.v, f = this.d.f, fc = (f.mailbox !== 'All') + (f.sort !== 'Needs me first') + (f.show !== 'All');
+    var tabs = TABS.map(function (t) {
+      var on = v.tab === t[0];
+      return '<button type="button" class="qtab' + (on ? ' on' : '') + '" role="tab" aria-selected="' + on + '" data-act="tab" data-arg="' + t[0] + '"><span class="ql">' + t[1] + '</span><span class="n">' + t[2] + '</span></button>';
+    }).join('');
+    return barBrand() +
+      '<div class="qhead"><div class="qrow"><div class="qtabs" role="tablist" aria-label="Queue">' + tabs + '</div>' +
+      '<button type="button" class="iconbtn outline' + (v.searchOpen ? ' on' : '') + '" data-act="search" aria-label="Search emails" aria-expanded="' + v.searchOpen + '">' + I.search + '</button></div>' +
+      (v.searchOpen ? '<div class="qsearch"><input class="inp" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="Search emails…" aria-label="Search emails" data-bind="q" value="' + esc(v.q) + '"><button type="button" class="btn" data-act="clearq">Clear</button></div>' : '') +
+      '<div class="qlive"><span class="livedot" aria-hidden="true"></span><span>Live · updated 6:02pm</span><span class="grow1"></span>' +
+      '<button type="button" class="btn" data-act="sheet" data-arg="filters">' + I.filter + 'Filters' + (fc ? '<span class="hbadge">' + fc + '</span>' : '') + '</button></div></div>' +
+      '<div class="scroll"><div class="qlist">' + this.listHTML() + '</div></div>' +
+      '<button type="button" class="fab" data-act="compose">' + I.plus + 'New email</button>';
+  };
+  P.listHTML = function () {
+    var v = this.v, q = v.q.trim().toLowerCase();
+    function more(n) { return '<button type="button" class="btn block" data-act="loadmore">Load more (50 of ' + n + ')</button>'; }
+    if (v.tab === 'open' || v.tab === 'all') {
+      var list = CARDS.filter(function (c) { return !q || (c.from + ' ' + c.subj + ' ' + c.sum).toLowerCase().indexOf(q) >= 0; });
+      if (!list.length) return emptyHTML(v.q);
+      return list.map(cardHTML).join('') + (v.tab === 'all' ? more(TOTAL.all) : '');
+    }
+    if (q) return emptyHTML(v.q);
+    var sk = '';
+    for (var i = 0; i < 4; i++) sk += '<div class="qcard skel" aria-hidden="true"><span class="sk" style="width:45%"></span><span class="sk" style="width:85%"></span><span class="sk" style="width:65%"></span></div>';
+    return sk + '<p class="hint muted center">' + (v.tab === 'done' ? 'Done' : 'Archived') + ' cards are not in the mock data: the first 50 load here.</p>' + more(TOTAL[v.tab]);
+  };
+  function emptyHTML(q) {
+    return '<div class="qempty"><p>No matches for \'' + esc(q) + '\'</p><button type="button" class="btn" data-act="clearq">Clear search</button></div>';
+  }
+  function cardHTML(c) {
+    return '<button type="button" class="qcard" data-act="open" data-arg="' + c.id + '">' +
+      '<span class="q-l1"><span class="q-from">' + esc(c.from) + '</span><span class="q-time muted">' + c.time + '</span></span>' +
+      '<span class="q-l2"><span class="q-subj">' + esc(c.subj) + '</span><span class="q-badges">' +
+      (c.att ? '<span class="badge att" aria-label="' + c.att + ' attachment(s)">' + I.clip + c.att + '</span>' : '') +
+      (c.p1 ? '<span class="badge prio1">P1</span>' : '') + '</span></span>' +
+      '<span class="q-l3"><span class="q-sum muted">' + esc(c.sum) + '</span><span class="chip s-' + c.st + '">' + ST[c.st] + '</span></span></button>';
+  }
+
+  P.chipsHTML = function (X, it, drafting) {
+    var h = X.chips.map(function (c) {
+      var cls = c[0], lbl = c[1];
+      if (drafting && cls.indexOf('s-') === 0) { cls = 's-investigating'; lbl = ST.investigating; }
+      return '<span class="chipcell"><span class="chip ' + cls + '">' + esc(lbl) + '</span></span>';
+    }).join('');
+    return h + '<button type="button" class="chipcell" data-act="sheet" data-arg="language" aria-label="Language: ' + it.lang + ', change"><span class="chip ctl">Language: ' + it.lang + '<span class="caret" aria-hidden="true">▾</span></span></button>' +
+      '<button type="button" class="chipcell" data-act="sheet" data-arg="owner" aria-label="Owner: ' + esc(it.owner) + ', change"><span class="chip ctl">Owner: ' + esc(it.owner) + '<span class="caret" aria-hidden="true">▾</span></span></button>';
+  };
+
+  P.itemHTML = function (drafting) {
+    var X = ITEMS[this.v.id], it = this.item(), u = this.uid, v = this.v;
+    var body = '<button type="button" class="btn block cdbtn" data-act="sheet" data-arg="context"><span>Customer &amp; docs</span>' + I.right + '</button>';
+    if (drafting) {
+      body += '<div class="banner" role="status"><span class="spin" aria-hidden="true"></span><span>Axle is drafting a reply · checking SAP order 226108</span></div>' +
+        '<section class="box skbox" aria-label="Reply being drafted"><h3>Reply to send</h3><span class="sk" style="width:92%"></span><span class="sk" style="width:84%"></span><span class="sk" style="width:88%"></span><span class="sk" style="width:60%"></span><span class="sk" style="width:74%"></span><span class="sk" style="width:40%"></span></section>';
+    } else {
+      if (X.question) {
+        body += '<section class="box"><div class="boxhead"><h3>Questions for you <span class="h3n">(1 open)</span></h3></div>' +
+          '<ol class="qs"><li>' + esc(X.question) + '</li></ol>' +
+          '<label class="flabel2" for="' + u + 'fb">Your answer &amp; feedback</label>' +
+          '<textarea id="' + u + 'fb" class="ta grow fb" rows="2" data-bind="feedback" placeholder="Answer the questions above and add anything else Axle should know. One reply covers it all.">' + esc(it.feedback) + '</textarea>' +
+          '<p class="hint muted">Axle uses your answer when it redrafts: More actions, then Save &amp; redraft.</p></section>';
+      }
+      body += '<section class="box"><div class="boxhead"><h3>Reply to send</h3><span class="edslot">' + (it.edited ? '<span class="badge edited">edited</span>' : '') + '</span><span class="spacer"></span><span class="saved savedslot">Saved ' + it.saved + '</span></div>' +
+        (v.restored && !it.restoredDismissed ? '<div class="note" role="status"><span>Unsaved edits restored</span><button type="button" class="iconbtn" data-act="dismiss" aria-label="Dismiss">' + I.x + '</button></div>' : '') +
+        '<p class="hint muted fldhint">This exact text goes to the customer. Edit it however you like before sending.</p>' +
+        (X.cf ? '<label class="flabel2" for="' + u + 'subj">Subject</label><p class="hint muted fldhint">This is a new email to the customer: set the subject they\'ll see.</p>' +
+          '<input id="' + u + 'subj" class="inp" type="text" autocomplete="off" data-bind="subject" value="' + esc(it.subject) + '"><label class="flabel2" for="' + u + 'rep">Message</label>' : '<label class="sr" for="' + u + 'rep">Reply text</label>') +
+        '<textarea id="' + u + 'rep" class="ta grow reply' + (v.kb ? ' focused' : '') + '" lang="nl" data-bind="reply">' + esc(it.reply) + '</textarea>' +
+        '<div class="rowbtns"><button type="button" class="btn" data-act="reset">Reset to AI draft</button><button type="button" class="btn" data-act="tr" aria-expanded="' + it.showTr + '">' + (it.showTr ? 'Hide translation' : 'Show translation') + '</button></div>' +
+        (it.showTr ? '<div class="trbox"><h4>English translation</h4><pre class="mail">' + esc(X.tr) + '</pre></div>' : '') + '</section>';
+    }
+    body += this.mailHTML(X, it) + this.attHTML(it);
+    return barBack(esc(X.title)) +
+      '<div class="scroll"><div class="chiprow" aria-label="Item details">' + this.chipsHTML(X, it, drafting) + '</div><div class="pad">' + body + '</div></div>' +
+      this.barHTML(it, drafting) + (v.kb ? kbdHTML() : '');
+  };
+  P.mailHTML = function (X, it) {
+    var lines = X.mail.split('\n'), long = lines.length > 12, folded = long && !it.fullMsg;
+    var shown = folded ? lines.slice(0, 12).join('\n') : X.mail;
+    var cf = X.cf ? '<div class="cf"><span class="cf-lbl">Contact-form customer</span><div class="cf-top"><span><b>Bram Geerets</b> <span class="muted">· NL</span></span><span class="st-ok">Matched in SAP</span></div>' +
+      '<p class="cf-q">"Is onderdeel ASR 1714 voor de linkerkant?"</p><a class="btn" href="tel:0639470602">' + I.phone + '0639470602</a></div>' : '';
+    var inb = X.inbound.length ? '<div class="attchips">' + X.inbound.map(function (a) {
+      return '<button type="button" class="attchip" data-act="inatt" data-arg="' + esc(a.name) + '">' + I.clipm + '<span>' + esc(a.name) + ' · ' + a.size + '</span></button>';
+    }).join('') + '</div>' : '';
+    return '<section class="box"><div class="boxhead"><h3>Customer email</h3></div>' + cf +
+      '<div class="msg"><div class="msg-head"><b>' + esc(X.from) + '</b><span class="muted">' + X.at + '</span></div><pre class="mail' + (folded ? ' fade' : '') + '">' + esc(shown) + '</pre>' + inb + '</div>' +
+      (long ? '<button type="button" class="foldrow" data-act="fullmsg" aria-expanded="' + !folded + '"><span>' + (folded ? 'Show full message' : 'Show less') + '</span>' + (folded ? I.down : I.up) + '</button>' : '') +
+      '</section>' +
+      '<button type="button" class="foldrow card" data-act="earlier" aria-expanded="' + it.earlier + '"><span>Earlier in this conversation <span class="muted">(63 lines)</span></span>' + (it.earlier ? I.up : I.down) + '</button>' +
+      (it.earlier ? '<div class="box quoted"><pre class="mail">' + esc(X.earlier) + '</pre></div>' : '');
+  };
+  P.attHTML = function (it) {
+    var list = it.out.length ? '<div class="attchips">' + it.out.map(function (a, i) {
+      return '<span class="attchip out">' + I.file + '<span>' + esc(a.name) + (a.size ? ' · ' + a.size : '') + '</span><button type="button" class="iconbtn" data-act="rmatt" data-arg="' + i + '" aria-label="Remove ' + esc(a.name) + '">' + I.x + '</button></span>';
+    }).join('') + '</div>' : '<p class="m0 muted">No attachments yet.</p>';
+    return '<section class="box"><div class="boxhead"><h3>Attachments</h3></div>' + list +
+      '<p class="hint muted">Pictures or files to send with this reply (max 3 MB each).</p>' +
+      '<div class="rowbtns"><label class="btn">' + I.plus + 'Add files<input type="file" multiple class="sr" data-files="out"></label></div></section>';
+  };
+  P.barHTML = function (it, drafting) {
+    var r = it.recip;
+    var line = r ? '<button type="button" class="recip" data-act="sheet" data-arg="recipient" aria-label="Recipient ' + esc(r.addr) + ', ' + esc(r.src) + '. Change recipient"><span class="to">To: <b>' + esc(r.addr) + '</b></span><span class="src">' + esc(r.src) + '</span>' + I.right + '</button>'
+      : '<button type="button" class="recip need" data-act="sheet" data-arg="recipient"><span class="to">Confirm recipient: no recipient yet</span>' + I.right + '</button>';
+    return '<div class="ibar">' + line + '<div class="ibar-row"><button type="button" class="send" data-act="send"' + (r && !drafting ? '' : ' disabled') + '>Send</button>' +
+      '<button type="button" class="iconbtn outline" data-act="sheet" data-arg="overflow" aria-label="More actions">' + I.more + '</button></div></div>';
+  };
+  function kbdHTML() {
+    function keys(s) { return s.split('').map(function (c) { return '<span class="k">' + c + '</span>'; }).join(''); }
+    return '<div class="kbd" aria-hidden="true"><div class="krow">' + keys('qwertyuiop') + '</div><div class="krow r2">' + keys('asdfghjkl') + '</div>' +
+      '<div class="krow"><span class="k fn w15">⇧</span>' + keys('zxcvbnm') + '<span class="k fn w15">⌫</span></div>' +
+      '<div class="krow"><span class="k fn w25">123</span><span class="k sp">space</span><span class="k fn w25">return</span></div></div>';
+  }
+
+  P.customerHTML = function () {
+    function stat(l, v) { return '<div class="stat"><p class="l">' + l + '</p><p class="v">' + v + '</p></div>'; }
+    return barBack('Customer overview', 'Back to Customer &amp; docs') +
+      '<div class="scroll"><div class="pad">' +
+      '<section class="box cushead"><h2>JitsArt atelier</h2><p class="muted">K131347 · NL · Businesses · Sales - Standard</p></section>' +
+      '<div class="stats">' + stat('Lifetime invoiced', '€0.00') + stat('Last 12 months', '€0.00') + stat('Account balance', '€0.00') + stat('Customer since', '-') + stat('Last order', '2026-09-24') + '</div>' +
+      '<section class="box"><div class="boxhead"><h3>Recent orders</h3></div><div class="orow"><span><b>230905</b> <span class="muted">· 2026-09-24</span></span><span class="orr"><b>€234.86</b><span class="st-warn">Open</span></span></div></section>' +
+      '<section class="box"><div class="boxhead"><h3>Recent invoices</h3></div><p class="m0 muted">None.</p></section>' +
+      '</div></div>';
+  };
+  P.skeletonHTML = function () {
+    var chips = '';
+    for (var i = 0; i < 5; i++) chips += '<span class="chipcell"><span class="sk"></span></span>';
+    return '<header class="appbar"><button type="button" class="iconbtn" data-act="back" aria-label="Back to inbox">' + I.back + '</button><span class="ab-title"><span class="sk" style="width:70%;height:16px"></span></span><button type="button" class="iconbtn" data-act="sheet" data-arg="menu" aria-label="Menu">' + I.menu + '</button></header>' +
+      '<div class="scroll" aria-busy="true" aria-label="Loading email"><div class="chiprow">' + chips + '</div><div class="pad">' +
+      '<span class="sk" style="height:44px;border-radius:var(--r-ctl)"></span>' +
+      '<section class="box skbox"><span class="sk" style="width:45%"></span><span class="sk" style="width:95%"></span><span class="sk" style="width:88%"></span><span class="sk" style="width:60%"></span><span class="sk" style="height:72px;border-radius:var(--r-ctl)"></span></section>' +
+      '<section class="box skbox"><span class="sk" style="width:35%"></span><span class="sk" style="height:44px;border-radius:var(--r-ctl)"></span><span class="sk" style="height:200px;border-radius:var(--r-ctl)"></span></section>' +
+      '</div></div>' +
+      '<div class="ibar"><button type="button" class="recip" disabled><span class="to"><span class="sk" style="width:70%"></span></span></button><div class="ibar-row"><button type="button" class="send" disabled>Send</button><button type="button" class="iconbtn outline" disabled aria-label="More actions">' + I.more + '</button></div></div>';
+  };
+  P.errorHTML = function () {
+    return barBack('Email #2222') +
+      '<div class="scroll"><div class="errbox" role="alert"><span class="erric" aria-hidden="true">!</span><h2>Couldn\'t load this email</h2>' +
+      '<p class="muted">Check the connection and try again. If it keeps failing, the audit log has the details.</p>' +
+      '<button type="button" class="btn primary" data-act="retry">Retry</button><button type="button" class="btn" data-act="back">Back to inbox</button></div></div>';
+  };
+  P.auditHTML = function () {
+    var rows = AUDIT.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>'; }).join('');
+    return barBack('Audit') + '<div class="scroll"><div class="pad"><div class="banner">Best on desktop</div>' +
+      '<p class="m0 hint muted">Last 500 entries, newest first. Times are UTC. The table scrolls sideways on a phone.</p>' +
+      '<div class="hscroll" role="region" aria-label="Audit log, scrolls sideways" tabindex="0"><table><thead><tr><th>#</th><th>When</th><th>User</th><th>Action</th></tr></thead><tbody>' + rows + '</tbody></table></div></div></div>';
+  };
+
+  /* ---------- compose (modal) ---------- */
+  P.composeHTML = function () {
+    var c = this.d.c, u = this.uid;
+    function opts(list, cur) { return list.map(function (o) { return '<option' + (o === cur ? ' selected' : '') + '>' + o + '</option>'; }).join(''); }
+    return '<div class="cmp" role="dialog" aria-modal="true" aria-labelledby="' + u + 'ct">' +
+      '<header class="appbar"><h1 class="ab-title pl" id="' + u + 'ct">Compose a new email</h1><button type="button" class="iconbtn" data-act="cmp-close" aria-label="Close">' + I.x + '</button></header>' +
+      '<div class="cmp-body">' +
+      '<div class="fld"><label class="flabel2" for="' + u + 'who">Who is this customer?</label><div class="whorow"><input id="' + u + 'who" class="inp" type="text" autocomplete="off" autocapitalize="off" placeholder="Customer code, email, order #, invoice # or name" data-bind="c.who" value="' + esc(c.who) + '"><button type="button" class="btn" data-act="cmp-find">Find customer</button></div><div class="resolve" hidden></div></div>' +
+      '<div class="fld"><span class="flabel2">Quick start (optional)</span><div class="qschips">' + QUICK.map(function (q) {
+        return '<button type="button" class="schip' + (c.chip === q ? ' on' : '') + '" aria-pressed="' + (c.chip === q) + '" data-act="cmp-chip" data-arg="' + esc(q) + '">' + esc(q) + '</button>';
+      }).join('') + '</div></div>' +
+      '<div class="fld"><label class="flabel2" for="' + u + 'cs">Subject</label><input id="' + u + 'cs" class="inp" type="text" autocomplete="off" placeholder="Subject line (needed to send now)" data-bind="c.subject" value="' + esc(c.subject) + '"></div>' +
+      '<div class="fld"><label class="flabel2" for="' + u + 'ci">What should the email say?</label><textarea id="' + u + 'ci" class="ta grow" data-bind="c.instr" placeholder="Two ways to work: tell Axle in plain language what to write and it researches the facts and drafts it (use Draft), or just write the email yourself and send it as-is (use Send now).">' + esc(c.instr) + '</textarea></div>' +
+      '<div class="fldrow"><div class="fld"><label class="flabel2" for="' + u + 'cl">Language</label><select id="' + u + 'cl" class="inp" data-bind="c.lang">' + opts(['Auto', 'NL', 'EN', 'DE', 'FR', 'ES'], c.lang) + '</select></div>' +
+      '<div class="fld"><label class="flabel2" for="' + u + 'cf">Send from</label><select id="' + u + 'cf" class="inp" data-bind="c.from">' + opts(['info@', 'drachten@'], c.from) + '</select></div></div>' +
+      '<div class="fld"><span class="flabel2">Attachments</span><div class="cmpatts">' + this.cmpAttsHTML() + '</div>' +
+      '<p class="hint muted">Pictures or files to send with this email (max 3 MB each).</p><div class="rowbtns"><label class="btn">' + I.plus + 'Add files<input type="file" multiple class="sr" data-files="cmp"></label></div></div>' +
+      '</div>' +
+      '<div class="cmp-foot"><button type="button" class="btn" data-act="cmp-close">Cancel</button><button type="button" class="btn" data-act="cmp-draft">Draft</button><button type="button" class="btn go" data-act="cmp-send">Send now</button></div></div>';
+  };
+  P.cmpAttsHTML = function () {
+    var f = this.d.c.files;
+    return f.length ? '<div class="attchips">' + f.map(function (a) { return '<span class="attchip">' + I.file + '<span>' + esc(a.name) + ' · ' + a.size + '</span></span>'; }).join('') + '</div>' : '<p class="m0 muted">No attachments yet.</p>';
+  };
+
+  /* ---------- sheets ---------- */
+  P.sheetHTML = function () {
+    var fn = SHEETS[this.v.sheet]; if (!fn) return '';
+    var o = fn.call(this), u = this.uid;
+    if (o.full) {
+      return '<div class="scrim" data-act="close"></div><div class="sheet full" role="dialog" aria-modal="true" aria-labelledby="' + u + 'st"><div class="sheet-back"><button type="button" class="backbtn" data-act="close">' + I.back + '<span>Back to email</span></button></div>' +
+        '<div class="sheet-body"><h2 class="sheet-title" id="' + u + 'st">' + o.title + '</h2>' + o.body + '</div></div>';
+    }
+    return '<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="' + u + 'st"><div class="grab" aria-hidden="true"></div>' +
+      '<div class="sheet-head"><h2 id="' + u + 'st">' + o.title + '</h2><button type="button" class="iconbtn" data-act="close" aria-label="Close">' + I.x + '</button></div>' +
+      '<div class="sheet-body">' + o.body + '</div>' + (o.foot ? '<div class="sheet-foot">' + o.foot + '</div>' : '') + '</div>';
+  };
+  function seg(act, arg, label, on) { return '<button type="button" class="seg' + (on ? ' on' : '') + '" aria-pressed="' + on + '" data-act="' + act + '" data-arg="' + esc(arg) + '">' + esc(label) + '</button>'; }
+  function row(act, arg, label, on, extra) { return '<button type="button" class="srow' + (on ? ' on' : '') + '" data-act="' + act + '" data-arg="' + arg + '"' + (on ? ' aria-current="page"' : '') + '><span class="grow1">' + label + '</span>' + (extra || '') + '</button>'; }
+
+  var SHEETS = {
+    menu: function () {
+      var s = this.v.s, d = this.d;
+      return { title: 'Menu', body:
+        row('nav', 'inbox', 'Inbox', s === 'queue' || s === 'item') + row('nav', 'blocked', 'Blocked', false) + row('nav', 'audit', 'Audit', s === 'audit') +
+        row('nav', 'requests', 'Requests', false, '<span class="hbadge" aria-label="1 new">1</span>') +
+        '<p class="slabel">Language</p><div class="segrow" role="group" aria-label="Interface language">' + seg('uil', 'EN', 'EN', d.ui === 'EN') + seg('uil', 'NL', 'NL', d.ui === 'NL') + '</div>' +
+        '<div class="who"><span class="muted">Signed in as</span> <b>Brad (admin)</b></div>' };
+    },
+    filters: function () {
+      var f = this.d.f;
+      function grp(key, label, vals) { return '<p class="slabel">' + label + '</p><div class="segrow" role="group" aria-label="' + label + '">' + vals.map(function (x) { return seg('filt', key + ':' + x, x, f[key] === x); }).join('') + '</div>'; }
+      return { title: 'Filters', body:
+        grp('mailbox', 'Mailbox', ['All', 'Gouda', 'Drachten']) + grp('sort', 'Sort', ['Needs me first', 'Newest first']) + grp('show', 'Show', ['Assigned to me', 'All']) +
+        '<p class="slabel">Mail</p><button type="button" class="srow" data-act="sync">' + I.sync + '<span class="grow1">Sync now</span><span class="muted small">Last synced 6:02pm</span></button>' };
+    },
+    language: function () {
+      var it = this.item();
+      return { title: 'Language', body: '<p class="m0 hint muted">Changing the language re-drafts the email.</p>' + LANGS.map(function (l) {
+        var on = it.lang === l[0];
+        return '<button type="button" class="srow' + (on ? ' on' : '') + '" aria-pressed="' + on + '" data-act="lang" data-arg="' + l[0] + '"><span class="code">' + l[0] + '</span><span class="grow1">' + l[1] + '</span>' + (on ? I.check : '') + '</button>';
+      }).join('') };
+    },
+    owner: function () {
+      var it = this.item();
+      return { title: 'Assign to', body: OWNERS.map(function (o) {
+        var on = it.owner === o, dr = o === 'Sales (Drachten)';
+        return '<button type="button" class="srow' + (on ? ' on' : '') + (dr ? ' two' : '') + '" aria-pressed="' + on + '" data-act="owner" data-arg="' + esc(o) + '"><span class="grow1 lines"><b>' + esc(o) + '</b>' + (dr ? '<span>Forwards the email and closes this item</span>' : '') + '</span>' + (on ? I.check : '') + '</button>';
+      }).join('') };
+    },
+    recipient: function () {
+      var X = ITEMS[this.v.id], it = this.item(), u = this.uid, pick = it.pick;
+      var opts = X.recipOpts.map(function (o, i) {
+        return '<label class="srow radio"><input type="radio" name="' + u + 'rcp" value="' + i + '" data-rcp="1"' + (pick === String(i) ? ' checked' : '') + '><span class="grow1"><b>' + esc(o.addr) + '</b> <span class="muted">· ' + esc(o.src) + '</span></span></label>';
+      }).join('');
+      return { title: 'Send to', body:
+        (it.recip ? '' : '<p class="m0 hint muted">Choose the address to reply to. Send stays off until a recipient is confirmed.</p>') + opts +
+        '<label class="srow radio"><input type="radio" name="' + u + 'rcp" value="other" data-rcp="1"' + (pick === 'other' ? ' checked' : '') + '><span class="grow1">Other address</span></label>' +
+        '<div class="otherbox"><input class="inp" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="name@company.nl" aria-label="Other address" data-bind="other" value="' + esc(it.other) + '"><button type="button" class="btn" data-act="recip-inline">Use address</button></div>' +
+        '<p class="err" hidden></p>',
+        foot: '<button type="button" class="btn primary block" data-act="recip-use">Use address</button>' };
+    },
+    overflow: function () {
+      return { title: 'More actions', body: MORE.map(function (m) {
+        return '<button type="button" class="srow two' + (m[0] === 'block' ? ' danger' : '') + '" data-act="more" data-arg="' + m[0] + '"><span class="grow1 lines"><b>' + esc(m[1]) + '</b><span>' + esc(m[2]) + '</span></span></button>';
+      }).join('') };
+    },
+    confirm: function () {
+      var r = this.item().recip;
+      return { title: 'Send reply', body: '<p class="sheet-text">Send this reply to <b>' + esc(r ? r.addr : '') + '</b>?</p><p class="m0 muted">The customer will receive it. The draft is sent exactly as shown.</p>',
+        foot: '<button type="button" class="btn go block" data-act="send-now">Send now</button><button type="button" class="btn block" data-act="close">Cancel</button>' };
+    },
+    reset: function () {
+      return { title: 'Reset to AI draft', body: '<p class="sheet-text">Replace your current text with the original AI draft?</p>',
+        foot: '<button type="button" class="btn primary block" data-act="reset-do">Reset</button><button type="button" class="btn block" data-act="close">Cancel</button>' };
+    },
+    cmpconfirm: function () {
+      var f = this.d.c.found;
+      return { title: 'Send now', body: '<p class="sheet-text">Send this email now to <b>' + esc(f ? f.addr : '') + '</b>?</p>',
+        foot: '<button type="button" class="btn go block" data-act="cmp-send-now">Send now</button><button type="button" class="btn block" data-act="close">Cancel</button>' };
+    },
+    context: function () {
+      var id = this.v.id, it = this.item(), X = ITEMS[id];
+      function docrow(t, s) {
+        var done = it.out.some(function (a) { return a.name === t + '.pdf'; });
+        return '<div class="docrow"><p class="dt">' + t + '</p><p class="ds muted">' + s + '</p><div class="rowbtns">' +
+          '<button type="button" class="btn" data-act="attach" data-arg="' + t + '"' + (done ? ' disabled' : '') + '>' + (done ? 'Attached' : 'Attach') + '</button>' +
+          '<button type="button" class="btn" data-act="preview" data-arg="' + t + '">Preview</button></div></div>';
+      }
+      var u = this.uid, body = '';
+      if (id === 2211) {
+        body += '<section class="box"><h3>Customer</h3><p class="cusname">JitsArt atelier</p><p class="cussub muted">K131347 · NL · Businesses</p>' +
+          '<dl class="kvs"><div class="kv"><dt>Discount tier</dt><dd>Sales - Standard</dd></div><div class="kv"><dt>Open orders</dt><dd>1 · €234.86</dd></div><div class="kv"><dt>Open invoices</dt><dd>0 · €0.00</dd></div></dl>' +
+          '<button type="button" class="btn block cdbtn" data-act="viewcust"><span>View full customer</span>' + I.right + '</button></section>' +
+          '<section class="box"><h3>SAP documents</h3><p class="hint muted">Documents this email seems to reference, found in SAP. Review and attach the ones you want. Nothing is attached or sent automatically.</p>' +
+          docrow('Quotation 100525', 'JitsArt atelier · €234.86 · 24 Sep 2026 · mentioned as offertenummer 100525') +
+          docrow('Order 230905', 'JitsArt atelier · €234.86 · 24 Sep 2026 · mentioned as 230905') + '</section>';
+      } else {
+        body += '<section class="box"><h3>Contact-form customer</h3><p class="cusname">Bram Geerets</p><p class="cussub muted">NL · info@geeretstechniek.nl</p>' +
+          '<dl class="kvs"><div class="kv"><dt>SAP</dt><dd><span class="st-ok">Matched in SAP</span></dd></div><div class="kv"><dt>Phone</dt><dd>0639470602</dd></div></dl>' +
+          '<a class="btn block" href="tel:0639470602">' + I.phone + 'Call 0639470602</a></section>';
+      }
+      body += '<section class="box"><h3>Attach by number</h3><p class="hint muted">Attach the standard SAP/Boyum print PDF of a referenced document to this email.</p>' +
+        '<div class="abn"><div><label class="flabel2" for="' + u + 'at">Type</label><select id="' + u + 'at" class="inp" data-abn="type"><option>Order</option><option>Invoice</option><option>Quotation</option><option>Delivery</option><option>Credit note</option></select></div>' +
+        '<div><label class="flabel2" for="' + u + 'an">Number</label><input id="' + u + 'an" class="inp" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Number" data-abn="num"></div></div>' +
+        '<button type="button" class="btn block" data-act="attachnum">Attach PDF</button></section>' +
+        '<button type="button" class="foldrow card" data-act="checked" aria-expanded="' + it.checked + '"><span>What Axle checked</span>' + (it.checked ? I.up : I.down) + '</button>' +
+        (it.checked ? '<section class="box"><ul class="chk">' + X.checked.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ul></section>' : '');
+      return { full: true, title: 'Customer &amp; docs', body: body };
+    }
+  };
+
+  /* ---------- actions ---------- */
+  var ACT = {
+    back: function () { if (this.v.s === 'customer') this.go({ s: 'item', id: this.v.id || 2211, sheet: 'context' }); else this.toQueue(); },
+    sheet: function (a) { this.openSheet(a); },
+    close: function () { this.closeSheet(); },
+    tab: function (a) { this.v.tab = a; this.render(); },
+    search: function () {
+      this.v.searchOpen = !this.v.searchOpen; if (!this.v.searchOpen) this.v.q = '';
+      this.render();
+      var i = this.scr.querySelector('input[data-bind="q"]'); if (i) i.focus({ preventScroll: true });
+    },
+    clearq: function () {
+      this.v.q = ''; this.render();
+      var i = this.scr.querySelector('input[data-bind="q"]'); if (i) i.focus({ preventScroll: true });
+    },
+    loadmore: function () { this.toast('Load more fetches the next 50 from the server.'); },
+    open: function (a) {
+      var self = this, id = +a;
+      if (!ITEMS[id]) { this.toast('Only #2222 and #2211 open in this mock.'); return; }
+      this.go({ s: 'skeleton', id: id });
+      this._t = setTimeout(function () { if (self.v.s === 'skeleton') self.go({ s: 'item', id: id }, true); }, 550);
+    },
+    compose: function () { this.v.modal = 'compose'; this.renderModal(); this.sync('push'); },
+    'cmp-close': function () { this.v.modal = null; this.renderModal(); this.sync('replace'); },
+    nav: function (a) {
+      this.v.sheet = null;
+      if (a === 'inbox' && this.v.s === 'queue') this.renderSheet();
+      else if (a === 'inbox') this.go(this.lastQueue || { s: 'queue' });
+      else if (a === 'audit') this.go({ s: 'audit' });
+      else { this.renderSheet(); this.toast((a === 'blocked' ? 'Blocked' : 'Requests') + ' is not part of the M1 mock.'); }
+    },
+    uil: function (a) { this.d.ui = a; this.renderSheet(); },
+    filt: function (a) { var p = a.split(':'); this.d.f[p[0]] = p.slice(1).join(':'); this.render(); },
+    sync: function () { this.closeSheet(); this.toast('Sync started, new emails appear shortly.'); },
+    lang: function (a) { this.item().lang = a; this.v.sheet = null; this.render(); this.toast('Language set to ' + a + '. Changing the language re-drafts the email.'); },
+    owner: function (a) { this.item().owner = a; this.v.sheet = null; this.render(); this.toast(a === 'Sales (Drachten)' ? 'Handed to Sales (Drachten): forwarded and closed here.' : 'Assigned to ' + a + '.'); },
+    'recip-inline': function () { this.useRecip(true); },
+    'recip-use': function () { this.useRecip(false); },
+    send: function () { if (this.item().recip) this.openSheet('confirm'); },
+    'send-now': function () { var r = this.item().recip; this.v.sheet = null; this.toQueue(); this.toast('Sent to ' + r.addr + '.'); },
+    more: function (a) {
+      var id = this.v.id;
+      this.v.sheet = null;
+      if (a === 'redraft') { this.go({ s: 'drafting', id: id }); this.toast('Saved. Axle is redrafting the reply.'); return; }
+      var msg = { done: 'Marked done.', phone: 'Resolved by phone.', archive: 'Archived.', forward: 'Forwarded to Drachten and closed here.', block: 'Block sender opens the block page with a confirm step.' }[a];
+      if (a === 'block') { this.renderSheet(); this.toast(msg); return; }
+      this.toQueue(); this.toast('#' + id + ' ' + msg.charAt(0).toLowerCase() + msg.slice(1));
+    },
+    reset: function () { this.openSheet('reset'); },
+    'reset-do': function () { var it = this.item(); it.reply = ITEMS[this.v.id].draft; it.edited = false; this.v.sheet = null; this.render(); this.toast('Reset to the AI draft.'); },
+    tr: function () { var it = this.item(); it.showTr = !it.showTr; this.render(); },
+    fullmsg: function () { var it = this.item(); it.fullMsg = !it.fullMsg; this.render(); },
+    earlier: function () { var it = this.item(); it.earlier = !it.earlier; this.render(); },
+    checked: function () { var it = this.item(); it.checked = !it.checked; this.renderSheet(); },
+    dismiss: function () { this.item().restoredDismissed = true; this.render(); },
+    inatt: function (a) { this.toast('Opens ' + a + '.'); },
+    rmatt: function (a) { this.item().out.splice(+a, 1); this.render(); },
+    attach: function (a) { this.item().out.push({ name: a + '.pdf', size: 'SAP PDF' }); this.render(); this.toast(a + ' attached. Your reply text is kept.'); },
+    preview: function (a) { this.toast('Preview opens the ' + a + ' PDF in a new tab. Nothing is attached.'); },
+    attachnum: function () {
+      var t = this.sl.querySelector('[data-abn="type"]'), n = this.sl.querySelector('[data-abn="num"]'), num = n ? n.value.trim() : '';
+      if (!/^\d+$/.test(num)) { this.toast('Enter a document number.'); if (n) n.focus({ preventScroll: true }); return; }
+      this.item().out.push({ name: t.value + ' ' + num + '.pdf', size: 'SAP PDF' }); this.render(); this.toast(t.value + ' ' + num + ' attached.');
+    },
+    viewcust: function () { this.v.sheet = null; this.go({ s: 'customer', id: this.v.id }); },
+    retry: function () { var self = this; this.go({ s: 'skeleton' }); this._t = setTimeout(function () { if (self.v.s === 'skeleton') self.go({ s: 'item', id: 2222 }, true); }, 700); },
+    'cmp-chip': function (a) {
+      var c = this.d.c; c.chip = c.chip === a ? '' : a;
+      var b = this.ml.querySelectorAll('.schip');
+      for (var i = 0; i < b.length; i++) { var on = b[i].getAttribute('data-arg') === c.chip; b[i].classList.toggle('on', on); b[i].setAttribute('aria-pressed', on); }
+    },
+    'cmp-find': function () {
+      var self = this, c = this.d.c, box = this.ml.querySelector('.resolve'), val = c.who.trim();
+      box.hidden = false; box.innerHTML = '<p class="busyline"><span class="spin" aria-hidden="true"></span>Looking up…</p>';
+      setTimeout(function () {
+        if (!val) { c.found = null; box.innerHTML = '<p class="rwarn">Enter a customer code, email, order #, invoice # or name.</p>'; }
+        else if (/jitsart|k131347|230905|100525/i.test(val)) {
+          c.found = { addr: 'info@jitsbakker.com' };
+          box.innerHTML = '<p class="rok">JitsArt atelier · K131347 · NL · Businesses</p><p class="muted">Pick the address to use:</p><label class="srow radio"><input type="radio" name="' + self.uid + 'cr" checked><span class="grow1"><b>info@jitsbakker.com</b></span></label>';
+        } else if (validEmail(val)) { c.found = { addr: val }; box.innerHTML = '<p class="rwarn">Not a known SAP account: will send to this address.</p><p><b>' + esc(val) + '</b></p>'; }
+        else { c.found = null; box.innerHTML = '<p class="rbad">No customer found: check the identifier.</p>'; }
+      }, 600);
+    },
+    'cmp-draft': function () {
+      var c = this.d.c;
+      if (!c.who.trim() || !c.instr.trim()) { this.toast('Enter a customer and an instruction.'); return; }
+      this.d.c = freshData().c; this.v.modal = null; this.renderModal(); this.sync('replace'); this.toast('Drafting… the new email appears in the queue.');
+    },
+    'cmp-send': function () {
+      var c = this.d.c;
+      if (!c.subject.trim()) this.toast('Add a subject line to send now.');
+      else if (!c.found) this.toast('Find the customer and confirm the recipient first.');
+      else this.openSheet('cmpconfirm');
+    },
+    'cmp-send-now': function () {
+      var a = this.d.c.found.addr; this.d.c = freshData().c; this.v.sheet = null; this.v.modal = null;
+      this.renderSheet('none'); this.renderModal(); this.sync('replace'); this.toast('Sent to ' + a + '.');
+    }
+  };
+
+  P.useRecip = function (inline) {
+    var X = ITEMS[this.v.id], it = this.item(), err = this.sl.querySelector('.err'), r;
+    if (inline || it.pick === 'other') {
+      var a = (it.other || '').trim();
+      if (!validEmail(a)) { if (err) { err.hidden = false; err.textContent = 'That isn\'t a single valid email address. Enter one address, with no commas, semicolons or angle brackets.'; } return; }
+      r = { addr: a, src: 'typed' }; it.pick = 'other';
+    } else { var o = X.recipOpts[+it.pick] || X.recipOpts[0]; r = { addr: o.addr, src: o.src }; }
+    it.recip = r; this.v.sheet = null; this.render(); this.toast('Recipient confirmed: ' + r.addr + '. Your reply text is kept.');
+  };
+
+  P.onClick = function (e) {
+    var t = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!t || !this.el.contains(t) || t.disabled) return;
+    var fn = ACT[t.getAttribute('data-act')];
+    if (!fn) return;
+    e.preventDefault();
+    fn.call(this, t.getAttribute('data-arg'), t);
+  };
+  P.onInput = function (e) {
+    var t = e.target, b = t.getAttribute('data-bind');
+    if (!b) return;
+    if (t.tagName === 'TEXTAREA' && t.classList.contains('grow')) grow(t);
+    if (b === 'q') { this.v.q = t.value; var l = this.scr.querySelector('.qlist'); if (l) l.innerHTML = this.listHTML(); return; }
+    if (b.indexOf('c.') === 0) { this.d.c[b.slice(2)] = t.value; if (b === 'c.who') this.d.c.found = null; return; }
+    var it = this.item(); if (!it) return;
+    it[b] = t.value;
+    if (b === 'other') { var err = this.sl.querySelector('.err'); if (err) err.hidden = true; return; }
+    if (b === 'reply' || b === 'subject') {
+      it.edited = true;
+      var ed = this.scr.querySelector('.edslot'); if (ed && !ed.firstChild) ed.innerHTML = '<span class="badge edited">edited</span>';
+    }
+    var sv = this.scr.querySelector('.savedslot');
+    if (sv) {
+      sv.textContent = 'Saving…'; clearTimeout(this._sv);
+      this._sv = setTimeout(function () { it.saved = nowLabel(); sv.textContent = 'Saved ' + it.saved; }, 700);
+    }
+  };
+  P.onChange = function (e) {
+    var t = e.target;
+    if (t.hasAttribute('data-rcp')) { this.item().pick = t.value; return; }
+    if (t.tagName === 'SELECT' && t.getAttribute('data-bind')) { this.onInput(e); return; }
+    var f = t.getAttribute('data-files');
+    if (!f) return;
+    var arr = [].slice.call(t.files || []).map(function (x) { return { name: x.name, size: fmtSize(x.size) }; });
+    if (f === 'out') { var it = this.item(); it.out = it.out.concat(arr); this.render(); }
+    else { this.d.c.files = this.d.c.files.concat(arr); var box = this.ml.querySelector('.cmpatts'); if (box) box.innerHTML = this.cmpAttsHTML(); }
+    t.value = '';
+  };
+  P.onFocus = function (e) {
+    var t = e.target;
+    if (t.getAttribute && t.getAttribute('data-bind') === 'other') {
+      var it = this.item(); it.pick = 'other';
+      var r = this.sl.querySelector('input[data-rcp][value="other"]'); if (r) r.checked = true;
+    }
+  };
+
+  /* ================= boot: one full-screen phone (<= 500px) or a gallery of frames ================= */
+  var mq = window.matchMedia('(max-width: 500px)');
+  var PH = null, phones = [], vvFit = null;
+  var SIZES = [[375, 812], [393, 852], [430, 932]];
+
+  function boot() {
+    var app = document.getElementById('app'), narrow = mq.matches;
+    document.documentElement.className = narrow ? 'm-narrow' : 'm-wide';
+    document.body.className = narrow ? 'm-narrow' : 'm-wide';
+    app.innerHTML = ''; PH = null; phones = [];
+    if (vvFit && window.visualViewport) { window.visualViewport.removeEventListener('resize', vvFit); vvFit = null; }
+    var tok = location.hash.slice(1);
+    if (narrow) {
+      var el = document.createElement('div'); el.className = 'full'; app.appendChild(el);
+      PH = new Phone(el, ROUTE[tok] ? tok : 'queue', true);
+      if (window.visualViewport) {
+        vvFit = function () { el.style.height = window.visualViewport.height + 'px'; window.scrollTo(0, 0); };
+        window.visualViewport.addEventListener('resize', vvFit);
+      }
+      var pill = document.createElement('button'); pill.type = 'button'; pill.className = 'fpill'; pill.textContent = 'Frames';
+      pill.setAttribute('aria-haspopup', 'dialog');
+      var list = document.createElement('div'); list.className = 'flist'; list.hidden = true;
+      list.innerHTML = '<div class="flpanel" role="dialog" aria-modal="true" aria-label="Frames"><div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2>Frames</h2><button type="button" class="iconbtn" data-fl="close" aria-label="Close">' + I.x + '</button></div>' +
+        '<div class="sheet-body">' + ROUTES.map(function (r) { return '<button type="button" class="srow" data-tok="' + r[0] + '"><span class="grow1"><b>#' + r[0] + '</b> <span class="muted">' + esc(r[1]) + '</span></span></button>'; }).join('') + '</div></div>';
+      pill.addEventListener('click', function () { list.hidden = false; pill.hidden = true; });
+      list.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-tok]');
+        if (b) {
+          var t = b.getAttribute('data-tok');
+          if (location.hash.slice(1) === t) PH.setToken(t, false); else location.hash = t;
+        }
+        if (b || e.target === list || e.target.closest('[data-fl="close"]')) { list.hidden = true; pill.hidden = false; }
+      });
+      app.appendChild(pill); app.appendChild(list);
+    } else {
+      app.innerHTML = '<div class="gal"><header class="gal-head"><h1>Axle M1 mobile</h1>' +
+        '<p>Hi-fi clickable phone mock of the agreed design (24 Sep 2026). Every frame is a live phone: tap through it, open sheets, type in the editor. Open this page on a phone (500px wide or less) to get one screen full-screen with a Frames list.</p>' +
+        '<div class="gal-w" role="group" aria-label="Frame size"><span class="muted">Frame size</span>' + SIZES.map(function (s) { return seg('size', s.join('x'), s[0] + ' x ' + s[1], s[0] === 393); }).join('') + '</div></header><div class="grid"></div></div>';
+      var grid = app.querySelector('.grid');
+      ROUTES.forEach(function (r) {
+        var fig = document.createElement('figure'); fig.className = 'frame'; fig.id = 'f-' + r[0];
+        fig.innerHTML = '<figcaption><b>#' + r[0] + '</b> · ' + esc(r[1]) + '</figcaption>';
+        var ph = document.createElement('div'); fig.appendChild(ph); grid.appendChild(fig);
+        phones.push(new Phone(ph, r[0], false));
+      });
+      app.querySelector('.gal-w').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-act="size"]'); if (!b) return;
+        var wh = b.getAttribute('data-arg').split('x');
+        grid.style.setProperty('--pw', wh[0] + 'px'); grid.style.setProperty('--ph', wh[1] + 'px');
+        var all = this.querySelectorAll('.seg');
+        for (var i = 0; i < all.length; i++) { var on = all[i] === b; all[i].classList.toggle('on', on); all[i].setAttribute('aria-pressed', on); }
+        phones.forEach(function (p) { p.render('none'); });
+      });
+      if (ROUTE[tok]) { var f = document.getElementById('f-' + tok); if (f) f.scrollIntoView(); }
+    }
+  }
+  function onRoute() {
+    var tok = location.hash.slice(1);
+    if (!ROUTE[tok]) return;
+    if (PH) { if (tok !== tokenFor(PH.v)) { PH.v.sheet = null; PH.v.modal = null; PH.setToken(tok, false); } }
+    else { var f = document.getElementById('f-' + tok); if (f) f.scrollIntoView({ behavior: 'smooth' }); }
+  }
+  window.addEventListener('popstate', onRoute);
+  window.addEventListener('hashchange', onRoute);
+  if (mq.addEventListener) mq.addEventListener('change', boot); else if (mq.addListener) mq.addListener(boot);
+  boot();
+})();
+</script>
+</body>
+</html>

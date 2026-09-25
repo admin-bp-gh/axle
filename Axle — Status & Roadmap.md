@@ -1,5 +1,50 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE REDESIGN: REGISTER, M1 MOCK AND PLAN WRITTEN, 24 to 25 Sep 2026. NOTHING BUILT OR
+> DEPLOYED YET. No safety path touched; read-only walk of the live tool.**
+>
+> **What happened.** Axle on an iPhone was judged not usable enough (kickoff prompt of 24 Sep 2026).
+> Step 1 walked the live tool at 393, 375, 430 and 1440 (phone viewports emulated in a same-origin
+> iframe because Chrome on the box will not shrink below its minimum window width) and produced
+> `Axle — Mobile Gap Register — 2026-09.md`: 59 findings (8 block the task, 40 hurt, 11 cosmetic),
+> each with a screenshot in `design-reference/mobile-audit/` and file:line evidence. Top blockers:
+> a side action (confirm recipient, chip change, attach) reloads the item and drops the unsaved reply;
+> no autosave; the blocking question 1.5 screens down and the reply 2 screens down; the context pane
+> only reachable at the page bottom; the Sprocket FAB over the action bar and compose Send now; the
+> Done and All tabs rendering every item (1,532 cards, 4.67 MB); a three-row 174px action bar; all
+> inputs at 12 to 13px (iOS zoom).
+>
+> **Two facts that reframe the brief.** There is no SSE in the codebase: `sse.min.js` was vendored on
+> 10 Jun and never wired, SSE liveness stays parked at UI-rework Step 4, and liveness is HTMX polling.
+> And this file's newest entry before this one was 15 Aug while the repo has commits to 17 Sep; those
+> weeks are not recorded here.
+>
+> **Decisions (Brad, 24 Sep 2026).** First-class on the phone: triage, answer, edit, confirm
+> recipient, send, close, compose, forward/return/claim. Admin pages get a scroll wrapper and a "Best
+> on desktop" note; Sprocket hidden on the phone. List > conversation, context as a full-height sheet;
+> bottom bar = full recipient line + Send + overflow sheet, Save automatic via localStorage autosave;
+> inline auto-growing 16px editor with the bar tracking the keyboard; queue as one sticky row with
+> fragment tabs and 50-per-page Done/All; compose stays a modal, full-screen on the phone, moved out
+> of the polled pane; compact app bar + menu sheet; state-driven item order with the email folded to
+> 12 lines; iOS 16+ with a server-set body class as a `:has()` guard; polling kept, its states made
+> visible; ONE deploy at the end.
+>
+> **The deliverables.** `design-reference/axle-m1-mobile.html` (21 clickable phone frames on
+> tokens.css, signed off 25 Sep; artifact publish was refused in the session, so it is opened from
+> the file) and `Axle — Mobile Plan — 2026-09.md`: phases 0, 1A, 1B, 2, 3, 4 lowest risk first, every
+> register ID mapped to a phase or a named deferral, five route/partial contract changes (C1 to C5,
+> all in Phase 3, each gated on Brad's OK), proof kit K1 to K7 per phase, desktop pixel-equivalence
+> at 1440 after every phase, ASSET_V polaris15 to polaris20, rollback per phase, the single final
+> deploy in order, live proof on a compose draft to admin@ with every send ending at Draft, then the
+> handover test script. Plan corrections to the kickoff: `deploy.ps1 -WhatIf` returns before running
+> any suite, so suites run directly on the box; box-code cannot be run beside the live service (port
+> 8484, `..\secrets\.env`, `..\data\axle.db`), so the real-iPhone check is batched after the deploy.
+>
+> **Files:** `Axle — Mobile Gap Register — 2026-09.md`, `Axle — Mobile Plan — 2026-09.md`,
+> `design-reference/axle-m1-mobile.html`, `design-reference/mobile-audit/*.jpg` (20 captures).
+> **Deploy notes:** none; no box-code file changed. **Next up:** Brad approves the plan (Gate 2) and
+> answers its five open questions; then Phase 0 on branch `axle/mobile`.
+
 > **★ INGEST NOW SWEEPS UNREAD MAIL, NOT JUST NEW MAIL — 2026-08-15. BUILT, DEPLOYED &
 > LIVE-VERIFIED. Read-only against M365; no allow-list or send-path change.**
 >

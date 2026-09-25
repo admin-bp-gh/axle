@@ -153,8 +153,37 @@ async function customerByEmail(email) {
 
 module.exports = { DOC_TYPES, docTypeInfo, resolveDocument, resolveShopifyOrder, tokenInNumAtCard, renderPdf, buildDocumentPdf, customerByEmail };
 
+// --- JSON CLI for the mail MCPs' attach_sap_document tool ---
+//   node sap-doc-pdf.js --json <type|shopify> <number> <outPath> [recipientEmail,...]
+// Resolves + renders a UNIQUE document to <outPath> and prints ONE JSON line with the document
+// identity and the customer-scope verdict: "match" when any recipient resolves to the document's
+// CardCode, "mismatch" when one resolves to a different customer, "unknown" when none resolves.
+// The caller decides whether to attach; this never touches mail and never writes to SAP.
+async function jsonCli(type, number, outPath, recipients) {
+  const res = type === "shopify" ? await resolveShopifyOrder(number) : await resolveDocument(type, number);
+  if (!res.ok) return res;
+  if (res.candidates.length === 0) return { ok: false, error: "No such document" };
+  if (res.candidates.length > 1) return { ok: false, ambiguous: true, candidates: res.candidates };
+  const doc = res.candidates[0];
+  const r = await renderPdf(doc.objectId, doc.docEntry);
+  if (!r.ok) return { ok: false, error: r.error, doc };
+  fs.writeFileSync(outPath, r.buffer);
+  const prefix = Object.values(DOC_TYPES).find((t) => t.objectId === doc.objectId).prefix;
+  const customers = [];
+  for (const e of recipients) { const c = await customerByEmail(e); if (c.cardCode) customers.push(c); }
+  const scope = customers.some((c) => c.cardCode === doc.cardCode) ? "match" : customers.length ? "mismatch" : "unknown";
+  return { ok: true, doc, filename: prefix + "-" + doc.docNum + ".pdf", bytes: r.bytes, path: outPath, customers, scope };
+}
+
 // --- CLI for box testing:  node sap-doc-pdf.js <type> <docNum>  (writes a PDF, prints identity) ---
-if (require.main === module) {
+if (require.main === module && process.argv[2] === "--json") {
+  require("dotenv").config({ path: path.join(__dirname, "..", "secrets", ".env"), quiet: true });
+  const [, , , type, number, outPath, emails] = process.argv;
+  const recipients = String(emails || "").split(",").map((s) => s.trim()).filter(Boolean);
+  jsonCli(String(type || "").toLowerCase(), number, outPath, recipients)
+    .then((o) => { console.log(JSON.stringify(o)); process.exit(o.ok ? 0 : 1); })
+    .catch((e) => { console.log(JSON.stringify({ ok: false, error: e.message })); process.exit(1); });
+} else if (require.main === module) {
   (async () => {
     const type = process.argv[2] || "order";
     const num = process.argv[3] || "226108";

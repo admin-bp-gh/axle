@@ -1,0 +1,231 @@
+<body>
+<header><span class="brand">Axle</span><a href="/">Inbox</a><a href="/blocks">Blocked</a><a href="/audit">Audit</a><a href="/sprocket/requests">Requests</a>
+<span class="who"><span class="langtoggle"><a class="on" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="" href="/setlang?lang=nl">NL</a></span><span>Brad (admin)</span></span></header>
+<main>
+    <h2>Blocked senders</h2>
+    <p class="muted">Emails from these senders are ignored by Axle (they still arrive in Outlook). Anyone on the team can unblock; every change is audited.</p>
+    <p class="muted"><b>Outlook filing:</b> off - blocked senders still reach the Outlook inbox</p>
+    <table><tbody><tr><th>Sender</th><th>Scope</th><th>Blocked by</th><th>When</th><th>From item</th><th></th></tr><tr>
+      <td>@news-spam.example</td><td>domain</td><td>jack@budget-parts.nl</td>
+      <td class="muted">Tue 9 Jun, 10:30am</td>
+      <td></td>
+      <td><form method="post" action="/blocks/2/unblock"><button class="mini">Unblock</button></form></td>
+    </tr><tr>
+      <td>spam@bad.example</td><td>address</td><td>admin@budget-parts.nl</td>
+      <td class="muted">Tue 9 Jun, 10:00am</td>
+      <td><a href="/item/7">#7</a></td>
+      <td><form method="post" action="/blocks/1/unblock"><button class="mini">Unblock</button></form></td>
+    </tr></tbody></table></main>
+<div id="sprocket" class="sprocket" data-open="0">
+  <button type="button" class="sprocket-fab" id="sprocketFab" aria-label="Open Sprocket, the Axle helper" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+  <section class="sprocket-panel" id="sprocketPanel" role="dialog" aria-label="Sprocket" hidden="">
+    <header class="sp-head"><span class="sp-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg><span>Sprocket</span><span class="sp-tag">Axle helper</span></span>
+      <button type="button" class="sp-close" id="sprocketClose" aria-label="Close">×</button></header>
+    <div class="sp-log" id="sprocketLog" aria-live="polite"><div class="sp-msg sp-bot">Hi, I'm Sprocket — your Axle helper. Ask me how to do anything in Axle.</div></div>
+    <form class="sp-input" id="sprocketForm">
+      <textarea id="sprocketQ" rows="1" placeholder="How do I…?" aria-label="How do I…?"></textarea>
+      <button type="submit" class="sp-send" id="sprocketSend" aria-label="Send">▶</button>
+    </form>
+  </section>
+</div>
+<script>
+(function () {
+  var root = document.getElementById("sprocket"); if (!root) return;
+  var S = {"thinking":"Sprocket's looking that up…","error":"Sorry — something went wrong. Please try again."};
+  var fab = document.getElementById("sprocketFab"), panel = document.getElementById("sprocketPanel"),
+      form = document.getElementById("sprocketForm"), input = document.getElementById("sprocketQ"),
+      log = document.getElementById("sprocketLog"), send = document.getElementById("sprocketSend"),
+      closeBtn = document.getElementById("sprocketClose");
+  var busy = false;
+  function open(o) { panel.hidden = !o; root.setAttribute("data-open", o ? "1" : "0"); fab.setAttribute("aria-expanded", o ? "true" : "false"); if (o) setTimeout(function () { input.focus(); }, 0); }
+  fab.addEventListener("click", function () { open(panel.hidden); });
+  closeBtn.addEventListener("click", function () { open(false); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) open(false); });
+  function addMsg(who, text) { var d = document.createElement("div"); d.className = "sp-msg " + (who === "you" ? "sp-you" : "sp-bot"); d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; }
+  function grow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 120) + "px"; }
+  input.addEventListener("input", grow);
+  input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+  form.addEventListener("submit", function (e) {
+    e.preventDefault(); if (busy) return;
+    var q = input.value.trim(); if (!q) return;
+    // Build the transcript so far (everything already in the log, minus any pending bubble) so the
+    // intake can be multi-turn — the server stays stateless and the client holds the conversation.
+    var prior = [];
+    log.querySelectorAll(".sp-msg").forEach(function (el) {
+      if (el.classList.contains("sp-pending")) return;
+      prior.push({ role: el.classList.contains("sp-you") ? "you" : "bot", text: el.textContent });
+    });
+    addMsg("you", q); input.value = ""; grow();
+    busy = true; send.disabled = true;
+    var pend = addMsg("bot", S.thinking); pend.classList.add("sp-pending");
+    fetch("/sprocket/ask", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ q: q, history: JSON.stringify(prior) }) })
+      .then(function (r) { return r.json().catch(function () { return { error: S.error }; }); })
+      .then(function (d) { pend.classList.remove("sp-pending"); pend.textContent = (d && d.answer) ? d.answer : (d && d.error) ? d.error : S.error; })
+      .catch(function () { pend.classList.remove("sp-pending"); pend.textContent = S.error; })
+      .finally(function () { busy = false; send.disabled = false; log.scrollTop = log.scrollHeight; input.focus(); });
+  });
+})();
+</script>
+<script>
+// Close any open chip/action menu on an outside click (presentation only).
+document.addEventListener("click", function (e) {
+  document.querySelectorAll("details.chipmenu[open], details.menu[open]").forEach(function (d) {
+    if (!d.contains(e.target)) d.removeAttribute("open");
+  });
+});
+// Pop-up menu placement (presentation only). The chip/action/filter menus are <details>
+// lists that live INSIDE the overflow:auto panes, so a list opening near a pane edge gets
+// clipped by the pane — which is why the action-bar "More actions" menu hid behind the
+// queue when the bar wrapped and stranded its button on the left. Fix: when a menu opens,
+// position its list with position:fixed (which escapes the panes' overflow), anchored to
+// its summary, flipped above/below for room and CLAMPED into the viewport so it can never
+// be clipped or run off-screen. z-index lifts it over the Sprocket cog too. Without JS the
+// menus still open exactly as before (this only relocates an already-open list).
+(function () {
+  var GAP = 6, PAD = 8, openEl = null;
+  function listOf(d) { return d.querySelector(".menu-list, .chipmenu-list"); }
+  function place(d) {
+    var s = d.querySelector("summary"), l = listOf(d);
+    if (!s || !l) return;
+    l.style.position = "fixed"; l.style.margin = "0";
+    l.style.maxWidth = "calc(100vw - " + (PAD * 2) + "px)";
+    l.style.maxHeight = "calc(100vh - " + (PAD * 2) + "px)";
+    l.style.overflowY = "auto";
+    var r = s.getBoundingClientRect(), w = l.offsetWidth, h = l.offsetHeight;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    // Action overflow menus open upward; filter (.down) and chip menus open downward.
+    var up = d.classList.contains("menu") && !d.classList.contains("down");
+    var top = up ? r.top - GAP - h : r.bottom + GAP;
+    if (up && top < PAD) top = r.bottom + GAP;              // no room above -> drop below
+    else if (!up && top + h > vh - PAD) top = r.top - GAP - h; // no room below -> flip above
+    top = Math.max(PAD, Math.min(top, vh - PAD - h));
+    var left = Math.max(PAD, Math.min(r.left, vw - PAD - w)); // anchor to button, clamp in
+    l.style.top = top + "px"; l.style.left = left + "px";
+    l.style.right = "auto"; l.style.bottom = "auto"; l.style.zIndex = "80";
+  }
+  function clear(d) {
+    var l = listOf(d); if (!l) return;
+    ["position", "margin", "maxWidth", "maxHeight", "overflowY", "top", "left", "right", "bottom", "zIndex"]
+      .forEach(function (k) { l.style[k] = ""; });
+  }
+  document.addEventListener("toggle", function (e) {
+    var d = e.target;
+    if (!d || !d.matches || !d.matches("details.menu, details.chipmenu")) return;
+    if (d.open) { openEl = d; place(d); } else { if (openEl === d) openEl = null; clear(d); }
+  }, true);
+  function reflow() { if (openEl && openEl.open) place(openEl); }
+  window.addEventListener("resize", reflow);
+  window.addEventListener("scroll", reflow, true);
+})();
+// htmx failure surface: by default htmx silently ignores error responses, network
+// failures and timeouts — a failed queue-click looked like "nothing happened". When a
+// request TARGETED AT THE WORK PANES fails, show the server's pane-shaped error if we
+// got one (the error middleware renders those), else a generic message. Failures of
+// background fetches (queue poll) stay silent — they retry on their own.
+["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (ev) {
+  document.body.addEventListener(ev, function (e) {
+    var wp = document.getElementById("workpane");
+    var tgt = e.detail && e.detail.target;
+    if (!wp || !tgt || (tgt !== wp && !wp.contains(tgt))) return;
+    var xhr = e.detail && e.detail.xhr;
+    if (ev === "htmx:responseError" && xhr && xhr.responseText) { wp.innerHTML = xhr.responseText; return; }
+    wp.innerHTML = '<div class="empty-state"><p class="muted">' + "This could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details." +
+      (xhr && xhr.status ? " (HTTP " + xhr.status + ")" : "") + "</p></div>";
+  });
+});
+// --- Loading feedback singletons (UX round, 2026-06-11): the user must always see
+// that something is happening. Presentation only - no request is changed.
+// (1) Queue-card click -> work-pane swap: spinner on the clicked card + a dimmed
+// overlay on the panes while htmx fetches (the first view of an item can take a
+// moment). Background swaps (queue poll, busy-item poll) deliberately show nothing.
+(function () {
+  function clearLoad() { document.querySelectorAll(".ax-loading").forEach(function (el) { el.classList.remove("ax-loading"); }); }
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var src = e.detail && e.detail.elt;
+    var card = src && src.closest ? src.closest("a.qcard") : null;
+    if (!card) return;
+    clearLoad();
+    card.classList.add("ax-loading");
+    var wp = document.getElementById("workpane");
+    if (wp) wp.classList.add("ax-loading");
+  });
+  ["htmx:afterRequest", "htmx:sendError", "htmx:timeout"].forEach(function (ev) {
+    document.body.addEventListener(ev, clearLoad);
+  });
+})();
+// (2) Any form submit: lock the pressed button with a spinner and start the top
+// progress bar. The setTimeout(0) runs AFTER the form has serialised, so disabling
+// the submitter never drops its name=value from the post (Save/Done/etc rely on it).
+// (3) Any plain same-tab link navigation: top progress bar only.
+(function () {
+  document.addEventListener("submit", function (e) {
+    var b = e.submitter || null;
+    setTimeout(function () {
+      if (e.defaultPrevented) return;   // client-side validation stopped it
+      if (b && b.classList) { b.classList.add("ax-busy"); b.disabled = true; }
+      document.body.classList.add("ax-nav");
+    }, 0);
+  });
+  document.addEventListener("click", function (e) {
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+    if (!a || a.target === "_blank" || a.hasAttribute("hx-get") || a.hasAttribute("download")) return;
+    var href = a.getAttribute("href") || "";
+    if (href.charAt(0) === "#" || /^[a-z][a-z0-9+.-]*:/i.test(href)) return;   // anchors / mailto / absolute
+    setTimeout(function () { if (!e.defaultPrevented) document.body.classList.add("ax-nav"); }, 0);
+  });
+  // A back/forward restore (bfcache) must never show stale spinners or locked buttons.
+  window.addEventListener("pageshow", function () {
+    document.body.classList.remove("ax-nav");
+    document.querySelectorAll("button.ax-busy").forEach(function (b) { b.classList.remove("ax-busy"); b.disabled = false; });
+    document.querySelectorAll(".ax-loading").forEach(function (el) { el.classList.remove("ax-loading"); });
+  });
+})();
+// (4) FR-0001: draggable splitter for the queue / work boundary. Sets --queue-w on .shell and
+// persists it per browser (localStorage); double-click resets to the responsive default; arrow
+// keys nudge when the handle is focused. Desktop only (the handle is hidden in the mobile layout).
+(function () {
+  var KEY = "axleQueueW", MIN = 220, MAX = 560;
+  function shellEl() { return document.querySelector(".shell"); }
+  function setW(px) { var s = shellEl(); if (s) s.style.setProperty("--queue-w", px + "px"); }
+  function clampW(px) { return Math.max(MIN, Math.min(MAX, Math.round(px))); }
+  function curW() { var s = shellEl(); return s ? (parseInt(getComputedStyle(s).gridTemplateColumns, 10) || 320) : 320; }
+  function save() { try { localStorage.setItem(KEY, curW()); } catch (e) {} }
+  try { var v = parseInt(localStorage.getItem(KEY), 10); if (v) setW(clampW(v)); } catch (e) {}
+  var split = document.getElementById("paneSplit");
+  if (!split) return;
+  var dragging = false;
+  function moveTo(clientX) { var s = shellEl(); if (!s) return; setW(clampW(clientX - s.getBoundingClientRect().left)); }
+  split.addEventListener("pointerdown", function (e) { dragging = true; try { split.setPointerCapture(e.pointerId); } catch (x) {} document.body.classList.add("ax-resizing"); e.preventDefault(); });
+  split.addEventListener("pointermove", function (e) { if (dragging) moveTo(e.clientX); });
+  function stop(e) { if (!dragging) return; dragging = false; try { split.releasePointerCapture(e.pointerId); } catch (x) {} document.body.classList.remove("ax-resizing"); save(); }
+  split.addEventListener("pointerup", stop);
+  split.addEventListener("pointercancel", stop);
+  split.addEventListener("dblclick", function () { var s = shellEl(); if (s) s.style.removeProperty("--queue-w"); try { localStorage.removeItem(KEY); } catch (x) {} });
+  split.addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    setW(clampW(curW() + (e.key === "ArrowLeft" ? -16 : 16))); save(); e.preventDefault();
+  });
+})();
+
+// Confirmation prompts. The text lives in the button's data-confirm attribute and is read as
+// DATA, never compiled as JavaScript source. Used by the Send buttons and by any chipMenu option
+// that carries a confirm (the owner handover, which forwards the email when it is picked).
+//
+// It used to be an inline onclick="return confirm('...')". Interpolating a translated string into
+// JS source inside an HTML attribute is a trap: HTML-escaping turns ' into &#39;, the parser
+// decodes it back to a bare ' BEFORE the JS is compiled, and the string literal ends early. The
+// handler then throws a SyntaxError, silently, and the button submits WITH NO CONFIRMATION. Any
+// apostrophe would do it - a customer named "Jan's Garage", or the English recipient warning.
+// Read via dataset, the same text can contain quotes, backslashes, anything, and stays inert.
+//
+// Capture phase so it runs before the form submits; cancelling the click cancels the submit.
+(function () {
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("button[data-confirm]") : null;
+    if (!btn) return;
+    if (!window.confirm(btn.dataset.confirm)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+})();
+</script>
+</body>

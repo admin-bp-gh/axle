@@ -1,0 +1,160 @@
+{
+ "phase": 0,
+ "pass": true,
+ "assertions": [
+  {
+   "id": "font-size-16px-on-listed-screens",
+   "pass": true,
+   "detail": {
+    "offenders": []
+   }
+  },
+  {
+   "id": "attach-by-number-16px-44h",
+   "pass": true,
+   "detail": {
+    "details": [
+     {
+      "width": "393x852",
+      "probe": {
+       "fontSize": 16,
+       "height": 44
+      },
+      "ok": true
+     },
+     {
+      "width": "375x812",
+      "probe": {
+       "fontSize": 16,
+       "height": 44
+      },
+      "ok": true
+     },
+     {
+      "width": "430x932",
+      "probe": {
+       "fontSize": 16,
+       "height": 44
+      },
+      "ok": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "sprocket-hidden-no-fixed-overlap",
+   "pass": true,
+   "detail": {
+    "details": [
+     {
+      "width": "393x852",
+      "sprocketDisplay": "none",
+      "barHit": [],
+      "footHit": []
+     },
+     {
+      "width": "375x812",
+      "sprocketDisplay": "none",
+      "barHit": [],
+      "footHit": []
+     },
+     {
+      "width": "430x932",
+      "sprocketDisplay": "none",
+      "barHit": [],
+      "footHit": []
+     }
+    ]
+   }
+  },
+  {
+   "id": "viewport-fit-cover",
+   "pass": true,
+   "detail": {
+    "details": [
+     {
+      "width": "393x852",
+      "content": "width=device-width, initial-scale=1, viewport-fit=cover"
+     },
+     {
+      "width": "375x812",
+      "content": "width=device-width, initial-scale=1, viewport-fit=cover"
+     },
+     {
+      "width": "430x932",
+      "content": "width=device-width, initial-scale=1, viewport-fit=cover"
+     }
+    ]
+   }
+  },
+  {
+   "id": "safe-area-env-css",
+   "pass": true,
+   "detail": {
+    "perName": {
+     "header": true,
+     ".m-back": true,
+     ".queue-head": true,
+     ".actionbar": true,
+     ".modal": true
+    }
+   }
+  },
+  {
+   "id": "cusdialog-86pct-maxheight",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "maxHeight": 732.72,
+     "innerHeight": 852,
+     "open": true
+    },
+    "expectedMaxHeight": 732.72,
+    "width": "393x852"
+   }
+  },
+  {
+   "id": "vh-fallback-before-dvh",
+   "pass": true,
+   "detail": {
+    "per": {
+     ".cusdialog": {
+      "ok": true,
+      "bad": [],
+      "declCount": 10
+     },
+     ".empty-state": {
+      "ok": true,
+      "bad": [],
+      "declCount": 5
+     },
+     ".sprocket-panel": {
+      "ok": true,
+      "bad": [],
+      "declCount": 17
+     }
+    }
+   }
+  },
+  {
+   "id": "phantom-scroll-queue",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "scrollHeight": 904,
+     "maxBottom": 904.1875,
+     "phantom": -0.1875,
+     "mainPaddingBottom": 0
+    },
+    "width": "393x852"
+   }
+  },
+  {
+   "id": "scrollwidth-eq-viewport",
+   "pass": true,
+   "detail": {
+    "offenders": []
+   }
+  }
+ ]
+}

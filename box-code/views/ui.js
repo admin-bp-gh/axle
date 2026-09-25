@@ -700,7 +700,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris14";   // 2026-08-12: withdrawn-draft card added then removed
+const ASSET_V = "polaris15";   // 2026-09-25: mobile Phase 0 (tokens, safe areas, dvh, 16px inputs)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -711,7 +711,7 @@ function page(title, user, body, refreshSec, opts) {
   const lang = langOK(user.lang);
   const isShell = !!(opts && opts.shell);
   return `<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <title>${esc(title)} - Axle</title>
 <link rel="stylesheet" href="/assets/tokens.css?v=${ASSET_V}">

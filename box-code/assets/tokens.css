@@ -55,4 +55,7 @@
   --shadow-pop: 0 4px 16px rgba(0, 0, 0, .10);
   --shadow-modal: 0 10px 40px rgba(0, 0, 0, .3);
   --shadow-bar: 0 -2px 10px rgba(0, 0, 0, .06);
+
+  /* -- phone primitives: read only inside the 1100px phone block in components.css -- */
+  --tap: 44px; --gap-tap: 8px; --fs-input: 16px; --scrim: rgba(48, 48, 48, .5); --bar-h: 48px; --kb: 0px;
 }

@@ -1,0 +1,3109 @@
+[
+ {
+  "path": "body:nth-child(2)",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1101,
+   "height": 900
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(241, 241, 241)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1)",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1101,
+   "height": 47.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 16,
+   "y": 11.45,
+   "width": 56.3,
+   "height": 23.09
+  },
+  "fontSize": "15px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(2)",
+  "rect": {
+   "x": 88.3,
+   "y": 10,
+   "width": 31.81,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(3)",
+  "rect": {
+   "x": 136.11,
+   "y": 10,
+   "width": 46.25,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(4)",
+  "rect": {
+   "x": 198.36,
+   "y": 10,
+   "width": 29.64,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(5)",
+  "rect": {
+   "x": 244,
+   "y": 10,
+   "width": 54.92,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6)",
+  "rect": {
+   "x": 959.63,
+   "y": 13.77,
+   "width": 125.38,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1)",
+  "rect": {
+   "x": 959.63,
+   "y": 13.77,
+   "width": 44.02,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1) > a:nth-child(1)",
+  "rect": {
+   "x": 959.63,
+   "y": 15.77,
+   "width": 20.67,
+   "height": 16
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 980.3,
+   "y": 15.77,
+   "width": 3.34,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(138, 138, 138)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1) > a:nth-child(3)",
+  "rect": {
+   "x": 983.64,
+   "y": 15.77,
+   "width": 20,
+   "height": 16
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(2)",
+  "rect": {
+   "x": 1015.64,
+   "y": 13.77,
+   "width": 69.36,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2)",
+  "rect": {
+   "x": 0,
+   "y": 47.02,
+   "width": 1101,
+   "height": 852.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1)",
+  "rect": {
+   "x": 0,
+   "y": 47.02,
+   "width": 1101,
+   "height": 852.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "grid"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane",
+  "rect": {
+   "x": 0,
+   "y": 47.02,
+   "width": 290,
+   "height": 852.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1)",
+  "rect": {
+   "x": 0,
+   "y": 47.02,
+   "width": 289,
+   "height": 227.41
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 55.02,
+   "width": 265,
+   "height": 66.94
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > button:nth-child(1)#composeBtn",
+  "rect": {
+   "x": 12,
+   "y": 57.25,
+   "width": 93.05,
+   "height": 26
+  },
+  "fontSize": "12px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(48, 48, 48)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 119.05,
+   "y": 55.02,
+   "width": 143.06,
+   "height": 30.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > span:nth-child(2) > a:nth-child(1)",
+  "rect": {
+   "x": 119.05,
+   "y": 55.02,
+   "width": 106.72,
+   "height": 30.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > span:nth-child(2) > a:nth-child(2)",
+  "rect": {
+   "x": 225.77,
+   "y": 55.02,
+   "width": 36.34,
+   "height": 30.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(250, 250, 250)",
+  "backgroundColor": "rgb(48, 48, 48)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > span:nth-child(3)",
+  "rect": {
+   "x": 270.11,
+   "y": 70.25,
+   "width": 6.89,
+   "height": 0
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > details:nth-child(4)",
+  "rect": {
+   "x": 12,
+   "y": 93.48,
+   "width": 60.77,
+   "height": 28.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > details:nth-child(4) > summary:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 93.48,
+   "width": 60.77,
+   "height": 28.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > details:nth-child(4) > div:nth-child(2)",
+  "rect": {
+   "x": -107.23,
+   "y": 127.95,
+   "width": 180,
+   "height": 133.88
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > details:nth-child(4) > div:nth-child(2) > div:nth-child(1)",
+  "rect": {
+   "x": -102.23,
+   "y": 132.95,
+   "width": 170,
+   "height": 26.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > details:nth-child(4) > div:nth-child(2) > a:nth-child(2)",
+  "rect": {
+   "x": -102.23,
+   "y": 159.42,
+   "width": 170,
+   "height": 32.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > details:nth-child(4) > div:nth-child(2) > a:nth-child(3)",
+  "rect": {
+   "x": -102.23,
+   "y": 191.89,
+   "width": 170,
+   "height": 32.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(250, 250, 250)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(1) > details:nth-child(4) > div:nth-child(2) > a:nth-child(4)",
+  "rect": {
+   "x": -102.23,
+   "y": 224.36,
+   "width": 170,
+   "height": 32.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2)",
+  "rect": {
+   "x": 12,
+   "y": 129.95,
+   "width": 265,
+   "height": 32.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 129.95,
+   "width": 65.56,
+   "height": 32.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 53.27,
+   "y": 135.95,
+   "width": 16.69,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(227, 227, 227)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(2)",
+  "rect": {
+   "x": 79.56,
+   "y": 129.95,
+   "width": 63.59,
+   "height": 32.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 118.86,
+   "y": 135.95,
+   "width": 16.69,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(3)",
+  "rect": {
+   "x": 145.16,
+   "y": 129.95,
+   "width": 81.59,
+   "height": 32.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 202.45,
+   "y": 135.95,
+   "width": 16.69,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(4)",
+  "rect": {
+   "x": 228.75,
+   "y": 129.95,
+   "width": 48.25,
+   "height": 32.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(2) > a:nth-child(4) > span:nth-child(1)",
+  "rect": {
+   "x": 252.7,
+   "y": 135.95,
+   "width": 16.69,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(3)",
+  "rect": {
+   "x": 12,
+   "y": 170.42,
+   "width": 265,
+   "height": 65
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(3) > input:nth-child(1)#q",
+  "rect": {
+   "x": 12,
+   "y": 170.42,
+   "width": 265,
+   "height": 29
+  },
+  "fontSize": "13px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > div:nth-child(3) > select:nth-child(2)#qsort",
+  "rect": {
+   "x": 12,
+   "y": 207.42,
+   "width": 106,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > form:nth-child(4)",
+  "rect": {
+   "x": 12,
+   "y": 243.42,
+   "width": 265,
+   "height": 22
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > form:nth-child(4) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 250.42,
+   "width": 8,
+   "height": 8
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(0, 128, 96)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > form:nth-child(4) > span:nth-child(2)",
+  "rect": {
+   "x": 28,
+   "y": 245.19,
+   "width": 119.42,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > form:nth-child(4) > span:nth-child(3)",
+  "rect": {
+   "x": 155.42,
+   "y": 254.42,
+   "width": 28.16,
+   "height": 0
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(1) > form:nth-child(4) > button:nth-child(4)",
+  "rect": {
+   "x": 191.58,
+   "y": 243.42,
+   "width": 85.42,
+   "height": 22
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist",
+  "rect": {
+   "x": 0,
+   "y": 274.42,
+   "width": 289,
+   "height": 625.58
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1)",
+  "rect": {
+   "x": 0,
+   "y": 274.42,
+   "width": 289,
+   "height": 84.95
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 284.42,
+   "width": 265,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 284.42,
+   "width": 53.47,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 170.7,
+   "y": 285.42,
+   "width": 106.3,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 12,
+   "y": 304.44,
+   "width": 265,
+   "height": 18.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 304.44,
+   "width": 87.81,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(3)",
+  "rect": {
+   "x": 12,
+   "y": 325.91,
+   "width": 265,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 327.91,
+   "width": 145.44,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(3) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 329.91,
+   "width": 145.44,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(1) > span:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 220.97,
+   "y": 325.91,
+   "width": 56.03,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(142, 31, 11)",
+  "backgroundColor": "rgb(255, 233, 232)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2)",
+  "rect": {
+   "x": 0,
+   "y": 359.38,
+   "width": 289,
+   "height": 84.95
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 369.38,
+   "width": 265,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 369.38,
+   "width": 75.89,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 176.27,
+   "y": 370.38,
+   "width": 100.73,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(2)",
+  "rect": {
+   "x": 12,
+   "y": 389.39,
+   "width": 265,
+   "height": 18.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 389.39,
+   "width": 82.72,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(3)",
+  "rect": {
+   "x": 12,
+   "y": 410.86,
+   "width": 265,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 412.86,
+   "width": 126.95,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(3) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 414.86,
+   "width": 131.63,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(2) > span:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 146.95,
+   "y": 410.86,
+   "width": 130.05,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(90, 66, 0)",
+  "backgroundColor": "rgb(255, 234, 186)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3)",
+  "rect": {
+   "x": 0,
+   "y": 444.33,
+   "width": 289,
+   "height": 84.95
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(250, 250, 250)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 454.33,
+   "width": 265,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 454.33,
+   "width": 47.67,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 177.38,
+   "y": 455.33,
+   "width": 99.63,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 12,
+   "y": 474.34,
+   "width": 265,
+   "height": 18.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 474.34,
+   "width": 146.09,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(3)",
+  "rect": {
+   "x": 12,
+   "y": 495.81,
+   "width": 265,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 497.81,
+   "width": 154.97,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(3) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 499.81,
+   "width": 175.86,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(3) > span:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 174.97,
+   "y": 495.81,
+   "width": 102.03,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(12, 81, 50)",
+  "backgroundColor": "rgb(227, 249, 236)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4)",
+  "rect": {
+   "x": 0,
+   "y": 529.28,
+   "width": 289,
+   "height": 84.95
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 539.28,
+   "width": 265,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 539.28,
+   "width": 76.58,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 171.59,
+   "y": 540.28,
+   "width": 105.41,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4) > span:nth-child(2)",
+  "rect": {
+   "x": 12,
+   "y": 559.3,
+   "width": 265,
+   "height": 18.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4) > span:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 559.3,
+   "width": 131.48,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4) > span:nth-child(3)",
+  "rect": {
+   "x": 12,
+   "y": 580.77,
+   "width": 265,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(4) > span:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 174.97,
+   "y": 580.77,
+   "width": 102.03,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(12, 81, 50)",
+  "backgroundColor": "rgb(227, 249, 236)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5)",
+  "rect": {
+   "x": 0,
+   "y": 614.23,
+   "width": 289,
+   "height": 88.95
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 624.23,
+   "width": 265,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 624.23,
+   "width": 115.61,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 168.48,
+   "y": 625.23,
+   "width": 108.52,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(2)",
+  "rect": {
+   "x": 12,
+   "y": 644.25,
+   "width": 265,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 646.25,
+   "width": 109.41,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(2) > span:nth-child(2)",
+  "rect": {
+   "x": 241.31,
+   "y": 644.25,
+   "width": 35.69,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(2) > span:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 241.31,
+   "y": 644.25,
+   "width": 35.69,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(0, 64, 94)",
+  "backgroundColor": "rgb(225, 238, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(3)",
+  "rect": {
+   "x": 12,
+   "y": 669.72,
+   "width": 265,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 671.72,
+   "width": 154.97,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(3) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 673.72,
+   "width": 169.44,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(5) > span:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 174.97,
+   "y": 669.72,
+   "width": 102.03,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(12, 81, 50)",
+  "backgroundColor": "rgb(227, 249, 236)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6)",
+  "rect": {
+   "x": 0,
+   "y": 703.19,
+   "width": 289,
+   "height": 84.95
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 713.19,
+   "width": 265,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 713.19,
+   "width": 83.09,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 166.48,
+   "y": 714.19,
+   "width": 110.52,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(2)",
+  "rect": {
+   "x": 12,
+   "y": 733.2,
+   "width": 265,
+   "height": 18.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 733.2,
+   "width": 79.39,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(3)",
+  "rect": {
+   "x": 12,
+   "y": 754.67,
+   "width": 265,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 756.67,
+   "width": 94.05,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(3) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 12,
+   "y": 758.67,
+   "width": 94.05,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > aside:nth-child(1)#queuepane > div:nth-child(2)#qlist > a:nth-child(6) > span:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 232.31,
+   "y": 754.67,
+   "width": 44.69,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(2)#paneSplit",
+  "rect": {
+   "x": 290,
+   "y": 47.02,
+   "width": 6,
+   "height": 852.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane",
+  "rect": {
+   "x": 296,
+   "y": 47.02,
+   "width": 805,
+   "height": 852.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "grid"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1)",
+  "rect": {
+   "x": 296,
+   "y": 47.02,
+   "width": 555,
+   "height": 852.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2)",
+  "rect": {
+   "x": 296,
+   "y": 47.02,
+   "width": 555,
+   "height": 1389.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > p:nth-child(1)",
+  "rect": {
+   "x": 312,
+   "y": 59.02,
+   "width": 523,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > p:nth-child(1) > a:nth-child(1)",
+  "rect": {
+   "x": 312,
+   "y": 61.02,
+   "width": 86.05,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(0, 128, 96)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > h2:nth-child(2)",
+  "rect": {
+   "x": 312,
+   "y": 85.48,
+   "width": 523,
+   "height": 30.8
+  },
+  "fontSize": "20px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3)",
+  "rect": {
+   "x": 312,
+   "y": 124.28,
+   "width": 523,
+   "height": 54.94
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 312,
+   "y": 125.28,
+   "width": 94.67,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(0, 64, 94)",
+  "backgroundColor": "rgb(225, 238, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 412.67,
+   "y": 125.28,
+   "width": 102.03,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(12, 81, 50)",
+  "backgroundColor": "rgb(227, 249, 236)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > span:nth-child(3)",
+  "rect": {
+   "x": 520.7,
+   "y": 125.28,
+   "width": 72.03,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > span:nth-child(4)",
+  "rect": {
+   "x": 598.73,
+   "y": 125.28,
+   "width": 52.02,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5)",
+  "rect": {
+   "x": 656.75,
+   "y": 124.28,
+   "width": 111.2,
+   "height": 24.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > summary:nth-child(1)",
+  "rect": {
+   "x": 656.75,
+   "y": 124.28,
+   "width": 111.2,
+   "height": 24.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "list-item"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > summary:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 656.75,
+   "y": 124.28,
+   "width": 111.2,
+   "height": 24.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > summary:nth-child(1) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 752.42,
+   "y": 132.28,
+   "width": 4.53,
+   "height": 10
+  },
+  "fontSize": "9px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > form:nth-child(2)",
+  "rect": {
+   "x": 656.75,
+   "y": 152.75,
+   "width": 200,
+   "height": 150
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > form:nth-child(2) > button:nth-child(1)",
+  "rect": {
+   "x": 661.75,
+   "y": 157.75,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > form:nth-child(2) > button:nth-child(2)",
+  "rect": {
+   "x": 661.75,
+   "y": 185.75,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(250, 250, 250)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > form:nth-child(2) > button:nth-child(3)",
+  "rect": {
+   "x": 661.75,
+   "y": 213.75,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > form:nth-child(2) > button:nth-child(4)",
+  "rect": {
+   "x": 661.75,
+   "y": 241.75,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(5) > form:nth-child(2) > button:nth-child(5)",
+  "rect": {
+   "x": 661.75,
+   "y": 269.75,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > span:nth-child(6)",
+  "rect": {
+   "x": 312,
+   "y": 155.75,
+   "width": 118,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7)",
+  "rect": {
+   "x": 436,
+   "y": 154.75,
+   "width": 101.91,
+   "height": 24.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > summary:nth-child(1)",
+  "rect": {
+   "x": 436,
+   "y": 154.75,
+   "width": 101.91,
+   "height": 24.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "list-item"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > summary:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 436,
+   "y": 154.75,
+   "width": 101.91,
+   "height": 24.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(237, 237, 237)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > summary:nth-child(1) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 522.38,
+   "y": 162.75,
+   "width": 4.53,
+   "height": 10
+  },
+  "fontSize": "9px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > form:nth-child(2)",
+  "rect": {
+   "x": 436,
+   "y": 183.22,
+   "width": 200,
+   "height": 122
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > form:nth-child(2) > button:nth-child(1)",
+  "rect": {
+   "x": 441,
+   "y": 188.22,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > form:nth-child(2) > button:nth-child(2)",
+  "rect": {
+   "x": 441,
+   "y": 216.22,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > form:nth-child(2) > button:nth-child(3)",
+  "rect": {
+   "x": 441,
+   "y": 244.22,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(3) > details:nth-child(7) > form:nth-child(2) > button:nth-child(4)",
+  "rect": {
+   "x": 441,
+   "y": 272.22,
+   "width": 190,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > p:nth-child(4)",
+  "rect": {
+   "x": 312,
+   "y": 192.22,
+   "width": 523,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5)",
+  "rect": {
+   "x": 312,
+   "y": 225.23,
+   "width": 523,
+   "height": 230.55
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5) > div:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 238.23,
+   "width": 489,
+   "height": 26.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5) > div:nth-child(1) > h3:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 238.23,
+   "width": 178.3,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5) > p:nth-child(2)",
+  "rect": {
+   "x": 329,
+   "y": 277.7,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5) > p:nth-child(3)",
+  "rect": {
+   "x": 329,
+   "y": 310.72,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5) > p:nth-child(4)",
+  "rect": {
+   "x": 329,
+   "y": 343.73,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5) > p:nth-child(5)",
+  "rect": {
+   "x": 329,
+   "y": 376.75,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(5) > p:nth-child(6)",
+  "rect": {
+   "x": 329,
+   "y": 409.77,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6)",
+  "rect": {
+   "x": 312,
+   "y": 467.78,
+   "width": 523,
+   "height": 183.52
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 480.78,
+   "width": 489,
+   "height": 29
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(1) > h3:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 482.05,
+   "width": 115.84,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 590,
+   "y": 480.78,
+   "width": 228,
+   "height": 29
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(1) > span:nth-child(2) > input:nth-child(1)#mq",
+  "rect": {
+   "x": 590,
+   "y": 480.78,
+   "width": 220,
+   "height": 29
+  },
+  "fontSize": "13px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(1) > span:nth-child(2) > span:nth-child(2)#mqcount",
+  "rect": {
+   "x": 818,
+   "y": 488.78,
+   "width": 0,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(2)#mailwrap",
+  "rect": {
+   "x": 329,
+   "y": 517.78,
+   "width": 489,
+   "height": 112.52
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(2)#mailwrap > div:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 517.78,
+   "width": 489,
+   "height": 112.52
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(2)#mailwrap > div:nth-child(1) > div:nth-child(1)",
+  "rect": {
+   "x": 346,
+   "y": 530.78,
+   "width": 455,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(2)#mailwrap > div:nth-child(1) > div:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 346,
+   "y": 530.78,
+   "width": 158.3,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(2)#mailwrap > div:nth-child(1) > div:nth-child(1) > span:nth-child(1) > b:nth-child(1)",
+  "rect": {
+   "x": 346,
+   "y": 530.78,
+   "width": 44,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(2)#mailwrap > div:nth-child(1) > div:nth-child(1) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 398,
+   "y": 530.78,
+   "width": 106.3,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(6) > div:nth-child(2)#mailwrap > div:nth-child(1) > pre:nth-child(2)",
+  "rect": {
+   "x": 346,
+   "y": 557.25,
+   "width": 455,
+   "height": 60.05
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform",
+  "rect": {
+   "x": 312,
+   "y": 663.3,
+   "width": 523,
+   "height": 616.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1)",
+  "rect": {
+   "x": 312,
+   "y": 663.3,
+   "width": 523,
+   "height": 380.42
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > div:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 676.3,
+   "width": 489,
+   "height": 26.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > div:nth-child(1) > h3:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 676.3,
+   "width": 101.39,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > div:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 687.95,
+   "y": 678.53,
+   "width": 130.05,
+   "height": 22
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > div:nth-child(1) > span:nth-child(2) > button:nth-child(1)",
+  "rect": {
+   "x": 687.95,
+   "y": 678.53,
+   "width": 130.05,
+   "height": 22
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > p:nth-child(2)",
+  "rect": {
+   "x": 329,
+   "y": 702.77,
+   "width": 489,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > p:nth-child(3)",
+  "rect": {
+   "x": 329,
+   "y": 731.23,
+   "width": 489,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > p:nth-child(3) > span:nth-child(1)",
+  "rect": {
+   "x": 375.69,
+   "y": 733.23,
+   "width": 384.31,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > input:nth-child(4)",
+  "rect": {
+   "x": 329,
+   "y": 753.7,
+   "width": 489,
+   "height": 31
+  },
+  "fontSize": "13px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(1) > textarea:nth-child(5)#replybox",
+  "rect": {
+   "x": 329,
+   "y": 784.7,
+   "width": 489,
+   "height": 240
+  },
+  "fontSize": "13px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(2)#attzone",
+  "rect": {
+   "x": 312,
+   "y": 1055.72,
+   "width": 523,
+   "height": 166.55
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(2)#attzone > h3:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 1068.72,
+   "width": 489,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(2)#attzone > div:nth-child(2)#attlist",
+  "rect": {
+   "x": 329,
+   "y": 1095.19,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(2)#attzone > div:nth-child(2)#attlist > span:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 1097.19,
+   "width": 115.63,
+   "height": 15
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(2)#attzone > p:nth-child(3)",
+  "rect": {
+   "x": 329,
+   "y": 1123.2,
+   "width": 489,
+   "height": 60.05
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(2)#attzone > input:nth-child(4)#att_file",
+  "rect": {
+   "x": 329,
+   "y": 1189.25,
+   "width": 227,
+   "height": 20
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(3)",
+  "rect": {
+   "x": 312,
+   "y": 1234.27,
+   "width": 523,
+   "height": 46.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(3) > details:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 1247.27,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(3) > details:nth-child(1) > summary:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 1247.27,
+   "width": 489,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "list-item"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(3) > details:nth-child(1) > div:nth-child(2)",
+  "rect": {
+   "x": 329,
+   "y": 1275.28,
+   "width": 489,
+   "height": 106.5
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(3) > details:nth-child(1) > div:nth-child(2) > span:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 1277.28,
+   "width": 79.5,
+   "height": 15
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(3) > details:nth-child(1) > div:nth-child(2) > p:nth-child(2)",
+  "rect": {
+   "x": 329,
+   "y": 1305.3,
+   "width": 489,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > form:nth-child(8)#workform > div:nth-child(3) > details:nth-child(1) > div:nth-child(2) > textarea:nth-child(3)",
+  "rect": {
+   "x": 329,
+   "y": 1331.77,
+   "width": 489,
+   "height": 44
+  },
+  "fontSize": "13px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9)",
+  "rect": {
+   "x": 312,
+   "y": 774.25,
+   "width": 523,
+   "height": 115.75
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 787.25,
+   "width": 151.8,
+   "height": 43.73
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 787.25,
+   "width": 128.27,
+   "height": 43.73
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(250, 250, 250)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > span:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 344,
+   "y": 794.25,
+   "width": 98.27,
+   "height": 14.94
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 344,
+   "y": 810.19,
+   "width": 81.39,
+   "height": 13.8
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2)",
+  "rect": {
+   "x": 457.27,
+   "y": 787.25,
+   "width": 23.53,
+   "height": 43.73
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > summary:nth-child(1)",
+  "rect": {
+   "x": 456.27,
+   "y": 787.25,
+   "width": 24.53,
+   "height": 22.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(0, 110, 82)",
+  "display": "inline-flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2)",
+  "rect": {
+   "x": 456.27,
+   "y": 609.25,
+   "width": 320,
+   "height": 171.5
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1)",
+  "rect": {
+   "x": 465.27,
+   "y": 622.25,
+   "width": 302,
+   "height": 105.03
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > label:nth-child(2)",
+  "rect": {
+   "x": 465.27,
+   "y": 622.25,
+   "width": 302,
+   "height": 32.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > label:nth-child(2) > input:nth-child(1)",
+  "rect": {
+   "x": 474.27,
+   "y": 630.25,
+   "width": 13,
+   "height": 13
+  },
+  "fontSize": "13.3333px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > label:nth-child(2) > span:nth-child(2)",
+  "rect": {
+   "x": 594.52,
+   "y": 631.25,
+   "width": 72.23,
+   "height": 15
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > label:nth-child(3)",
+  "rect": {
+   "x": 465.27,
+   "y": 658.27,
+   "width": 302,
+   "height": 32.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > label:nth-child(3) > input:nth-child(1)",
+  "rect": {
+   "x": 474.27,
+   "y": 666.27,
+   "width": 13,
+   "height": 13
+  },
+  "fontSize": "13.3333px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > label:nth-child(3) > span:nth-child(2)",
+  "rect": {
+   "x": 593.56,
+   "y": 667.27,
+   "width": 51.31,
+   "height": 15
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > p:nth-child(4)",
+  "rect": {
+   "x": 465.27,
+   "y": 703.28,
+   "width": 302,
+   "height": 24
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > form:nth-child(1) > p:nth-child(4) > button:nth-child(1)",
+  "rect": {
+   "x": 465.27,
+   "y": 703.28,
+   "width": 89.38,
+   "height": 24
+  },
+  "fontSize": "12px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(48, 48, 48)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > div:nth-child(2)",
+  "rect": {
+   "x": 465.27,
+   "y": 740.28,
+   "width": 302,
+   "height": 1
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > details:nth-child(3)",
+  "rect": {
+   "x": 465.27,
+   "y": 749.28,
+   "width": 302,
+   "height": 22.47
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > details:nth-child(3) > summary:nth-child(1)",
+  "rect": {
+   "x": 465.27,
+   "y": 749.28,
+   "width": 302,
+   "height": 22.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "list-item"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > details:nth-child(3) > form:nth-child(2)",
+  "rect": {
+   "x": 465.27,
+   "y": 779.75,
+   "width": 302,
+   "height": 26
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > details:nth-child(3) > form:nth-child(2) > input:nth-child(2)",
+  "rect": {
+   "x": 465.27,
+   "y": 779.75,
+   "width": 206.63,
+   "height": 26
+  },
+  "fontSize": "12px",
+  "color": "rgb(0, 0, 0)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(1) > details:nth-child(2) > div:nth-child(2) > details:nth-child(3) > form:nth-child(2) > button:nth-child(3)",
+  "rect": {
+   "x": 677.89,
+   "y": 779.75,
+   "width": 89.38,
+   "height": 26
+  },
+  "fontSize": "12px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(48, 48, 48)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > button:nth-child(2)",
+  "rect": {
+   "x": 488.8,
+   "y": 792.61,
+   "width": 59.64,
+   "height": 33
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > button:nth-child(3)",
+  "rect": {
+   "x": 556.44,
+   "y": 792.61,
+   "width": 113.11,
+   "height": 33
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(48, 48, 48)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > span:nth-child(4)",
+  "rect": {
+   "x": 677.55,
+   "y": 809.11,
+   "width": 41.03,
+   "height": 0
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > form:nth-child(5)",
+  "rect": {
+   "x": 726.58,
+   "y": 792.61,
+   "width": 91.42,
+   "height": 33
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > form:nth-child(5) > button:nth-child(1)",
+  "rect": {
+   "x": 726.58,
+   "y": 792.61,
+   "width": 91.42,
+   "height": 33
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6)",
+  "rect": {
+   "x": 329,
+   "y": 838.98,
+   "width": 121.05,
+   "height": 38.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > summary:nth-child(1)",
+  "rect": {
+   "x": 329,
+   "y": 838.98,
+   "width": 121.05,
+   "height": 38.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "inline-block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2)",
+  "rect": {
+   "x": 160.05,
+   "y": 695,
+   "width": 290,
+   "height": 176
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(1)",
+  "rect": {
+   "x": 165.05,
+   "y": 700,
+   "width": 280,
+   "height": 60
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(1) > button:nth-child(1)",
+  "rect": {
+   "x": 165.05,
+   "y": 700,
+   "width": 280,
+   "height": 60
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(1) > button:nth-child(1) > b:nth-child(1)",
+  "rect": {
+   "x": 175.05,
+   "y": 708,
+   "width": 260,
+   "height": 15
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(1) > button:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 175.05,
+   "y": 724,
+   "width": 260,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(2)",
+  "rect": {
+   "x": 165.05,
+   "y": 760,
+   "width": 280,
+   "height": 46
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(2) > button:nth-child(1)",
+  "rect": {
+   "x": 165.05,
+   "y": 760,
+   "width": 280,
+   "height": 46
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(2) > button:nth-child(1) > b:nth-child(1)",
+  "rect": {
+   "x": 175.05,
+   "y": 768,
+   "width": 260,
+   "height": 15
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 175.05,
+   "y": 784,
+   "width": 260,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(3)",
+  "rect": {
+   "x": 165.05,
+   "y": 806,
+   "width": 280,
+   "height": 60
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(3) > button:nth-child(1)",
+  "rect": {
+   "x": 165.05,
+   "y": 806,
+   "width": 280,
+   "height": 60
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(3) > button:nth-child(1) > b:nth-child(1)",
+  "rect": {
+   "x": 175.05,
+   "y": 814,
+   "width": 260,
+   "height": 15
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > section:nth-child(1) > div:nth-child(2) > div:nth-child(9) > details:nth-child(6) > div:nth-child(2) > form:nth-child(3) > button:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 175.05,
+   "y": 830,
+   "width": 260,
+   "height": 28
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > aside:nth-child(2)",
+  "rect": {
+   "x": 851,
+   "y": 47.02,
+   "width": 250,
+   "height": 852.98
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(241, 241, 241)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > aside:nth-child(2) > div:nth-child(1)",
+  "rect": {
+   "x": 864,
+   "y": 71.02,
+   "width": 225,
+   "height": 46.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > aside:nth-child(2) > div:nth-child(1) > details:nth-child(1)",
+  "rect": {
+   "x": 881,
+   "y": 84.02,
+   "width": 191,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > aside:nth-child(2) > div:nth-child(1) > details:nth-child(1) > summary:nth-child(1)",
+  "rect": {
+   "x": 881,
+   "y": 84.02,
+   "width": 191,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "list-item"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > div:nth-child(1) > div:nth-child(3)#workpane > aside:nth-child(2) > div:nth-child(1) > details:nth-child(1) > pre:nth-child(2)",
+  "rect": {
+   "x": 881,
+   "y": 104.03,
+   "width": 191,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket",
+  "rect": {
+   "x": 1029,
+   "y": 828,
+   "width": 52,
+   "height": 52
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab",
+  "rect": {
+   "x": 1029,
+   "y": 828,
+   "width": 52,
+   "height": 52
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(0, 128, 96)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab > svg:nth-child(1)",
+  "rect": {
+   "x": 1043,
+   "y": 842,
+   "width": 24,
+   "height": 24
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab > svg:nth-child(1) > circle:nth-child(1)",
+  "rect": {
+   "x": 1052,
+   "y": 851,
+   "width": 6,
+   "height": 6
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab > svg:nth-child(1) > path:nth-child(2)",
+  "rect": {
+   "x": 1044,
+   "y": 843,
+   "width": 22,
+   "height": 22
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ }
+]

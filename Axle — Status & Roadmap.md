@@ -1,5 +1,58 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE PHASE 0 BUILT, 25 Sep 2026: tokens, safe areas, dvh, 16px inputs, Sprocket off the
+> phone. Committed on `axle/mobile`, not deployed; ships with the single final deploy. No safety
+> path touched.**
+>
+> **What happened.** Step 3 of the mobile redesign started on branch `axle/mobile`. Before any
+> edit, the proof kit was stood up: the Step-0 stub kit boots the current box-code (one stale
+> stub fixed inside `harness/`, see below), the K4 equivalence battery runs (120 responses, three
+> env phases), headless Chromium runs in the sandbox (Google's Chrome-for-Testing CDN is blocked
+> by the sandbox allow-list; `@sparticuz/chromium` from npm works and is installed in the sandbox
+> scratch folder, never in the repo), and the new repo-only `harness/harness-mobile.js` (plus
+> `harness/mobile/*`) walks the stubbed app at 393 x 852, 375 x 812 and 430 x 932 with touch and
+> DPR 3 and at 1440 x 900 and 1101 x 900, runs the tap, overflow and font-size audits, captures
+> the desktop baseline (pixel, layout and DOM), diffs a tree against it, runs per-phase acceptance
+> assertions and prints the `data-confirm` handler fingerprint. Pre-Phase-0 captures are in
+> `design-reference/mobile-audit/phase-pre/` (921 tap violations, 228 sub-16px controls across
+> 60 captures, the register made measurable) and the desktop baseline in
+> `design-reference/mobile-audit/baseline-desktop/`.
+>
+> **The fix (plan 3.3).** Register IDs closed: M-03, M-04, M-05, M-06, M-38. `tokens.css` gains
+> the phone primitives (`--tap` 44px, `--gap-tap` 8px, `--fs-input` 16px, `--scrim`, `--bar-h`
+> 48px, `--kb` 0px), read only inside the 1100px block. `components.css`: `dvh` twins after the
+> `vh` fallbacks on `.cusdialog`, `.empty-state` and both `.sprocket-panel` rules; inside the
+> 1100px block, 16px and 44px on every text-like input, select, textarea and `.instr-editor`
+> (the no-`type` attach-by-number input is caught by the `:not()` rule without adding `type`),
+> a 44px `::file-selector-button`, `.sprocket { display: none }`, and `env(safe-area-inset-*)`
+> through `max()` on `header`, `.m-back`, `.queue-head`, `.actionbar` and `.modal`. `ui.js`:
+> `viewport-fit=cover` on the viewport meta and `ASSET_V = "polaris15"`. The 9px phantom scroll
+> (M-05) did not reproduce on the fixture walk at 393 (probe 0px before and after); the probe
+> stays in the kit and the live check after the deploy decides whether it was data or the FAB.
+>
+> **Proof.** K1 `node --check` and CSS brace balance clean. K4: transport fields and DB dumps
+> byte-identical; every body difference is `polaris14` to `polaris15` or the viewport meta. K5:
+> all nine Phase 0 assertions pass at 393, 375 and 430; screenshots and JSON in
+> `design-reference/mobile-audit/phase-0/`. K6: zero pixel, layout and DOM differences on all
+> 20 scenes at 1440 and 1101 (`phase-0/desktop/compare.json`). K7: only the three files above
+> changed under box-code, no new box-code file, safety grep empty, `audit(` counts unchanged,
+> `data-confirm` handler ui.js:868-886 sha256 `8bc9738b…48c2` unchanged. K2 and K3 run on the
+> box (see the commit step). Two harness assertions were themselves wrong on the pristine tree
+> (a CSS reader that glued a comment onto the `@media` head; an overlap check that let the
+> action bar intersect itself) and were fixed in `harness/mobile/`, not in the CSS.
+>
+> **Harness note, recorded so it is not re-discovered.** `routes/item.js` now requires
+> `customer-summary.js`, which loads `mssql` and calls the live `connectors.getPool()`; the June
+> stub kit did not know it, so the stubbed server hung on the item page. `harness/mobile/extra-stubs.js`
+> layers one deterministic stub for that module on top of `step0/stubs.js` (via `NODE_OPTIONS
+> --require`); `harness/step0/*` is unchanged.
+>
+> **Files:** `box-code/assets/tokens.css`, `box-code/assets/components.css`, `box-code/views/ui.js`
+> (box-code); new repo-only `harness/harness-mobile.js`, `harness/mobile/*.js`,
+> `design-reference/mobile-audit/{phase-pre,baseline-desktop,phase-0}/`. **Deploy notes:**
+> committed on `axle/mobile`, not deployed; ships with the single final deploy. `ASSET_V`
+> `polaris15`. **Next up:** Brad's Phase 0 gate (393 and 375 screenshots, K5 report), then Phase 1A.
+
 > **★ MOBILE REDESIGN: REGISTER, M1 MOCK AND PLAN WRITTEN, 24 to 25 Sep 2026. NOTHING BUILT OR
 > DEPLOYED YET. No safety path touched; read-only walk of the live tool.**
 >

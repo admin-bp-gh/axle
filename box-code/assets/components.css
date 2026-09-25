@@ -175,7 +175,7 @@ a.preview-doc:hover { background: var(--surface-2); }
 .st-warn, .st-ok { font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-chip); white-space: nowrap; }
 .st-warn { background: var(--warn-bg); color: var(--warn-fg); }
 .st-ok { background: var(--ok-bg); color: var(--ok-fg); }
-.cusdialog { width: min(640px, 92vw); max-height: 86vh; overflow: auto; border: 0.5px solid var(--border-2);
+.cusdialog { width: min(640px, 92vw); max-height: 86vh; max-height: 86dvh; overflow: auto; border: 0.5px solid var(--border-2);
   border-radius: var(--r-card); padding: 22px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow-modal); }
 .cusdialog::backdrop { background: rgba(0, 0, 0, .45); }
 .cusx { text-align: right; margin: -8px -6px 4px 0; }
@@ -322,7 +322,7 @@ body.ax-resizing { cursor: col-resize; user-select: none; }
 .pane-context { min-height: 0; overflow-y: auto; border-left: 1px solid var(--border); background: var(--bg); padding: var(--s3); }
 .pane-context:empty { padding: 0; border: 0; background: transparent; }
 .backrow { margin: 0 0 var(--s1); font-size: var(--fs-sm); }
-.empty-state { display: flex; align-items: center; justify-content: center; height: 60vh; }
+.empty-state { display: flex; align-items: center; justify-content: center; height: 60vh; height: 60dvh; }
 .queue-lazy { padding: var(--s3); }
 
 /* ---------- queue toolbar (F3/F4) ---------- */
@@ -456,6 +456,24 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .qtab { padding-top: 12px; padding-bottom: 12px; }
   header { gap: var(--s3); flex-wrap: wrap; }
   header a, .langtoggle a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 4px; }
+
+  /* M-06 / M-38: text inputs at 16px (stops iOS zoom on focus) and a 44px tap target */
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), select, textarea, .instr-editor { font-size: var(--fs-input); min-height: var(--tap); }
+  ::file-selector-button { min-height: var(--tap); }
+  input[type=file] { font-size: var(--fs-input); }
+  /* M-06: these selectors set a smaller font-size in desktop rules above with equal or higher
+     specificity, so they are repeated here to win on phone without resorting to !important */
+  textarea.ans, #replybox, .cfsubj, .qbar select, input[type=search], input[type=text], input[type=email], .sp-input textarea, .modal input, .modal select, .modal textarea { font-size: var(--fs-input); }
+
+  /* M-03: Sprocket helper is off the phone */
+  .sprocket { display: none; }
+
+  /* M-04: safe areas, using max() so nothing changes when the inset is 0 */
+  header { padding-left: max(var(--s4), env(safe-area-inset-left)); padding-right: max(var(--s4), env(safe-area-inset-right)); padding-top: max(10px, env(safe-area-inset-top)); }
+  .m-back { padding-left: max(var(--s4), env(safe-area-inset-left)); padding-right: max(var(--s4), env(safe-area-inset-right)); }
+  .queue-head { padding-left: max(var(--s3), env(safe-area-inset-left)); padding-right: max(var(--s3), env(safe-area-inset-right)); }
+  .actionbar { bottom: max(10px, env(safe-area-inset-bottom)); }
+  .modal { padding: max(var(--s5), env(safe-area-inset-top)) max(var(--s5), env(safe-area-inset-right)) max(var(--s5), env(safe-area-inset-bottom)) max(var(--s5), env(safe-area-inset-left)); }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------
@@ -469,7 +487,7 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
 .sprocket-fab:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
 .sprocket-fab svg { width: 24px; height: 24px; }
 .sprocket-panel { position: absolute; right: 0; bottom: 64px; width: 340px; max-width: calc(100vw - 32px);
-  height: min(70vh, 560px); display: flex; flex-direction: column; overflow: hidden;
+  height: min(70vh, 560px); height: min(70dvh, 560px); display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-card); box-shadow: var(--shadow-modal); }
 /* The panel toggles via the [hidden] attribute; this beats the display:flex above so close/open
    (X button and the cog) actually hide it. Without it the panel can never be dismissed. */
@@ -498,7 +516,7 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
 .sp-send:disabled { opacity: .5; cursor: default; }
 @media (max-width: 600px) {
   .sprocket { right: 14px; bottom: 14px; }
-  .sprocket-panel { width: calc(100vw - 28px); height: min(75vh, 560px); }
+  .sprocket-panel { width: calc(100vw - 28px); height: min(75vh, 560px); height: min(75dvh, 560px); }
 }
 
 /* Sprocket: unread-requests count badge on the header "Requests" link */

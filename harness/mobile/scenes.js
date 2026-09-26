@@ -25,6 +25,9 @@ const SCENES = [
   { id: "audit", path: "/audit" },
   { id: "block-page", path: "/item/1/block" },
   { id: "sprocket-requests", path: "/sprocket/requests" },
+  // Phase 1A scenes (phase-1a.js assertions)
+  { id: "queue-appmenu", path: "/", open: "details.appmenu" },
+  { id: "queue-search-open", path: "/", clickSearch: true },
 ];
 
 function findScene(id) {
@@ -93,6 +96,12 @@ async function openScene(page, baseUrl, scene) {
 
   if (scene.open) {
     menu = await openDetails(page, scene.open);
+  }
+
+  if (scene.clickSearch) {
+    await page.click(".qsearch-btn").catch(() => {});
+    await new Promise((r) => setTimeout(r, 100));
+    menu = { selector: ".qsearch-btn", method: "click" };
   }
 
   if (scene.customerModal) {

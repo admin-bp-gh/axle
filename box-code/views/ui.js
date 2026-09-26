@@ -171,6 +171,10 @@ const STRINGS = {
     show_translation: "Show translation", hide_translation: "Hide translation",
     earlier_msgs: "Earlier in this conversation", footer_fold: "Signature & footer",
     inline_image: "inline image", more_actions: "More actions",
+    // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
+    menu: "Menu", close: "Close", cancel: "Cancel", filters: "Filters", sort: "Sort", sync: "Mail",
+    signed_in_as: "Signed in as", no_matches: "No matches for '{q}'", clear_search: "Clear search",
+    best_on_desktop: "Best on desktop", search_open: "Search emails", send_to: "Send to",
     sap_docs: "SAP documents", attach_manual: "Attach by number",
     relang_note: "Changing the language re-drafts the email.",
     // UI rework Step 2 (2026-06-10): three-pane shell + queue
@@ -354,6 +358,10 @@ const STRINGS = {
     show_translation: "Toon vertaling", hide_translation: "Verberg vertaling",
     earlier_msgs: "Eerder in dit gesprek", footer_fold: "Handtekening & voettekst",
     inline_image: "afbeelding in tekst", more_actions: "Meer acties",
+    // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
+    menu: "Menu", close: "Sluiten", cancel: "Annuleren", filters: "Filters", sort: "Sorteren", sync: "Mail",
+    signed_in_as: "Ingelogd als", no_matches: "Geen resultaten voor '{q}'", clear_search: "Zoekopdracht wissen",
+    best_on_desktop: "Werkt het best op een computer", search_open: "E-mails zoeken", send_to: "Verzenden naar",
     sap_docs: "SAP-documenten", attach_manual: "Bijvoegen op nummer",
     relang_note: "Een andere taal stelt de e-mail opnieuw op.",
     // UI rework Step 2 (2026-06-10): three-pane shell + queue
@@ -558,11 +566,11 @@ function renderMail(text, lang) {
 // data-confirm and read via dataset by the shared handler at the bottom of the page script -
 // as DATA, never as JavaScript source (see the long note there; interpolating a translated
 // string into JS inside an attribute silently disables the confirmation).
-function chipMenu({ chipClass, chipHtml, title, action, field, options, current, note }) {
+function chipMenu({ chipClass, chipHtml, title, action, field, options, current, note, lang }) {
   const items = options.map((o) =>
     `<button name="${esc(field)}" value="${esc(o.value)}"${o.value === current ? ' class="on"' : ""}${o.confirm ? ` data-confirm="${esc(o.confirm)}"` : ""}>${esc(o.label)}</button>`).join("");
   return `<details class="chipmenu"><summary title="${esc(title)}"><span class="chip ${chipClass}">${chipHtml}<span class="caret">&#9662;</span></span></summary>
-<form method="post" action="${action}" class="chipmenu-list">${items}${note ? `<div class="menunote">${esc(note)}</div>` : ""}</form></details>`;
+<form method="post" action="${action}" class="chipmenu-list">${items}${note ? `<div class="menunote">${esc(note)}</div>` : ""}<div class="sheet-title m-only">${esc(title)}</div><button type="button" class="m-only" data-close>${esc(t(lang || "en", "cancel"))}</button></form></details>`;
 }
 
 // Render-side folding for the conversation timeline (F7). The regexes mirror the
@@ -700,13 +708,25 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris15";   // 2026-09-25: mobile Phase 0 (tokens, safe areas, dvh, 16px inputs)
+const ASSET_V = "polaris16";   // 2026-09-25: mobile Phase 1A (app bar, sheets, queue chrome)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
 // vendored locally and loaded on every page — inert without hx- attributes, so the
 // non-shell pages (blocks, audit, block-confirm) are unaffected. refreshOnHistoryMiss
 // makes a back/forward without a cached snapshot do a plain full reload.
+// M-01/M-02: phone app bar menu, rendered as a bottom sheet. Hidden on desktop (.m-only).
+function appMenu(lang, user) {
+  const L = (k) => esc(t(lang, k));
+  return `<details class="menu appmenu m-only"><summary class="btn appmenu-btn" aria-label="${L("menu")}"><span class="burger" aria-hidden="true"></span></summary><div class="menu-list">`
+    + `<div class="sheet-title">${L("menu")}</div>`
+    + `<a class="mitem" href="/">${L("inbox")}</a><a class="mitem" href="/blocks">${L("nav_blocks")}</a>`
+    + (user.role === "admin" ? `<a class="mitem" href="/audit">${L("audit")}</a><a class="mitem" href="/sprocket/requests">${L("sprocket_requests_nav")}${user.sprocketNew ? ` <span class="hbadge" title="${L("sprocket_new_badge")}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : "")
+    + `<div class="mlabel">${L("language")}</div><div class="segrow"><a class="seg${lang === "en" ? " on" : ""}" href="/setlang?lang=en">EN</a><a class="seg${lang === "nl" ? " on" : ""}" href="/setlang?lang=nl">NL</a></div>`
+    + `<div class="who-row muted">${L("signed_in_as")} <b>${esc(user.display_name)}</b> (${esc(user.role)})</div>`
+    + `<button type="button" data-close>${L("close")}</button></div></details>`;
+}
+
 function page(title, user, body, refreshSec, opts) {
   const lang = langOK(user.lang);
   const isShell = !!(opts && opts.shell);
@@ -720,10 +740,19 @@ ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <script src="/assets/htmx.min.js?v=${ASSET_V}" defer></script>
 </head><body${isShell ? ' class="appshell"' : ""}>
 <header><span class="brand">Axle</span><a href="/">${esc(t(lang, "inbox"))}</a><a href="/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="/audit">${esc(t(lang, "audit"))}</a><a href="/sprocket/requests">${esc(t(lang, "sprocket_requests_nav"))}${user.sprocketNew ? ` <span class="hbadge" title="${esc(t(lang, "sprocket_new_badge"))}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : ""}
-<span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span></header>
-<main${isShell ? ' class="wide"' : ""}>${body}</main>
+<span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>
+<main${isShell ? ' class="wide"' : ""}>${opts && opts.desktopNote ? `<div class="banner desktop-note m-only">${esc(t(lang, "best_on_desktop"))}</div>` : ""}${body}</main>
 ${sprocketWidget(lang)}
 <script>
+// M-09: one phone test shared by the positioner and the splitter
+window.__axPhone = window.matchMedia("(max-width: 1100px)");
+// M-08: a [data-close] row closes its sheet
+document.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest("[data-close]") : null;
+  if (!b) return;
+  var d = b.closest("details"); if (d) d.removeAttribute("open");
+  e.preventDefault();
+});
 // Close any open chip/action menu on an outside click (presentation only).
 document.addEventListener("click", function (e) {
   document.querySelectorAll("details.chipmenu[open], details.menu[open]").forEach(function (d) {
@@ -742,6 +771,7 @@ document.addEventListener("click", function (e) {
   var GAP = 6, PAD = 8, openEl = null;
   function listOf(d) { return d.querySelector(".menu-list, .chipmenu-list"); }
   function place(d) {
+    if (window.__axPhone.matches) return;   // M-09: the phone uses CSS bottom sheets
     var s = d.querySelector("summary"), l = listOf(d);
     if (!s || !l) return;
     l.style.position = "fixed"; l.style.margin = "0";
@@ -772,6 +802,9 @@ document.addEventListener("click", function (e) {
   }, true);
   function reflow() { if (openEl && openEl.open) place(openEl); }
   window.addEventListener("resize", reflow);
+  // M-09: no inline placement survives a desktop/phone switch
+  var mq = window.__axPhone, onMq = function () { document.querySelectorAll("details.menu[open], details.chipmenu[open]").forEach(clear); if (!mq.matches) reflow(); };
+  if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
   window.addEventListener("scroll", reflow, true);
 })();
 // htmx failure surface: by default htmx silently ignores error responses, network
@@ -843,6 +876,7 @@ document.addEventListener("click", function (e) {
 // keys nudge when the handle is focused. Desktop only (the handle is hidden in the mobile layout).
 (function () {
   var KEY = "axleQueueW", MIN = 220, MAX = 560;
+  if (window.__axPhone.matches) return;   // M-09: no splitter on the phone
   function shellEl() { return document.querySelector(".shell"); }
   function setW(px) { var s = shellEl(); if (s) s.style.setProperty("--queue-w", px + "px"); }
   function clampW(px) { return Math.max(MIN, Math.min(MAX, Math.round(px))); }

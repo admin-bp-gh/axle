@@ -1,5 +1,64 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE PHASE 1A BUILT, 25 Sep 2026: app bar with a menu sheet, every menu a bottom sheet,
+> queue chrome, admin and block pages. Committed on `axle/mobile`, not deployed; ships with the
+> single final deploy. No safety path touched.**
+>
+> **What happened.** Phase 0 passed Brad's gate. Phase 1A (plan 3.4) closes M-01, M-02, M-08,
+> M-09, M-10, M-13, M-14, M-15, M-34, M-35, M-45, M-46. `ASSET_V` `polaris16`.
+>
+> **The fix.** Phone only, all inside the 1100px block plus one `min-width: 1101px` rule that
+> hides `.m-only` markup on desktop (`.m-only` / `.m-hide` are the only mechanism for phone-only
+> markup). `ui.js`: a sticky 48px app bar (brand, 44x44 menu button) whose sheet holds Inbox,
+> Blocked, Audit and Requests (admin, same `hbadge`), EN/NL as two 44px segments on the same
+> `/setlang` links, "Signed in as", Close; the desktop links and `.who` are untouched and hidden
+> on the phone. `window.__axPhone` (one `matchMedia` for CSS and JS); the popover positioner and
+> the splitter return early on the phone and the positioner clears its inline styles on a media
+> change (M-09); a delegated `[data-close]` handler closes the nearest `details`; `page()` gains
+> `opts.desktopNote`; `chipMenu()` gains a phone-only heading (the chip tooltip made visible,
+> M-32) and a `type=button` Cancel row, its `data-confirm` line untouched. Sheet primitive in
+> `components.css`: every `details.menu > .menu-list` and `details.chipmenu > .chipmenu-list`
+> becomes fixed, full width, anchored to `bottom: var(--kb)`, capped at `100dvh - 48px - inset`,
+> with a grab handle, 44px rows, 20px radios and safe-area padding; the scrim is the open
+> `summary::before`, so a scrim tap is a native toggle and closing needs no JS (M-08). `:has()`
+> lifts (`.queue-head`, `.actionbar`, `header` with an open details) live in their own rule
+> blocks. `inbox.js`: the queue head is a CSS grid on the phone (first `.qbar` as
+> `display: contents`): one row of four two-line tabs plus a 44x44 search icon, a slim live
+> line with Filters on the right; search row hidden until the icon opens it; `#qsort` and
+> `#qcount` hidden; the Filters sheet carries Mailbox, Mine/All (same `scopeLink`), a sort
+> select mirroring `#qsort`, Sync now (same `/sync` form) and Cancel; "No matches for 'x'" plus a
+> 44px Clear search (M-15); New email is a fixed 56px bottom-right button and the list reserves
+> room for it. Cards follow the M1 mock (12px radius, 8px gaps). `item.js`: sheet headings
+> ("Send to", "More actions") and Cancel rows; no form, field, value or route change.
+> `admin.js`: block page gets the sticky `.m-back` bar and a 44px Cancel (M-45); `/blocks` and
+> `/audit` tables sit in `div.hscroll` with the "Best on desktop" note (M-46); `sprocket.js`
+> requests page gets the note. New strings (EN and NL, 345 keys each): menu, close, cancel,
+> filters, sort, sync, signed_in_as, no_matches, clear_search, best_on_desktop, search_open,
+> send_to. The Filters button still reads "Filter" on the phone (the desktop text is shared).
+>
+> **Proof.** K1 clean. K4: transport fields and DB dumps byte-identical (120 responses). K5:
+> 44 assertions pass (Phase 0's nine rerun plus 35 for 1A) at 393, 375 and 430:
+> `design-reference/mobile-audit/phase-1a/`. K6: zero pixel, layout and DOM differences at 1440
+> and 1101. K7: six box-code files changed, no new box-code file, safety grep empty, `audit(`
+> counts unchanged, `data-confirm` handler hash unchanged. Harness: the DOM diff now drops
+> `display: none` subtrees on both sides (the plan's allowed difference), re-normalising the
+> committed baseline on load; a sabotage check (an inline colour on a desktop element) is still
+> reported. Three assertion refinements: the phantom-scroll probe ignores a document that does
+> not scroll; sheets are not "fixed overlays" over the bar; only a fixed element at or above the
+> modal's z-index counts over Send now. One CSS fix from review: the sheet has no side borders.
+>
+> **Also this session.** `deploy.ps1 -WhatIf` showed `sap-doc-pdf.js` differing from the box:
+> the `--json` CLI used by the mail MCPs' attach tool had been edited on the box and never
+> committed. Committed on `main` (`f1bdc71`) and merged into `axle/mobile`, so the final deploy
+> cannot overwrite it.
+>
+> **Files:** `box-code/views/ui.js`, `box-code/routes/inbox.js`, `box-code/routes/item.js`,
+> `box-code/routes/admin.js`, `box-code/routes/sprocket.js`, `box-code/assets/components.css`;
+> repo-only `harness/mobile/{phase-1a,layout,scenes,audits,phase-0}.js`, `harness/harness-mobile.js`,
+> `design-reference/mobile-audit/phase-1a/`. **Deploy notes:** committed on `axle/mobile`, not
+> deployed; ships with the single final deploy. **Next up:** Brad's Phase 1A gate, then Phase 1B
+> (item brief, order, folds, context sheet, customer page).
+
 > **★ MOBILE PHASE 0 BUILT, 25 Sep 2026: tokens, safe areas, dvh, 16px inputs, Sprocket off the
 > phone. Committed on `axle/mobile`, not deployed; ships with the single final deploy. No safety
 > path touched.**

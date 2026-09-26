@@ -427,6 +427,9 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
    tapping an item shows its detail full-screen with a sticky Back bar; Back (the
    .m-back link or the browser) returns to the list. Pure CSS via :has() so it works
    with htmx swaps AND without JS. Touch targets >= 44px. */
+/* M-01: phone-only markup never shows on desktop */
+@media (min-width: 1101px) { .m-only { display: none !important; } }
+
 @media (max-width: 1100px) {
   body.appshell { height: auto; overflow: auto; display: block; }
   main.wide { display: block; }
@@ -474,6 +477,97 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .queue-head { padding-left: max(var(--s3), env(safe-area-inset-left)); padding-right: max(var(--s3), env(safe-area-inset-right)); }
   .actionbar { bottom: max(10px, env(safe-area-inset-bottom)); }
   .modal { padding: max(var(--s5), env(safe-area-inset-top)) max(var(--s5), env(safe-area-inset-right)) max(var(--s5), env(safe-area-inset-bottom)) max(var(--s5), env(safe-area-inset-left)); }
+
+  /* ---------- mobile Phase 1A ---------- */
+  .m-hide { display: none !important; }
+
+  /* M-01: app bar, exactly --bar-h tall plus the top inset */
+  header { position: sticky; top: 0; z-index: 20; flex-wrap: nowrap; box-sizing: border-box;
+    min-height: calc(var(--bar-h) + env(safe-area-inset-top)); height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top); padding-bottom: 0; }
+  header > a, header .who { display: none; }
+  header .appmenu { margin-left: auto; }
+  header .appmenu > summary.appmenu-btn { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0;
+    display: flex; align-items: center; justify-content: center; border-radius: var(--r-ctl); }
+  .appmenu .burger, .appmenu .burger::before, .appmenu .burger::after { display: block; width: 18px; height: 2px; background: var(--ink); border-radius: 1px; }
+  .appmenu .burger { position: relative; }
+  .appmenu .burger::before, .appmenu .burger::after { content: ""; position: absolute; left: 0; }
+  .appmenu .burger::before { top: -6px; }
+  .appmenu .burger::after { top: 6px; }
+  .appmenu .who-row { font-size: var(--fs-sm); padding: var(--s2) var(--s1); }
+  .queue-head, .m-back { top: calc(var(--bar-h) + env(safe-area-inset-top)); }
+  .pane-queue { overflow: visible; }   /* M-01: stick to the page scroll, under the app bar */
+
+  /* M-08: every details menu opens as a bottom sheet */
+  details.menu > .menu-list, details.chipmenu > .chipmenu-list,
+  details.menu.down > .menu-list, details.menu.recip-pop > .menu-list {
+    position: fixed; left: 0; right: 0; top: auto; bottom: var(--kb); width: auto; min-width: 0; max-width: none; margin: 0;
+    max-height: calc(100dvh - var(--bar-h) - env(safe-area-inset-top)); overflow-y: auto;
+    border-radius: var(--r-card) var(--r-card) 0 0; border-bottom: 0; border-left: 0; border-right: 0;
+    padding: var(--s2) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom));
+    box-shadow: var(--shadow-modal); z-index: 91; display: flex; flex-direction: column; gap: var(--gap-tap); }
+  details.menu > .menu-list::before, details.chipmenu > .chipmenu-list::before {
+    content: ""; order: -2; flex: none; align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--border-2); margin: 0 0 var(--s1); }
+  details.menu[open] > summary::before, details.chipmenu[open] > summary::before {
+    content: ""; position: fixed; inset: 0; background: var(--scrim); z-index: 90; }
+  .menu-list button, .menu-list a.mitem, .chipmenu-list button, .recip-pop .cfopt {
+    min-height: var(--tap); display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s3);
+    border: 1px solid var(--border-sub); border-radius: var(--r-ctl); background: var(--surface-2); font-size: var(--fs-md); }
+  .recip-pop .menu-list button.mini { min-height: var(--tap); font-size: var(--fs-md); }
+  .recip-pop .cfopt input[type=radio] { width: 20px; height: 20px; margin: 0; flex: none; }
+  .menu-list .mrows { display: flex; flex-direction: column; gap: var(--gap-tap); }
+  .menu-list form { display: flex; flex-direction: column; gap: var(--gap-tap); }
+  .menu-list form > p { margin: 0; }
+  .sheet-title { order: -1; font-size: var(--fs-lg); font-weight: 600; min-height: 52px; display: flex; align-items: center; }
+  .segrow { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--gap-tap); }
+  .segrow .seg { min-height: var(--tap); display: flex; align-items: center; justify-content: center; margin: 0; border-radius: var(--r-ctl); text-decoration: none; font-size: var(--fs-md); }
+
+  /* M-07: the desktop-only page note */
+  .desktop-note { margin: var(--s3) var(--s4) 0; }
+
+  /* M-10 / M-13 / M-14: queue chrome */
+  .queue-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--gap-tap); padding-top: var(--s2); padding-bottom: calc(var(--s2) - 1px); }   /* 1px border keeps the block at 112 */
+  .queue-head > .qbar:first-child { display: contents; }
+  #composeBtn { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); height: 56px; padding: 0 20px 0 16px;
+    border-radius: 16px; z-index: 40; font-size: var(--fs-md); box-shadow: var(--shadow-pop); margin: 0; }
+  .queue-head .seg-group, .queue-head .qbar .spacer { display: none; }
+  .qtabs { grid-column: 1 / -1; order: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) var(--tap); gap: var(--gap-tap); }
+  .qtab { min-height: var(--tap); display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid var(--border-2); border-radius: var(--r-ctl); padding: 2px; line-height: 1.25; }
+  .qtab .n { display: block; margin: 0; background: none; padding: 0; }
+  .qtab.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .qtab.on .n { background: none; color: #fff; }
+  .qsearch-btn { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; margin: 0; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); font-size: 18px; }
+  .queue-head .qsearchrow { grid-column: 1 / -1; order: 4; display: none; }
+  .queue-head.search-open .qsearchrow { display: flex; }
+  #qsort, #qcount { display: none; }
+  .qlive { grid-column: 1; order: 2; min-height: var(--tap); }
+  .qlive button { display: none; }
+  .qfilter { grid-column: 2; order: 3; align-self: center; }
+  .qfilter > summary.btn.mini { min-height: var(--tap); display: flex; align-items: center; padding: 0 var(--s3); font-size: var(--fs-md); }
+  .qfilter .menu-list select { width: 100%; max-width: none; }
+  .qlist { padding-bottom: calc(56px + 32px + env(safe-area-inset-bottom)); }
+  .qempty-search { text-align: center; padding: var(--s6) var(--s4); }
+  .qempty-search[hidden] { display: none; }
+  .qempty-search button { min-height: var(--tap); }
+  /* M-08: lift the open sheet's sticky parent above the scrim. Own rules: a browser without
+     :has() drops only these and loses the dim, nothing else. */
+  .queue-head:has(details[open]), .actionbar:has(details[open]), header:has(details[open]) { z-index: 95; }
+  .menu-list button:has(span) { flex-direction: column; align-items: flex-start; justify-content: center; min-height: 56px; gap: 0; }
+
+  /* M-45 / M-46: admin and block pages */
+  .block-cancel { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); padding: 0 var(--s4); margin-left: var(--gap-tap) !important; border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); text-decoration: none; }
+  .hscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .hscroll table { min-width: 600px; }
+
+  /* M-10: queue cards per the M1 mock */
+  .qlist { display: flex; flex-direction: column; gap: var(--gap-tap); padding: var(--s3) var(--s4) calc(56px + 32px + env(safe-area-inset-bottom)); }
+  .qcard { min-height: 72px; padding: 10px var(--s3); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
+  .qcard.sel { box-shadow: inset 3px 0 0 var(--brand), var(--shadow-card); }
+  .q-from { font-size: var(--fs-md); }
+  .q-subj { font-size: var(--fs-base); }
+  .qempty { padding: var(--s6) var(--s4); text-align: center; }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------

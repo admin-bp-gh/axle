@@ -11,6 +11,10 @@ async function layoutSnapshot(page) {
       const parts = [];
       let node = el;
       while (node && node.nodeType === 1) {
+        // M-45/M-46: the div.hscroll wrapper (no desktop rules, added around an existing
+        // <table>) gets no path segment of its own, so a wrapped table's path still reads
+        // the same as an unwrapped one once diffLayout normalises away the indices.
+        if (node !== el && node.classList && node.classList.contains("hscroll")) { node = node.parentElement; continue; }
         let idx = 1, sib = node;
         while ((sib = sib.previousElementSibling)) idx++;
         let part = node.tagName.toLowerCase() + ":nth-child(" + idx + ")";
@@ -24,6 +28,10 @@ async function layoutSnapshot(page) {
     const round = (n) => Math.round(n * 100) / 100;
     const out = [];
     document.querySelectorAll("body, body *").forEach((el) => {
+      // M-45/M-46: the div.hscroll wrapper itself has no baseline counterpart (it wraps an
+      // existing table, same "existing elements only gain classes or a div.hscroll wrapper"
+      // allowance domPath() honours above) - skip its own entry too.
+      if (el.classList && el.classList.contains("hscroll")) return;
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return;
       const cs = getComputedStyle(el);
@@ -37,31 +45,111 @@ async function layoutSnapshot(page) {
   });
 }
 
-// body.outerHTML with ?v=polarisNN asset versions normalised to ?v=X.
-async function domSnapshot(page) {
-  const html = await page.evaluate(() => document.body.outerHTML);
-  return html.replace(/\?v=polaris\d+/g, "?v=X");
+// K6: drops every element that computes to display:none (and its subtree) before reading
+// body.outerHTML, so a phone-only element the plan allows (it computes to display:none at
+// 1440) never shows up as a structural difference. Runs inside the page so getComputedStyle
+// sees the real cascade. Returns the count of dropped elements too, recorded in the snapshot
+// metadata comment so `compare` can tell an old (un-normalised) baseline from a new one.
+async function dropDisplayNoneAndSerialize(page) {
+  return page.evaluate(() => {
+    let dropped = 0;
+    // Snapshot the list first: removing a node while walking a live NodeList would skip
+    // its still-attached siblings.
+    const all = Array.from(document.body.querySelectorAll("*"));
+    for (const el of all) {
+      if (!el.isConnected) continue; // already removed as part of an earlier subtree
+      if (getComputedStyle(el).display === "none") {
+        dropped += 1 + el.querySelectorAll("*").length;
+        el.remove();
+      }
+    }
+    return { html: document.body.outerHTML, dropped };
+  });
 }
 
-// Diffs two layout snapshots by path: rect/font/color/background/display differences,
-// plus paths missing from either side.
-function diffLayout(baseline, current) {
-  const byPathA = new Map(baseline.map((e) => [e.path, e]));
-  const byPathB = new Map(current.map((e) => [e.path, e]));
-  const diffs = [];
-  for (const [p, a] of byPathA) {
-    const b = byPathB.get(p);
-    if (!b) { diffs.push({ path: p, kind: "missing_in_current" }); continue; }
-    const fields = ["fontSize", "color", "backgroundColor", "display"];
-    for (const f of fields) {
-      if (a[f] !== b[f]) diffs.push({ path: p, kind: "field", field: f, baseline: a[f], current: b[f] });
-    }
-    for (const f of ["x", "y", "width", "height"]) {
-      if (a.rect[f] !== b.rect[f]) diffs.push({ path: p, kind: "rect", field: f, baseline: a.rect[f], current: b.rect[f] });
-    }
+// body.outerHTML with ?v=polarisNN asset versions normalised to ?v=X, and every
+// display:none element (and its subtree) dropped first (K6). The dropped-element count is
+// recorded as a leading HTML comment marker so a snapshot captured by this function is
+// distinguishable from one captured by the pre-K6 code (no marker).
+async function domSnapshot(page) {
+  const { html, dropped } = await dropDisplayNoneAndSerialize(page);
+  const marker = "<!--axle-dom-normalised dropped=" + dropped + "-->";
+  return marker + html.replace(/\?v=polaris\d+/g, "?v=X");
+}
+
+// K6: re-normalises a baseline .dom.html captured by the OLD (pre-fix) code, which has no
+// "axle-dom-normalised" marker, by loading it into a page (with the real box-code
+// stylesheets attached, at the capture width, so the actual cascade - including the
+// @media (min-width: 1101px) .m-only rule - applies) and running the same
+// display:none-dropping pass, so a committed baseline stays valid without recapturing it.
+// A baseline that already carries the marker (captured by the new code) is returned as-is.
+async function renormaliseBaselineDom(browser, baseUrl, width, html) {
+  if (html.startsWith("<!--axle-dom-normalised")) return html;
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width: width.width, height: width.height, deviceScaleFactor: 1 });
+    // Same identity header every mobile-harness page carries (env.js/pptr.js) - the
+    // real page this loads first is behind the server's identity middleware.
+    await page.setExtraHTTPHeaders({ "Tailscale-User-Login": "admin@budget-parts.nl" });
+    // Navigate to a real box-code page first (any page - server.js serves the same two
+    // stylesheets everywhere) so the document's origin matches baseUrl and the <link>
+    // stylesheets actually apply; a bare page.setContent() page has no origin of its own
+    // and Chromium does not reliably apply cross-origin stylesheets to it (verified: the
+    // computed display stayed the UA default, i.e. the CSS never took effect). Then swap
+    // in the snapshot's body wholesale, keeping the already-loaded stylesheets in <head>.
+    await page.goto(baseUrl + "/blocks", { waitUntil: "load" });
+    await page.evaluate((bodyHtml) => { document.body.outerHTML = bodyHtml; }, html);
+    const { html: normalised, dropped } = await dropDisplayNoneAndSerialize(page);
+    return "<!--axle-dom-normalised dropped=" + dropped + " (re-normalised from an unmarked baseline)-->" + normalised;
+  } finally {
+    await page.close();
   }
-  for (const [p] of byPathB) {
-    if (!byPathA.has(p)) diffs.push({ path: p, kind: "added_in_current" });
+}
+
+// Every :nth-child(N) index stripped from a path, at every level of the chain. Two
+// elements with the same normalised path are structurally the same slot in the tree
+// (same tag/id chain), even if a display:none sibling inserted earlier shifted their
+// literal :nth-child index - see diffLayout below.
+function normalisePath(path) {
+  return path.replace(/:nth-child\(\d+\)/g, "");
+}
+
+// Diffs two layout snapshots. Groups each snapshot's entries by normalised path (document
+// order preserved within a group) and pairs the two sides positionally within each group,
+// rather than by exact path string: a display:none element added earlier in the tree
+// (M-45/M-46's .m-back/.desktop-note - the plan's allowed display:none addition) shifts
+// every later sibling's literal :nth-child index, which would otherwise pair unrelated
+// elements that merely share a now-coincidental path string (or wrongly report an unmoved
+// element as missing/added). Reports rect/font/color/background/display differences for
+// paired entries, plus any entry left over on one side once its group is exhausted.
+function diffLayout(baseline, current) {
+  const groupBy = (list) => {
+    const groups = new Map();
+    for (const e of list) {
+      const key = normalisePath(e.path);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    }
+    return groups;
+  };
+  const groupsA = groupBy(baseline), groupsB = groupBy(current);
+  const keys = new Set([...groupsA.keys(), ...groupsB.keys()]);
+  const diffs = [];
+  for (const key of keys) {
+    const listA = groupsA.get(key) || [], listB = groupsB.get(key) || [];
+    const n = Math.max(listA.length, listB.length);
+    for (let i = 0; i < n; i++) {
+      const a = listA[i], b = listB[i];
+      if (!a) { diffs.push({ path: b.path, kind: "added_in_current" }); continue; }
+      if (!b) { diffs.push({ path: a.path, kind: "missing_in_current" }); continue; }
+      const fields = ["fontSize", "color", "backgroundColor", "display"];
+      for (const f of fields) {
+        if (a[f] !== b[f]) diffs.push({ path: a.path, kind: "field", field: f, baseline: a[f], current: b[f] });
+      }
+      for (const f of ["x", "y", "width", "height"]) {
+        if (a.rect[f] !== b.rect[f]) diffs.push({ path: a.path, kind: "rect", field: f, baseline: a.rect[f], current: b.rect[f] });
+      }
+    }
   }
   return diffs;
 }
@@ -73,6 +161,21 @@ function diffLayout(baseline, current) {
 // div.m-mail wrapper; a relocated #composeModal; a body class ax-detail. This function does
 // a conservative structural comparison and reports anything outside those textual allowances.
 function diffDom(baselineHtml, currentHtml) {
+  // Strip the K6 "axle-dom-normalised dropped=N" marker comment before comparing - it
+  // records how many display:none elements each side dropped, which legitimately differs
+  // (a phone-only element dropped on one side, never present to drop on the other) and is
+  // not itself a structural difference.
+  const stripMarker = (h) => h.replace(/^<!--axle-dom-normalised[^>]*-->/, "");
+  baselineHtml = stripMarker(baselineHtml);
+  currentHtml = stripMarker(currentHtml);
+  // M-45/M-46: a div.hscroll wrapper around an existing <table> (added so the table can
+  // scroll sideways on the phone) has no desktop rules and no visual effect at desktop
+  // widths - the plan's "a div.m-mail wrapper" allowance, applied to this phase's own
+  // cosmetic wrapper. Unwrap it (keep the table, drop the wrapper) before comparing; there
+  // is never a nested div inside these tables, so a non-greedy match is safe.
+  const unwrapHscroll = (h) => h.replace(/<div class="hscroll">([\s\S]*?)<\/div>/g, "$1");
+  baselineHtml = unwrapHscroll(baselineHtml);
+  currentHtml = unwrapHscroll(currentHtml);
   if (baselineHtml === currentHtml) return [];
   const reported = [];
   // Tokenize into tags/text for a coarse diff; exact byte diff would flag every whitespace
@@ -189,4 +292,4 @@ async function maskRectsFor(page, selectors) {
   }, selectors);
 }
 
-module.exports = { layoutSnapshot, domSnapshot, diffLayout, diffDom, pixelDiff, maskRectsFor };
+module.exports = { layoutSnapshot, domSnapshot, diffLayout, diffDom, pixelDiff, maskRectsFor, renormaliseBaselineDom };

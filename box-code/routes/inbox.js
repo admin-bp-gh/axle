@@ -435,11 +435,25 @@ async function buildQueuePane(req, opts) {
         <span class="seg-group">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</span>
         <span class="spacer"></span>
         <details class="menu down qfilter"><summary class="btn mini" title="${esc(t(lang, "mailbox"))}">&#9776; ${esc(t(lang, "filter_btn"))}</summary>
-          <div class="menu-list"><div class="mlabel">${esc(t(lang, "mailbox"))}</div>${mbLink("all", esc(t(lang, "all")))}${mbLink("info", esc(t(lang, "info")))}${mbLink("drachten", esc(t(lang, "drachten")))}</div>
+          <div class="menu-list"><div class="mlabel">${esc(t(lang, "mailbox"))}</div>${mbLink("all", esc(t(lang, "all")))}${mbLink("info", esc(t(lang, "info")))}${mbLink("drachten", esc(t(lang, "drachten")))}
+            <div class="sheet-title m-only">${esc(t(lang, "filters"))}</div>
+            <div class="m-only mrows">
+              <div class="mlabel">${esc(t(lang, "scope_label"))}</div><div class="segrow">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</div>
+              <div class="mlabel">${esc(t(lang, "sort"))}</div>
+              <select id="qsortm" aria-label="${esc(t(lang, "sort_label"))}">
+                <option value="rank">${esc(t(lang, "sort_needs"))}</option>
+                <option value="new">${esc(t(lang, "sort_new"))}</option>
+                <option value="old">${esc(t(lang, "sort_old"))}</option>
+                <option value="prio">${esc(t(lang, "sort_prio"))}</option>
+              </select>
+              <div class="mlabel">${esc(t(lang, "sync"))}</div>
+              <form method="post" action="/sync"><button ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button></form>
+              <button type="button" data-close>${esc(t(lang, "cancel"))}</button>
+            </div></div>
         </details>
       </div>
-      <div class="qtabs">${showTab("open", esc(t(lang, "open")), counts.open_n)}${showTab("done", esc(t(lang, "done")), counts.done_n)}${showTab("archived", esc(t(lang, "archived")), counts.arch_n)}${showTab("all", esc(t(lang, "all")), counts.all_n)}</div>
-      <div class="qbar">
+      <div class="qtabs">${showTab("open", esc(t(lang, "open")), counts.open_n)}${showTab("done", esc(t(lang, "done")), counts.done_n)}${showTab("archived", esc(t(lang, "archived")), counts.arch_n)}${showTab("all", esc(t(lang, "all")), counts.all_n)}<button type="button" class="m-only qsearch-btn" aria-label="${esc(t(lang, "search_open"))}" aria-expanded="false">&#9906;</button></div>
+      <div class="qbar qsearchrow">
         <input id="q" type="search" placeholder="${esc(t(lang, "search_emails"))}" autocomplete="off">
         <select id="qsort" title="${esc(t(lang, "sort_label"))}">
           <option value="rank">${esc(t(lang, "sort_needs"))}</option>
@@ -456,7 +470,7 @@ async function buildQueuePane(req, opts) {
         <button class="mini" ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button>
       </form>
     </div>
-    <div class="qlist" id="qlist">${cards || `<div class="qempty muted">${esc(t(lang, "no_items"))}${mb === "all" ? "" : " — " + esc(mb) + "@"}</div>`}</div>
+    <div class="qlist" id="qlist">${cards || `<div class="qempty muted">${esc(t(lang, "no_items"))}${mb === "all" ? "" : " — " + esc(mb) + "@"}</div>`}<div class="qempty-search m-only" id="qemptySearch" hidden><p></p><button type="button" id="qclear">${esc(t(lang, "clear_search"))}</button></div></div>
     <script>
     (function () {
       var q = document.getElementById("q"), c = document.getElementById("qcount"), list = document.getElementById("qlist");
@@ -470,11 +484,22 @@ async function buildQueuePane(req, opts) {
           if (show) n++;
         });
         c.textContent = v ? n + " ${t(lang, "of")} " + total : "";
+        // M-15: phone empty state for a search with no hits
+        var es = document.getElementById("qemptySearch");
+        if (es) { es.hidden = !(v && n === 0); if (!es.hidden) es.querySelector("p").textContent = ${JSON.stringify(t(lang, "no_matches"))}.replace("{q}", q.value.trim()); }
         sessionStorage.setItem("axle_q", q.value);
       }
       q.addEventListener("input", apply);
       q.value = sessionStorage.getItem("axle_q") || "";
       if (q.value) apply();
+      // M-13: phone search toggle and Clear
+      var head = document.querySelector(".queue-head"), sb = document.querySelector(".qsearch-btn"), qc = document.getElementById("qclear");
+      if (sb && head) sb.addEventListener("click", function () {
+        var open = head.classList.toggle("search-open");
+        sb.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) q.focus();
+      });
+      if (qc) qc.addEventListener("click", function () { q.value = ""; apply(); q.focus(); });
       // Sort (client-side, persisted per tab). "rank" = the server's needs-me-next order.
       var sel = document.getElementById("qsort");
       function key(el, k) { return el.getAttribute("data-" + k) || ""; }
@@ -492,6 +517,12 @@ async function buildQueuePane(req, opts) {
       sel.addEventListener("change", function () { applySort(sel.value); });
       var saved = sessionStorage.getItem("axle_qsort");
       if (saved && saved !== "rank") { sel.value = saved; applySort(saved); }
+      // M-14: the Filters sheet sort mirrors #qsort
+      var selm = document.getElementById("qsortm");
+      if (selm) {
+        selm.value = sel.value;
+        selm.addEventListener("change", function () { sel.value = selm.value; sel.dispatchEvent(new Event("change")); });
+      }
       // Keep the highlighted card in step with htmx centre-pane swaps.
       list.addEventListener("click", function (e) {
         var a = e.target && e.target.closest ? e.target.closest("a.qcard") : null;

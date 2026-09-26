@@ -371,7 +371,7 @@ app.get("/item/:id", async (req, res) => {
   const langChipHtml = `${esc(t(lang, "language"))}: ${esc((w.language || "?").toUpperCase())}`;
   const langChip = editable
     ? chipMenu({
-        chipClass: "", chipHtml: langChipHtml, title: t(lang, "lang_fix"),
+        lang, chipClass: "", chipHtml: langChipHtml, title: t(lang, "lang_fix"),
         action: `/item/${w.id}/language`, field: "language", current: w.language || "",
         options: LANGS.map((l) => ({ value: l, label: `${l.toUpperCase()} — ${langDisplay(lang, l)}` })),
         note: isCompose ? t(lang, "relang_note") : "",
@@ -394,7 +394,7 @@ app.get("/item/:id", async (req, res) => {
   };
   const ownerChip = (editable && ownerOpts.some((o) => o !== (w.owner || "")))
     ? chipMenu({
-        chipClass: "", chipHtml: ownerChipHtml, title: t(lang, "owner_fix"),
+        lang, chipClass: "", chipHtml: ownerChipHtml, title: t(lang, "owner_fix"),
         action: `/item/${w.id}/owner`, field: "owner", current: w.owner || "",
         options: ownerOpts.map(ownerOption),
       })
@@ -578,6 +578,8 @@ app.get("/item/:id", async (req, res) => {
             <button class="mini primary" name="use" value="1">${esc(t(lang, "recip_use"))}</button>
           </form>
         </details>
+        <div class="sheet-title m-only">${esc(t(lang, "send_to"))}</div>
+        <button type="button" class="m-only" data-close>${esc(t(lang, "cancel"))}</button>
       </div>
     </details>` : "";
 
@@ -606,6 +608,8 @@ app.get("/item/:id", async (req, res) => {
       <form method="post" action="/item/${w.id}/status"><button name="to" value="phone"><b>${esc(t(lang, "mark_phone"))}</b><span>${esc(t(lang, "phone_tip"))}</span></button></form>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="archived"><b>${esc(t(lang, "archive"))}</b><span>${esc(t(lang, "archive_tip"))}</span></button></form>
       ${!isCompose ? `<form method="get" action="/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, require("../outlook-block.js").active() ? "block_tip_outlook" : "block_tip"))}</span></button></form>` : ""}
+      <div class="sheet-title m-only">${esc(t(lang, "more_actions"))}</div>
+      <button type="button" class="m-only" data-close>${esc(t(lang, "cancel"))}</button>
     </div></details>`;
   // Bar: left cluster works the reply (Send / Save / Save & redraft — the redraft note is now the
   // button's tooltip, so the bar no longer wraps on it); right cluster closes the item.

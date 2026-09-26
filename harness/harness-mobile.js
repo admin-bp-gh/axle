@@ -265,7 +265,10 @@ async function cmdCompare(opts) {
 
         const baseBuf = fs.readFileSync(basePngPath);
         const baseLayout = JSON.parse(fs.readFileSync(baseLayoutPath, "utf8"));
-        const baseDom = fs.readFileSync(baseDomPath, "utf8");
+        // K6: a baseline captured by the pre-fix code has no normalisation marker - bring it
+        // up to date in Chromium (real stylesheets, capture width) rather than recapturing it.
+        const baseDomRaw = fs.readFileSync(baseDomPath, "utf8");
+        const baseDom = await LAYOUT.renormaliseBaselineDom(browser, server.baseUrl, width, baseDomRaw);
 
         let pixelDiffCount = 0;
         if (!baseBuf.equals(curPng)) {
@@ -295,7 +298,7 @@ async function cmdCompare(opts) {
 // ---- phase: walk + phase-N acceptance assertions ---------------------------------------
 async function cmdPhase(opts) {
   const tree = resolveTree(opts);
-  const n = opts.n !== undefined ? Number(opts.n) : 0;
+  const n = opts.n !== undefined ? String(opts.n) : "0";
   const outDir = ENV.outDir(opts.out || ("design-reference/mobile-audit/phase-" + n));
   const widths = ENV.parseWidths(opts.widths || "393x852,375x812,430x932");
   const lang = opts.lang || "en";
@@ -314,7 +317,16 @@ async function cmdPhase(opts) {
     const walk = await runWalk({ tree, outDir, widths, lang, only: null, browser, baseUrl: server.baseUrl });
     printWalkSummary(walk);
 
-    const result = await phaseModule.assert({ tree, baseUrl: server.baseUrl, browser, walk, widths });
+    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths };
+    let result = await phaseModule.assert(ctx);
+    // Phase 1A: "phase --n 1a" runs the walk plus BOTH phase-0 and phase-1a assertions -
+    // phase 0 must still pass on top of the new phase-1a work.
+    if (n === "1a") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      const r0 = await phase0.assert(ctx);
+      result = { phase: n, pass: r0.pass && result.pass, assertions: r0.assertions.concat(result.assertions) };
+    }
     fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));
 
     console.log("\nPhase " + n + " acceptance assertions:");

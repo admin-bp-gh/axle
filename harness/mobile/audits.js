@@ -130,7 +130,7 @@ async function fixedStickyAudit(page) {
       if (cs.position !== "fixed" && cs.position !== "sticky") return;
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return;
-      out.push({ label: labelOf(el), position: cs.position, rect: { x: r.left, y: r.top, width: r.width, height: r.height, right: r.right, bottom: r.bottom } });
+      out.push({ label: labelOf(el), position: cs.position, zIndex: cs.zIndex, rect: { x: r.left, y: r.top, width: r.width, height: r.height, right: r.right, bottom: r.bottom } });
     });
     return out;
   });
@@ -148,7 +148,9 @@ async function phantomScrollProbe(page) {
     const scrollHeight = document.documentElement.scrollHeight;
     const main = document.querySelector("main");
     const mainPaddingBottom = main ? parseFloat(getComputedStyle(main).paddingBottom) : null;
-    return { scrollHeight, maxBottom, phantom: scrollHeight - maxBottom, mainPaddingBottom };
+    // A document that does not scroll (scrollHeight == innerHeight) has no phantom by definition.
+    const phantom = scrollHeight <= window.innerHeight ? 0 : scrollHeight - maxBottom;
+    return { scrollHeight, innerHeight: window.innerHeight, maxBottom, phantom, mainPaddingBottom };
   });
 }
 

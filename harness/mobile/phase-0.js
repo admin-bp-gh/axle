@@ -65,12 +65,15 @@ async function assert(ctx) {
       // Only position:fixed overlays count (the plan's wording), and never the container the
       // target lives in: .actionbar is itself sticky and #composeModal is the fixed overlay
       // that holds .modal-foot, so both would trivially intersect their own target.
-      const isOverlay = (f) => f.position === "fixed" && f.label !== "#composeModal" && !/^div\.modal(\.|$)/.test(f.label);
+      // Sheets (.menu-list / .chipmenu-list) are the bar's own menus, not overlays over it.
+      const isOverlay = (f) => f.position === "fixed" && f.label !== "#composeModal" && !/^div\.modal(\.|$)/.test(f.label) && !/menu-list/.test(f.label);
       const fixedReady = ((readyEntry && readyEntry.fixedSticky) || []).filter(isOverlay);
       const fixedCompose = ((composeEntry && composeEntry.fixedSticky) || []).filter(isOverlay);
       const intersects = (a, b) => !!a && !!b && a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;
       const barHit = barRect ? fixedReady.filter((f) => intersects(f.rect, barRect)) : [];
-      const footHit = footRect ? fixedCompose.filter((f) => intersects(f.rect, footRect)) : [];
+      // The compose modal stacks at z-index 50 (components.css .modal); only a fixed element at or
+      // above that could sit over Send now. The New email button (z 40) is under the modal scrim.
+      const footHit = footRect ? fixedCompose.filter((f) => intersects(f.rect, footRect) && (parseInt(f.zIndex, 10) || 0) >= 50) : [];
       const ok = !!sprocketHidden && barHit.length === 0 && footHit.length === 0;
       if (!ok) pass = false;
       details.push({ width, sprocketDisplay: readyEntry && readyEntry.sprocket && readyEntry.sprocket.display, barHit, footHit });

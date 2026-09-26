@@ -119,7 +119,7 @@ module.exports = function mountSprocket(app) {
     res.send(page(t(lang, "sprocket_requests_title"), req.user, `
       <h2>${esc(t(lang, "sprocket_requests_title"))}</h2>
       <p class="muted">${esc(t(lang, "sprocket_requests_hint"))}</p>
-      ${body}`));
+      ${body}`, null, { desktopNote: true }));
   });
 
 };

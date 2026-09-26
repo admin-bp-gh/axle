@@ -228,7 +228,7 @@ app.get("/item/:id", async (req, res) => {
   if (!w) {
     // An htmx queue-click gets a pane-shaped 404 so the swap stays tidy; a plain
     // navigation gets the full page exactly as before.
-    if (req.get("HX-Request")) return res.status(404).send(workPanes(`<p>${esc(t(lang, "not_found"))}</p>`, ""));
+    if (req.get("HX-Request")) return res.status(404).send(workPanes(`<div class="errbox" role="alert"><span class="erric" aria-hidden="true">!</span><h2>${esc(t(lang, "load_failed_title"))}</h2><p class="muted">${esc(t(lang, "not_found"))}</p><button type="button" class="retry" hx-get="${esc(req.originalUrl)}" hx-target="#workpane" hx-swap="innerHTML">${esc(t(lang, "retry"))}</button></div>`, "", { back: t(lang, "back_inbox"), title: t(lang, "load_failed_title"), lang }));   // C4 / M-51
     return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
   }
   audit(req.user.tailscale_login, "view_item", w.id, `lang=${lang}`);
@@ -1004,13 +1004,13 @@ app.get("/item/:id", async (req, res) => {
   const busyPoll = busy ? `<div hx-get="/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-trigger="load delay:10s"></div>` : "";
   if (req.get("HX-Request")) {
     return res.send(panes
-      + `<script>document.title = ${JSON.stringify(`Item ${w.id} - Axle`)};</script>`
+      + `<script>document.title = ${JSON.stringify(`Item ${w.id} - Axle`)}; document.body.classList.add("ax-detail");</script>`
       + busyPoll);
   }
   // Plain navigation (deep link / old link): the full shell. The queue pane is
   // lazy-loaded from /queue, so this route keeps exactly its old side effects —
   // and without JS the item still renders standalone, back-link included.
-  res.send(page(`Item ${w.id}`, req.user, shell(lazyQueue(lang, "sel=" + w.id), panes + busyPoll), 0, { shell: true }));
+  res.send(page(`Item ${w.id}`, req.user, shell(lazyQueue(lang, "sel=" + w.id), panes + busyPoll) + (req.app.locals.composeUi ? req.app.locals.composeUi(req) : ""), 0, { shell: true, bodyClass: "ax-detail" }));
 });
 
 // Open an attachment: fetched from Graph on demand, streamed to the browser.

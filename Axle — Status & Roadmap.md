@@ -1,5 +1,104 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE PHASE 3 BUILT, 26 Sep 2026: paginated Done and All, fragment tabs, compose out of
+> the polled pane and full screen, a detail-shaped error with Retry, the server-set `ax-detail`
+> class, an in-app Back and poll pause rules. Committed on `axle/mobile`, not deployed; ships with
+> the single final deploy. No safety path touched; the send confirm handler is byte-identical.**
+>
+> **What happened.** Phase 2 passed Brad's gate. Phase 3 (plan 3.7) closes M-07, M-11, M-12, M-16,
+> M-17, M-18, M-20, M-40, M-41, M-42, M-43, M-51, M-54, M-59. `ASSET_V` `polaris19`. Contract
+> changes C1 to C5, approved by Brad on 26 Sep 2026 as written in plan 3.7: C1 `page` on
+> `GET /queue` (done and all only, 50 per page, `data-rank` continues across pages, the
+> `view_inbox` audit text unchanged in form with `items=` the tab's matching count); C2 the four
+> status tabs carry `hx-get` / `hx-target="#queuepane"` / `hx-swap="innerHTML"` / `hx-push-url`
+> and keep their `href`; C3 the compose modal renders once per full page outside `#queuepane`
+> (`app.locals.composeUi`, registered by inbox.js and read by item.js for deep links, no new
+> require); C4 the error middleware and the HX 404 return a detail-shaped fragment with a back
+> bar and Retry on GET only; C5 `page()` takes `opts.bodyClass`, the item deep link sets
+> `ax-detail`, the HX item fragment adds it, Back and tab swaps clear it.
+>
+> **The fix.** `inbox.js`: `LIMIT 50 OFFSET (page-1)*50` for done and all; page 1 renders the
+> pane as today plus a "Load more (50 of N)" row after `#qlist` (a sibling, `hx-target="#qlist"`,
+> `hx-swap="beforeend"`); page 2 and later return only the card rows, the next Load more row out
+> of band (`hx-swap-oob`, `delete` on the last page) and the summary-translation fill script;
+> `#qlist` carries `data-page`, the search script recounts, re-sorts and re-filters after each
+> Load more and, on a paginated tab with no hits, says "Searched the N loaded emails" above the
+> Load more row (Q4). Poll: the tick is skipped when `document.hidden`, when the list is past
+> page 1 (any width), and on the phone when `#queuepane` is not displayed, `scrollY > 0` or a
+> touch hit the list in the last 10 s; a phone skip shows the 44px "Updates waiting, tap to
+> refresh" chip in the live line, which runs the same `htmx.ajax` call and scrolls to the top.
+> Cadence 8 / 15 / 0 and the focus-in-pane skip unchanged. Compose: `composeUi(req)` builds the
+> same markup and script; `#composeBtn` is a delegated document click (the button is re-rendered
+> by every queue swap); `openM()` does not focus `#who` on the phone (M-43). `item.js`: HX 404 is
+> the error fragment; the HX fragment script adds `ax-detail`; the deep link passes
+> `bodyClass: "ax-detail"` and appends the compose UI. `server.js`: one hunk at line 553 inside
+> the error middleware (the `.errbox` with Retry for GET), nothing else. `ui.js`: `page()` body
+> class, `window.__axEmptyPanes` on shell pages, the back link is a plain `href="/"` (M-20), the
+> failure handler writes the same detail screen client-side for `sendError`, `timeout` and
+> `responseError` (Retry only when the verb is GET, `htmx.process` on a server error body so its
+> Retry works, `ax-detail` added), a navigation block: the card tap saves `scrollY` and the list
+> URL, the swap scrolls to the top on the phone (M-18), Back resets `#workpane` to the empty panes,
+> removes `ax-detail`, restores the scroll and pushes the saved list URL with `{htmx: true}`
+> (never `history.back()`, M-17), a tab swap resets the work pane at every width (Q5); Back
+> flushes the autosave and re-marks the cards ("Draft kept" stays right). `components.css`,
+> phone block only: `body.ax-detail` twins in separate rule blocks for the three rules that gate
+> the detail view (queue hidden, work pane shown, header hidden); compose full screen (no modal
+> padding, `.modal-card` `min-height: 100dvh`, sticky head with a 44x44 close, sticky foot with
+> Cancel / Draft / Send now at 44px and 8px gaps plus safe-area padding, the draft-only note on
+> its own line, chips 44px with 8px gaps); `.qmore` 44px full width; `.qlive .qupd` chip;
+> `.errbox` per the M1 mock. Five strings (EN and NL, 362 keys each): load_more, retry,
+> load_failed_title, updates_waiting, searching_loaded.
+>
+> **Deviations, recorded.** (1) The `:has()` twins cover the three detail-view rules; the other
+> `:has()` rules in the phone block key on open menus, `:target` and content shape, not on the
+> detail state, and degrade cosmetically as recorded in 1A and 1B. (2) On the All tab the 15 s
+> "investigating" poll cadence is decided from the loaded page only, as before pagination it was
+> decided from the whole list; an investigating item further down All does not arm the poll.
+> (3) The `qsearched` note markup is a second `<p>` inside the existing `#qemptySearch` (phone
+> only, hidden). (4) Two harness-found CSS defects were fixed before the kit was rerun: the chip
+> was hidden by the phone rule `.qlive button { display: none }` (now `.qlive .qupd`), and the
+> compose foot with sending off crushed Cancel and Draft (now `flex-wrap: wrap`).
+>
+> **Proof.** K1 clean (four `node --check`, CSS braces 545/545). K4: 120 responses, transport
+> fields and DB dumps byte-identical; every body difference is the asset version, the tab
+> attributes, the relocated compose, the `ax-detail` body class or the `page()` script. K5: 161
+> assertions pass (phases 0, 1A, 1B, 2 and 3) at 393, 375 and 430:
+> `design-reference/mobile-audit/phase-3/` (430 in `phase-3/430/`). Measured at 393: `/?show=done`
+> with 121 done rows is 50 cards and 105 KB (was 1,532 cards and 4.67 MB live); Load more appends
+> 50 over one XHR and disappears after the last page; a tab tap is one XHR with no document load
+> and the URL follows; `#composeModal` outside `#queuepane`, once per page, absent from `/queue`;
+> compose text survives a sync-driven poll (M-59); the forced 500, the aborted request and the
+> 404 all show the detail screen with a 44px Retry, a failed POST never offers Retry; the item
+> opens with every `:has()` rule deleted from the CSSOM; Back restores the scroll within 2px and
+> the saved URL; a card tapped from `scrollY` 2,000 opens at 0; no `/queue` request with an item
+> open, hidden, scrolled, touched or after Load more; desktop tab switch ends on the empty work
+> pane and the sync poll still runs there. K6: zero pixel, layout and DOM differences at 1440 and
+> 1101 (40 scenes; the harness now roots modal paths at `#composeModal` and moves it to the end
+> of the body on both sides before the DOM diff, the plan's allowed difference). K7: five
+> box-code files changed, no new box-code file, safety files identical, safety grep shows only
+> the `view_inbox` audit line whose text form is unchanged, `audit(` counts unchanged (5 / 33 /
+> 23 / 4 / 8), `data-confirm` handler hash `8bc9738b…48c2` unchanged. K2 and K3 run on the box.
+>
+> **Harness notes.** The forced 500 is an env switch (`AXLE_HARNESS_FAIL_ITEM=300`) in
+> `harness/mobile/extra-stubs.js` that makes `renderTimeline` throw for the seeded item 300
+> ("Forced 500 fixture", a copy of item 1, so the Open tab shows 7 on the fixture); item.js has no
+> unguarded JSON parse to trip by data. server.js clears the sync lock at boot, so phase-3.js sets
+> it in the running server's DB for the poll assertions and clears it after. The 30 s poll windows
+> run as 5 s with `sec = 1`. `walk --phase 3 --append` merges widths into one `walk.json`;
+> `phase --n 3 --part earlier|3|2` splits the run under the sandbox's per-call cap and rebuilds
+> `phase-3.json` from the three part files; phase 2 still runs last because it writes to the DB.
+>
+> **Known edges, recorded.** iOS edge-swipe Back still reloads the list (residual, D9). The
+> "Updates waiting" chip shares the live line with the Filters button at 375, so "Live · updated"
+> wraps to two lines while the chip shows. Candidates for the post-deploy follow-up.
+>
+> **Files:** `box-code/routes/inbox.js`, `box-code/routes/item.js`, `box-code/views/ui.js`,
+> `box-code/server.js` (one hunk, error middleware), `box-code/assets/components.css`; repo-only
+> `harness/harness-mobile.js`, `harness/mobile/{phase-3,layout,boot,extra-stubs,scenes}.js`,
+> `design-reference/mobile-audit/phase-3/`. **Deploy notes:** committed on `axle/mobile`, not
+> deployed; ships with the single final deploy. **Next up:** Brad's Phase 3 gate, then Phase 4
+> (skeletons, busy-poll scroll, ESC and focus, NL parity, handover script).
+
 > **★ MOBILE PHASE 2 BUILT, 26 Sep 2026: two-row bottom bar with the full recipient line, Send
 > and an overflow sheet, inline 16px auto-growing editor, local autosave, keyboard tracking.
 > Committed on `axle/mobile`, not deployed; ships with the single final deploy. No safety path

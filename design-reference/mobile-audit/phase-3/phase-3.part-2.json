@@ -1,0 +1,571 @@
+{
+ "phase": "3",
+ "part": "2",
+ "pass": true,
+ "assertions": [
+  {
+   "id": "bar-fixed-1-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "position": "fixed",
+     "barBottom": 852,
+     "barHeight": 113,
+     "innerHeight": 852,
+     "sumScrollWidth": 359,
+     "sumClientWidth": 359
+    }
+   }
+  },
+  {
+   "id": "bar-fixed-4-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "position": "fixed",
+     "barBottom": 852,
+     "barHeight": 113,
+     "innerHeight": 852,
+     "sumScrollWidth": 359,
+     "sumClientWidth": 359
+    }
+   }
+  },
+  {
+   "id": "bar-fixed-1-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "position": "fixed",
+     "barBottom": 812,
+     "barHeight": 113,
+     "innerHeight": 812,
+     "sumScrollWidth": 341,
+     "sumClientWidth": 341
+    }
+   }
+  },
+  {
+   "id": "bar-fixed-4-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "position": "fixed",
+     "barBottom": 812,
+     "barHeight": 113,
+     "innerHeight": 812,
+     "sumScrollWidth": 341,
+     "sumClientWidth": 341
+    }
+   }
+  },
+  {
+   "id": "reading-area-1-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "backBottom": 48,
+     "barTop": 739
+    },
+    "gap": 691,
+    "minGap": 684
+   }
+  },
+  {
+   "id": "reading-area-4-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "backBottom": 48,
+     "barTop": 739
+    },
+    "gap": 691,
+    "minGap": 684
+   }
+  },
+  {
+   "id": "reading-area-1-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "backBottom": 48,
+     "barTop": 699
+    },
+    "gap": 651,
+    "minGap": 644
+   }
+  },
+  {
+   "id": "reading-area-4-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "backBottom": 48,
+     "barTop": 699
+    },
+    "gap": 651,
+    "minGap": 644
+   }
+  },
+  {
+   "id": "bar-spacing-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "line": {
+      "x": 29,
+      "y": 760.203125,
+      "right": 349.46875,
+      "bottom": 779.796875,
+      "w": 320.46875,
+      "h": 19.59375
+     },
+     "send": {
+      "x": 16,
+      "y": 800,
+      "right": 325,
+      "bottom": 844,
+      "w": 309,
+      "h": 44
+     },
+     "more": {
+      "x": 333,
+      "y": 800,
+      "right": 377,
+      "bottom": 844,
+      "w": 44,
+      "h": 44
+     }
+    }
+   }
+  },
+  {
+   "id": "bar-spacing-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "line": {
+      "x": 29,
+      "y": 720.203125,
+      "right": 331.46875,
+      "bottom": 739.796875,
+      "w": 302.46875,
+      "h": 19.59375
+     },
+     "send": {
+      "x": 16,
+      "y": 760,
+      "right": 307,
+      "bottom": 804,
+      "w": 291,
+      "h": 44
+     },
+     "more": {
+      "x": 315,
+      "y": 760,
+      "right": 359,
+      "bottom": 804,
+      "w": 44,
+      "h": 44
+     }
+    }
+   }
+  },
+  {
+   "id": "recip-needed-393",
+   "pass": true,
+   "detail": {
+    "before": {
+     "needText": "Confirm recipient no recipient yet",
+     "phDisabled": true
+    },
+    "after": {
+     "open": true,
+     "listW": 393,
+     "innerWidth": 393
+    }
+   }
+  },
+  {
+   "id": "recip-needed-375",
+   "pass": true,
+   "detail": {
+    "before": {
+     "needText": "Confirm recipient no recipient yet",
+     "phDisabled": true
+    },
+    "after": {
+     "open": true,
+     "listW": 375,
+     "innerWidth": 375
+    }
+   }
+  },
+  {
+   "id": "send-confirm-393",
+   "pass": true,
+   "detail": {
+    "conf": [
+     "Send this reply to felicitas@example.com?\\n\\nThe customer will receive it. The draft is sent exactly as shown. (with 1 attachment(s))"
+    ],
+    "dc": "Send this reply to felicitas@example.com?\\n\\nThe customer will receive it. The draft is sent exactly as shown. (with 1 attachment(s))",
+    "sendReqs": 0
+   }
+  },
+  {
+   "id": "send-confirm-375",
+   "pass": true,
+   "detail": {
+    "conf": [
+     "Send this reply to felicitas@example.com?\\n\\nThe customer will receive it. The draft is sent exactly as shown. (with 1 attachment(s))"
+    ],
+    "dc": "Send this reply to felicitas@example.com?\\n\\nThe customer will receive it. The draft is sent exactly as shown. (with 1 attachment(s))",
+    "sendReqs": 0
+   }
+  },
+  {
+   "id": "overflow-rows-item1-393",
+   "pass": true,
+   "detail": {
+    "rows": [
+     {
+      "label": "Save & redraft",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Mark done",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Save",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Resolved by phone",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Archive",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Block sender",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Cancel",
+      "h": 44,
+      "spanVisible": false
+     }
+    ],
+    "missing": []
+   }
+  },
+  {
+   "id": "overflow-no-block-item5-393",
+   "pass": true,
+   "detail": {
+    "labels": [
+     "Save & redraft",
+     "Mark done",
+     "Save",
+     "Resolved by phone",
+     "Archive"
+    ]
+   }
+  },
+  {
+   "id": "bar-closed-item6-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "closed": true,
+     "reopenText": "Reopen",
+     "hasSend": false
+    }
+   }
+  },
+  {
+   "id": "bar-injection-item3-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "hasNote": true,
+     "noteVisible": true,
+     "hasSend": false
+    }
+   }
+  },
+  {
+   "id": "overflow-rows-item1-375",
+   "pass": true,
+   "detail": {
+    "rows": [
+     {
+      "label": "Save & redraft",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Mark done",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Save",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Resolved by phone",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Archive",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Block sender",
+      "h": 56,
+      "spanVisible": true
+     },
+     {
+      "label": "Cancel",
+      "h": 44,
+      "spanVisible": false
+     }
+    ],
+    "missing": []
+   }
+  },
+  {
+   "id": "overflow-no-block-item5-375",
+   "pass": true,
+   "detail": {
+    "labels": [
+     "Save & redraft",
+     "Mark done",
+     "Save",
+     "Resolved by phone",
+     "Archive"
+    ]
+   }
+  },
+  {
+   "id": "bar-closed-item6-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "closed": true,
+     "reopenText": "Reopen",
+     "hasSend": false
+    }
+   }
+  },
+  {
+   "id": "bar-injection-item3-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "hasNote": true,
+     "noteVisible": true,
+     "hasSend": false
+    }
+   }
+  },
+  {
+   "id": "editor-grow-replybox-393",
+   "pass": true,
+   "detail": {
+    "before": {
+     "fontSize": "16px",
+     "resize": "none"
+    },
+    "after": {
+     "diff": 0
+    }
+   }
+  },
+  {
+   "id": "editor-grow-replybox-375",
+   "pass": true,
+   "detail": {
+    "before": {
+     "fontSize": "16px",
+     "resize": "none"
+    },
+    "after": {
+     "diff": 0
+    }
+   }
+  },
+  {
+   "id": "editor-grow-ans-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "fontSize": "16px",
+     "resize": "none"
+    }
+   }
+  },
+  {
+   "id": "editor-grow-ans-375",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "fontSize": "16px",
+     "resize": "none"
+    }
+   }
+  },
+  {
+   "id": "autosave-writes-key-393",
+   "pass": true,
+   "detail": {
+    "keys": {
+     "ls": {
+      "axle.draft.2": "{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Ans 0\\nAns 1\\nAns 2\\nAns 3\\nAns 4\\nAns 5\\nAns 6\\nAns 7\\nAns 8\\nAns 9\\nAns 10\\nAns 11\",\"base\":{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Check of retour al binnen is\"},\"t\":1790455220615}",
+      "axle.draft.1": "{\"reply\":\"Line 1\\nLine 2\\nLine 3\\nLine 4\\nLine 5\\nLine 6\\nLine 7\\nLine 8\\nLine 9\\nLine 10\\nLine 11\\nLine 12\\nLine 13\\nLine 14\\nLine 15\\nLine 16\\nLine 17\\nLine 18\\nLine 19\\nLine 20\\nLine 21\\nLine 22\\nLine 23\\nLine 24\\nLine 25\\nLine 26\\nLine 27\\nLine 28\\nLine 29\\nLine 30\\nLine 31\\nLine 32\\nLine 33\\nLine 34\\nLine 35\\nLine 36\\nLine 37\\nLine 38\\nLine 39\\nLine 40 TYPED-A\",\"subject\":null,\"feedback\":\"\",\"base\":{\"reply\":\"Hallo Felicitas,\\n\\nuw bestelling 224665 is onderweg: [DA4634 - Mirror](https://roverparts.eu/products/da4634)\\n\\nMet vriendelijke groet\",\"subject\":null,\"feedback\":\"\"},\"t\":1790455222125}"
+     },
+     "ss": {}
+    }
+   }
+  },
+  {
+   "id": "autosave-restores-on-reload-393",
+   "pass": true,
+   "detail": {
+    "reply1": "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20\nLine 21\nLine 22\nLine 23\nLine 24\nLine 25\nLine 26\nLine 27\nLine 28\nLine 29\nLine 30\nLine 31\nLine 32\nLine 33\nLine 34\nLine 35\nLine 36\nLine 37\nLine 38\nLine 39\nLine 40 TYPED-A",
+    "note1": {
+     "visible": true,
+     "text": "Unsaved edits restored",
+     "hasRestore": false,
+     "hasDiscard": false
+    }
+   }
+  },
+  {
+   "id": "autosave-survives-recipient-change-393",
+   "pass": true,
+   "detail": {
+    "reply4": "Hi Piet, thanks for your message about #S17915. TYPED-CF"
+   }
+  },
+  {
+   "id": "autosave-conflict-offer-393",
+   "pass": true,
+   "detail": {
+    "field1": "SERVER CHANGED TEXT",
+    "note2": {
+     "visible": true,
+     "text": "You have unsaved edits from 22:40. The draft has changed since.",
+     "hasRestore": true,
+     "hasDiscard": true
+    }
+   }
+  },
+  {
+   "id": "autosave-restore-click-393",
+   "pass": true,
+   "detail": {
+    "field2": "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20\nLine 21\nLine 22\nLine 23\nLine 24\nLine 25\nLine 26\nLine 27\nLine 28\nLine 29\nLine 30\nLine 31\nLine 32\nLine 33\nLine 34\nLine 35\nLine 36\nLine 37\nLine 38\nLine 39\nLine 40 TYPED-A LOCAL-B"
+   }
+  },
+  {
+   "id": "autosave-discard-393",
+   "pass": true,
+   "detail": {
+    "note3": {
+     "visible": true,
+     "text": "You have unsaved edits from 22:40. The draft has changed since.",
+     "hasRestore": true,
+     "hasDiscard": true
+    },
+    "keysAfter": {
+     "ls": {
+      "axle.draft.2": "{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Ans 0\\nAns 1\\nAns 2\\nAns 3\\nAns 4\\nAns 5\\nAns 6\\nAns 7\\nAns 8\\nAns 9\\nAns 10\\nAns 11\",\"base\":{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Check of retour al binnen is\"},\"t\":1790455220615}",
+      "axle.draft.4": "{\"reply\":\"Hi Piet, thanks for your message about #S17915. TYPED-CF\",\"subject\":\"#S17915 - RoverParts.eu\",\"feedback\":\"\",\"base\":{\"reply\":\"Hi Piet, thanks for your message about #S17915.\",\"subject\":\"#S17915 - RoverParts.eu\",\"feedback\":\"\"},\"t\":1790455224802}"
+     },
+     "ss": {}
+    }
+   }
+  },
+  {
+   "id": "autosave-save-clears-key-393",
+   "pass": true,
+   "detail": {
+    "hadKey": true,
+    "afterKeys": {
+     "ls": {
+      "axle.draft.2": "{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Ans 0\\nAns 1\\nAns 2\\nAns 3\\nAns 4\\nAns 5\\nAns 6\\nAns 7\\nAns 8\\nAns 9\\nAns 10\\nAns 11\",\"base\":{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Check of retour al binnen is\"},\"t\":1790455220615}",
+      "axle.draft.4": "{\"reply\":\"Hi Piet, thanks for your message about #S17915. TYPED-CF\",\"subject\":\"#S17915 - RoverParts.eu\",\"feedback\":\"\",\"base\":{\"reply\":\"Hi Piet, thanks for your message about #S17915.\",\"subject\":\"#S17915 - RoverParts.eu\",\"feedback\":\"\"},\"t\":1790455224802}"
+     },
+     "ss": {}
+    }
+   }
+  },
+  {
+   "id": "autosave-key-kept-no-workform-393",
+   "pass": true,
+   "detail": {
+    "hadKey": true,
+    "after": {
+     "ls": {
+      "axle.draft.2": "{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Ans 0\\nAns 1\\nAns 2\\nAns 3\\nAns 4\\nAns 5\\nAns 6\\nAns 7\\nAns 8\\nAns 9\\nAns 10\\nAns 11\",\"base\":{\"reply\":\"Tussenbericht: we kijken ernaar.\",\"subject\":null,\"feedback\":\"Check of retour al binnen is\"},\"t\":1790455220615}",
+      "axle.draft.1": "{\"reply\":\"SERVER CHANGED AGAIN SAVE-ME KEEP-ME\",\"subject\":null,\"feedback\":\"\",\"base\":{\"reply\":\"SERVER CHANGED AGAIN SAVE-ME\",\"subject\":null,\"feedback\":\"\"},\"t\":1790455236135}",
+      "axle.draft.4": "{\"reply\":\"Hi Piet, thanks for your message about #S17915. TYPED-CF\",\"subject\":\"#S17915 - RoverParts.eu\",\"feedback\":\"\",\"base\":{\"reply\":\"Hi Piet, thanks for your message about #S17915.\",\"subject\":\"#S17915 - RoverParts.eu\",\"feedback\":\"\"},\"t\":1790455224802}"
+     },
+     "ss": {}
+    }
+   }
+  },
+  {
+   "id": "autosave-draft-kept-badge-393",
+   "pass": true,
+   "detail": {
+    "dk": {
+     "present": true,
+     "visible": true
+    }
+   }
+  },
+  {
+   "id": "autosave-no-key-desktop-1440",
+   "pass": true,
+   "detail": {
+    "keys": {
+     "ls": {},
+     "ss": {}
+    }
+   }
+  },
+  {
+   "id": "keyboard-kb-var-393",
+   "pass": true,
+   "detail": {
+    "probe": {
+     "ret": 300,
+     "kb": "300px",
+     "barBottom": 552,
+     "expect": 552
+    }
+   }
+  },
+  {
+   "id": "no-overflow-no-console-all-scenes",
+   "pass": true,
+   "detail": {
+    "offenders": []
+   }
+  }
+ ]
+}

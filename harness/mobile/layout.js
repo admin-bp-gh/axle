@@ -24,6 +24,11 @@ async function layoutSnapshot(page) {
         if (node.id) part += "#" + node.id;
         parts.unshift(part);
         if (node === document.body) break;
+        // Phase 3, C3 (K6 allowance "the relocated #composeModal"): the compose modal moved
+        // from inside #queuepane to after the shell. It is position:fixed, so its rects do
+        // not depend on where it lives; rooting the path of every element inside it at
+        // div#composeModal makes those paths identical wherever the modal sits in the tree.
+        if (node.id === "composeModal") break;
         node = node.parentElement;
       }
       return parts.join(" > ");
@@ -79,6 +84,17 @@ async function dropDisplayNoneAndSerialize(page) {
       while (wrap.firstChild) parent.insertBefore(wrap.firstChild, wrap);
       parent.removeChild(wrap);
     });
+    // Phase 3, C3 (K6 allowance "the relocated #composeModal"): the open compose modal used
+    // to render inside #queuepane and now renders once per page after the shell. When it is
+    // present in the clone (it is open; a closed modal computes to display:none and was
+    // dropped above), move it to the end of the cloned body so its position in the tree is
+    // the same on both sides. The baseline goes through this same function (captured by it,
+    // or re-normalised by renormaliseBaselineDom), so both sides get the move.
+    const cm = clone.querySelector("#composeModal");
+    if (cm) clone.appendChild(cm);
+    // Phase 3, C5 (K6 allowance "the ax-detail body class"): needs no code here. The body
+    // tag of a deep-linked item gains the class token ax-detail, which isAllowedTagDiff's
+    // added-class-token rule already accepts (the baseline's tokens are a subset).
     return { html: clone.outerHTML, dropped };
   });
 }
@@ -127,6 +143,13 @@ async function renormaliseBaselineDom(browser, baseUrl, width, html) {
 // (same tag/id chain), even if a display:none sibling inserted earlier shifted their
 // literal :nth-child index - see diffLayout below.
 function normalisePath(path) {
+  // Phase 3, C3: a committed baseline .layout.json stores the paths layoutSnapshot produced
+  // at capture time, which ran the full chain up to body (the modal then lived inside
+  // #queuepane). Root any path through #composeModal at that segment here as well, so a
+  // stored baseline path and a current path (already rooted there by domPath) group
+  // together. Same allowance as the domPath stop, applied to the stored side.
+  const cm = path.search(/[a-z0-9]+(:nth-child\(\d+\))?#composeModal(?= >|$)/);
+  if (cm > 0) path = path.slice(cm);
   return path.replace(/:nth-child\(\d+\)/g, "");
 }
 

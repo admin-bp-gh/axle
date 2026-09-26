@@ -40,6 +40,15 @@ const SCENES = [
   { id: "item-overflow", path: "/item/1", open: ".actionbar > details.menu:not(.recip-pop)" },
   { id: "item-restored", path: "/item/1", typeReplyThenReload: true },
   { id: "item-keyboard", path: "/item/1", kbStub: true },
+  // Phase 3 scenes (phase-3.js assertions). They need the phase-3 seed (walk --phase 3):
+  // 120 extra done rows (ids 100 to 219) and the forced-500 item 300.
+  { id: "queue-done-paged", path: "/?show=done" },
+  { id: "queue-loaded-more", path: "/?show=done", loadMore: true },
+  { id: "queue-updates-chip", path: "/", updatesChip: true },
+  // The forced 500 logs "Failed to load resource ... 500" (Chromium) and "Response Status
+  // Error Code 500" (htmx) in the console by design.
+  { id: "item-error", path: "/", forceErrorItem: 300, expectedConsole: "status of 500|Response Status Error Code 500" },
+  { id: "compose-full", path: "/", compose: true },
 ];
 
 function findScene(id) {
@@ -152,6 +161,45 @@ async function openScene(page, baseUrl, scene) {
     await page.focus("#replybox").catch(() => {});
     await new Promise((r) => setTimeout(r, 100));
     menu = { selector: "#replybox", method: "kbStub" };
+  }
+
+  // Phase 3 (C1): tap "Load more" once and wait for the second page (100 cards).
+  if (scene.loadMore) {
+    await page.click("#qmore").catch(() => {});
+    try {
+      await page.waitForFunction(() => document.querySelectorAll("#qlist a.qcard").length >= 100, { timeout: 8000 });
+    } catch (e) { /* recorded via the scene's own screenshot */ }
+    await waitHtmxIdle(page);
+    await new Promise((r) => setTimeout(r, 100));
+    menu = { selector: "#qmore", method: "click" };
+  }
+
+  // Phase 3 (M-54): the list scrolled, then the poll armed; the tick skips and shows the
+  // "Updates waiting" chip. The walk has no sync lock, so the poll is armed by hand
+  // (__axQPoll.sec is 0 while idle): sec = 1 and last = 0 make the next 2 s tick due.
+  if (scene.updatesChip) {
+    await page.evaluate(() => {
+      window.scrollTo(0, 100);
+      if (window.__axQPoll) { window.__axQPoll.sec = 1; window.__axQPoll.last = 0; }
+      else window.__axQPoll = { sec: 1, qs: "mailbox=info&show=open&scope=all", last: 0 };
+    });
+    try {
+      await page.waitForFunction(() => { const u = document.getElementById("qupd"); return !!u && !u.hidden && u.getBoundingClientRect().height > 0; }, { timeout: 3500 });
+    } catch (e) { /* recorded via the scene's own screenshot */ }
+    await new Promise((r) => setTimeout(r, 100));
+    menu = { selector: "#qupd", method: "poll" };
+  }
+
+  // Phase 3 (C4 / M-51): open the forced-500 item (harness/mobile/extra-stubs.js) through
+  // its queue card, falling back to the same htmx GET the card issues.
+  if (scene.forceErrorItem) {
+    const sel = 'a.qcard[href="/item/' + scene.forceErrorItem + '"]';
+    const clicked = await page.evaluate((s) => { const a = document.querySelector(s); if (!a) return false; a.scrollIntoView({ block: "center" }); return true; }, sel);
+    if (clicked) await page.click(sel).catch(() => {});
+    else await page.evaluate((id) => window.htmx.ajax("GET", "/item/" + id, { target: "#workpane", swap: "innerHTML" }), scene.forceErrorItem);
+    try { await page.waitForSelector("#workpane .errbox", { timeout: 8000 }); } catch (e) { /* recorded via the screenshot */ }
+    await new Promise((r) => setTimeout(r, 150));
+    menu = { selector: sel, method: clicked ? "click" : "htmx.ajax" };
   }
 
   if (scene.customerModal) {

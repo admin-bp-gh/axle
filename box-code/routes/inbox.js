@@ -1,12 +1,16 @@
 // routes/inbox.js - the work-queue pane (GET / inline + GET /queue fragment), the
-// per-browser language toggle (/setlang) and the manual Sync (/sync), incl. the
-// compose modal markup the queue embeds. Extracted from server.js in UI rework
+// per-browser language toggle (/setlang) and the manual Sync (/sync). The compose
+// modal now renders once per full page outside #queuepane via app.locals.composeUi
+// (read by routes/item.js for deep links). Extracted from server.js in UI rework
 // Step 0; reshaped into the three-pane shell's queue in Step 2 (2026-06-10):
 // card-rows + action-state chips (F1/F2), "Live · updated" indicator (F3) and the
 // collapsed toolbar (F4). Query semantics and audit calls are unchanged from the
 // old inbox; summary translations render from cache and fill in asynchronously
 // (UX round, 2026-06-11 - see buildQueuePane). ACTION_COMPOSE_SEND is passed in by
 // server.js so the allow-list env check stays defined in exactly one place.
+// 2026-09-26, mobile Phase 3, C3: compose modal moved out of buildQueuePane into composeUi(req).
+// 2026-09-26, mobile Phase 3, C1/C2/M-54: done and all paginate (Load more), status tabs swap
+// only #queuepane, and the poll skips while the user is reading (chip #qupd offers the refresh).
 const INGEST = require("../ingest.js");
 const TR = require("../translate.js");
 const SCEN = require("../scenarios.js");
@@ -64,6 +68,9 @@ app.post("/sync", (req, res) => {
 async function buildQueuePane(req, opts) {
   const lang = req.user.lang;
   const sel = (opts && opts.sel) || 0;
+  // C1 pagination: done and all load PAGE_SIZE cards at a time; open and archived stay whole.
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1);
   // Mailbox filter. Sales see everything by default because their scope is already "mine" (their
   // own owner label), which confines them to their own queue anyway. Admins are scope="all", and
   // an unfiltered All is both mailboxes' entire traffic at once - so they land on Gouda (info@)
@@ -89,11 +96,28 @@ async function buildQueuePane(req, opts) {
   const order = show === "open"
     ? " ORDER BY w.injection_flag DESC, CASE WHEN w.status = 'awaiting_input' THEN 0 WHEN w.status = 'ready' THEN 1 WHEN w.status = 'new' THEN 2 ELSE 3 END, w.priority ASC, w.updated_at DESC"
     : " ORDER BY w.updated_at DESC";
+  const paged = show === "done" || show === "all";
+  // Unpaged tabs ignore ?page and always render the whole pane.
+  const frag = paged && page > 1;
+  const offset = paged ? (page - 1) * PAGE_SIZE : 0;
   const items = db.prepare(
     `SELECT w.*, (SELECT COUNT(*) FROM questions q WHERE q.work_item_id = w.id AND q.answer IS NULL) AS open_q
-     FROM work_items w WHERE ${conds.join(" AND ")}${order}`
-  ).all(...params);
-  audit(req.user.tailscale_login, "view_inbox", null, `mailbox=${mb} scope=${scope} show=${show} items=${items.length} lang=${lang}`);
+     FROM work_items w WHERE ${conds.join(" AND ")}${order}${paged ? " LIMIT ? OFFSET ?" : ""}`
+  ).all(...params, ...(paged ? [PAGE_SIZE, offset] : []));
+  // Status-tab counts under the current mailbox + scope (the status filter itself excluded).
+  const cConds = [], cParams = [];
+  if (mb !== "all") { cConds.push("w.mailbox = ?"); cParams.push(mb); }
+  if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(myOwner); }
+  const counts = db.prepare(
+    `SELECT SUM(CASE WHEN w.status NOT IN ('done','archived') THEN 1 ELSE 0 END) AS open_n,
+            SUM(CASE WHEN w.status = 'done' THEN 1 ELSE 0 END) AS done_n,
+            SUM(CASE WHEN w.status = 'archived' THEN 1 ELSE 0 END) AS arch_n,
+            COUNT(*) AS all_n
+     FROM work_items w ${cConds.length ? "WHERE " + cConds.join(" AND ") : ""}`
+  ).get(...cParams);
+  // The tab's full matching count: the page itself for unpaged tabs, the counts query otherwise.
+  const total = show === "done" ? (counts.done_n || 0) : show === "all" ? (counts.all_n || 0) : items.length;
+  audit(req.user.tailscale_login, "view_inbox", null, `mailbox=${mb} scope=${scope} show=${show} items=${total} lang=${lang}`);
   const investigating = items.some((w) => w.status === "investigating");
   const sync = syncStatus();
   // Axle authors summaries in English; CACHED translations render inline (sync DB
@@ -108,17 +132,6 @@ async function buildQueuePane(req, opts) {
     if (c) sumTr[w.id] = c; else sumPending.add(w.id);
   }
   const sumOf = (w) => (lang !== "en" && sumTr[w.id]) || w.summary || "";
-  // Status-tab counts under the current mailbox + scope (the status filter itself excluded).
-  const cConds = [], cParams = [];
-  if (mb !== "all") { cConds.push("w.mailbox = ?"); cParams.push(mb); }
-  if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(myOwner); }
-  const counts = db.prepare(
-    `SELECT SUM(CASE WHEN w.status NOT IN ('done','archived') THEN 1 ELSE 0 END) AS open_n,
-            SUM(CASE WHEN w.status = 'done' THEN 1 ELSE 0 END) AS done_n,
-            SUM(CASE WHEN w.status = 'archived' THEN 1 ELSE 0 END) AS arch_n,
-            COUNT(*) AS all_n
-     FROM work_items w ${cConds.length ? "WHERE " + cConds.join(" AND ") : ""}`
-  ).get(...cParams);
   // Auto-attach hint: a paperclip when the item has attachable (in-scope/ambiguous) suggested
   // documents. Out-of-scope-only items show nothing here (they need an explicit confirm anyway).
   const suggHint = (w) => {
@@ -129,7 +142,7 @@ async function buildQueuePane(req, opts) {
     return n ? ` <span class="chip sugg" title="${esc(t(lang, "sugg_title"))}">&#128206;${n}</span>` : "";
   };
   const mbLink = (v, label) => `<a class="mitem${mb === v ? " on" : ""}" href="/?mailbox=${v}&show=${show}&scope=${scope}">${label}</a>`;
-  const showTab = (v, label, n) => `<a class="qtab${show === v ? " on" : ""}" href="/?mailbox=${mb}&show=${v}&scope=${scope}">${label}<span class="n">${n || 0}</span></a>`;
+  const showTab = (v, label, n) => `<a class="qtab${show === v ? " on" : ""}" href="/?mailbox=${mb}&show=${v}&scope=${scope}" hx-get="/queue?mailbox=${mb}&show=${v}&scope=${scope}" hx-target="#queuepane" hx-swap="innerHTML" hx-push-url="/?mailbox=${mb}&show=${v}&scope=${scope}">${label}<span class="n">${n || 0}</span></a>`;
   const scopeLink = (v, label) => `<a class="seg${scope === v ? " on" : ""}" href="/?mailbox=${mb}&show=${show}&scope=${v}">${label}</a>`;
   const searchable = (w) => [
     "#" + w.id, statusLabel(lang, w.status), w.mailbox, w.sender_name, w.sender_email, w.subject,
@@ -148,14 +161,243 @@ async function buildQueuePane(req, opts) {
   // the client-side search filter and sort, exactly like the old table's columns.
   const cards = items.map((w, i) => `
     <a class="qcard${sel === w.id ? " sel" : ""}" href="/item/${w.id}" hx-get="/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true"
-       data-search="${esc(searchable(w))}" data-rank="${i}" data-upd="${esc(w.updated_at || "")}" data-prio="${w.priority || 2}">
+       data-search="${esc(searchable(w))}" data-rank="${offset + i}" data-upd="${esc(w.updated_at || "")}" data-prio="${w.priority || 2}">
       <span class="q-l1"><span class="q-from">${esc(w.sender_name || w.sender_email)}</span><span class="q-time muted">${esc(fmtDateTime(w.updated_at, lang))}</span></span>
       <span class="q-l2"><span class="q-subj">${w.origin === "compose" ? "&#9998; " : ""}${esc(w.subject || t(lang, "no_subject"))}</span><span class="q-badges">${suggHint(w)}${(w.priority || 2) === 1 && !w.injection_flag ? ` <span class="badge prio1">P1</span>` : ""}</span></span>
       <span class="q-l3"><span class="q-sum muted">${sumLine(w)}</span>${stateChip(w)}</span>
     </a>`).join("");
   const lastT = sync.finished_at ? fmtTime(parseTS(sync.finished_at), lang) : t(lang, "never");
+  // C1 Load more: a sibling after #qlist; its button appends the next page into #qlist and
+  // each page response replaces this row out of band (or deletes it on the last page).
+  const hasMore = paged && offset + items.length < total;
+  const moreBtn = `<button type="button" class="qmore" id="qmore" hx-get="/queue?mailbox=${mb}&show=${show}&scope=${scope}&page=${page + 1}" hx-target="#qlist" hx-swap="beforeend" data-page="${page}" data-total="${total}">${esc(t(lang, "load_more").replace("{n}", total))}</button>`;
+  const trScript = `<script>
+    (function () {
+      // Background summary-translation fill (UX round): cards rendered instantly with
+      // the English summary; one batched call translates the uncached ones and swaps
+      // the text in (textContent - escaped by construction). The translated text is
+      // also appended to the card's data-search so search finds it, like before.
+      // Server-cached, so the next queue render emits no pending markers at all.
+      var pend = document.querySelectorAll("#qlist [data-trs]");
+      if (!pend.length) return;
+      var ids = Array.prototype.map.call(pend, function (el) { return el.getAttribute("data-trs"); });
+      fetch("/queue/summaries", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "ids=" + ids.join(",") })
+        .then(function (x) { return x.json(); })
+        .then(function (d) {
+          Array.prototype.forEach.call(pend, function (el) {
+            var v = d[el.getAttribute("data-trs")];
+            if (!v) return;
+            el.textContent = v;
+            el.removeAttribute("data-trs");
+            var card = el.closest ? el.closest("a.qcard") : null;
+            if (card) card.setAttribute("data-search", (card.getAttribute("data-search") || "") + " " + v.toLowerCase());
+          });
+        })
+        .catch(function () { /* English summaries stay - harmless */ });
+    })();
+    </script>`;
+  // Page 2 and later: only the new cards, the out-of-band Load more row and the fill script.
+  if (frag) {
+    const row = hasMore
+      ? `<div class="qmore-row" id="qmoreRow" hx-swap-oob="true">${moreBtn}</div>`
+      : `<div id="qmoreRow" hx-swap-oob="delete"></div>`;
+    return { html: `${cards}\n    ${row}\n    ${trScript}`, sync, investigating, lang };
+  }
 
-  // --- Compose modal (built once per inbox render) ---
+  const paneHtml = `
+    ${opts && opts.syncedBanner ? `<div class="banner mini">${esc(t(lang, "sync_started"))}</div>` : ""}
+    <div class="queue-head">
+      <div class="qbar">
+        <button type="button" class="seg compose-open" id="composeBtn">&#43; ${esc(t(lang, "compose_new"))}</button>
+        <span class="seg-group">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</span>
+        <span class="spacer"></span>
+        <details class="menu down qfilter"><summary class="btn mini" title="${esc(t(lang, "mailbox"))}">&#9776; ${esc(t(lang, "filter_btn"))}</summary>
+          <div class="menu-list"><div class="mlabel">${esc(t(lang, "mailbox"))}</div>${mbLink("all", esc(t(lang, "all")))}${mbLink("info", esc(t(lang, "info")))}${mbLink("drachten", esc(t(lang, "drachten")))}
+            <div class="sheet-title m-only">${esc(t(lang, "filters"))}</div>
+            <div class="m-only mrows">
+              <div class="mlabel">${esc(t(lang, "scope_label"))}</div><div class="segrow">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</div>
+              <div class="mlabel">${esc(t(lang, "sort"))}</div>
+              <select id="qsortm" aria-label="${esc(t(lang, "sort_label"))}">
+                <option value="rank">${esc(t(lang, "sort_needs"))}</option>
+                <option value="new">${esc(t(lang, "sort_new"))}</option>
+                <option value="old">${esc(t(lang, "sort_old"))}</option>
+                <option value="prio">${esc(t(lang, "sort_prio"))}</option>
+              </select>
+              <div class="mlabel">${esc(t(lang, "sync"))}</div>
+              <form method="post" action="/sync"><button ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button></form>
+              <button type="button" data-close>${esc(t(lang, "cancel"))}</button>
+            </div></div>
+        </details>
+      </div>
+      <div class="qtabs">${showTab("open", esc(t(lang, "open")), counts.open_n)}${showTab("done", esc(t(lang, "done")), counts.done_n)}${showTab("archived", esc(t(lang, "archived")), counts.arch_n)}${showTab("all", esc(t(lang, "all")), counts.all_n)}<button type="button" class="m-only qsearch-btn" aria-label="${esc(t(lang, "search_open"))}" aria-expanded="false">&#9906;</button></div>
+      <div class="qbar qsearchrow">
+        <input id="q" type="search" placeholder="${esc(t(lang, "search_emails"))}" autocomplete="off">
+        <select id="qsort" title="${esc(t(lang, "sort_label"))}">
+          <option value="rank">${esc(t(lang, "sort_needs"))}</option>
+          <option value="new">${esc(t(lang, "sort_new"))}</option>
+          <option value="old">${esc(t(lang, "sort_old"))}</option>
+          <option value="prio">${esc(t(lang, "sort_prio"))}</option>
+        </select>
+        <span class="qcount" id="qcount"></span>
+      </div>
+      <form method="post" action="/sync" class="qlive">
+        <span class="livedot${sync.running ? " busy" : ""}"></span>
+        <span class="muted">${sync.running ? esc(t(lang, "syncing")) : esc(t(lang, "live_updated").replace("{t}", lastT))}</span>
+        <button type="button" class="qupd m-only" id="qupd" hidden>${esc(t(lang, "updates_waiting"))}</button>
+        <span class="spacer"></span>
+        <button class="mini" ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button>
+      </form>
+    </div>
+    <div class="qlist" id="qlist" data-page="${paged ? page : 1}"${paged ? ` data-paged="1"` : ""}>${cards || `<div class="qempty muted">${esc(t(lang, "no_items"))}${mb === "all" ? "" : " — " + esc(mb) + "@"}</div>`}<div class="qempty-search m-only" id="qemptySearch" hidden><p></p><p class="muted qsearched"></p><button type="button" id="qclear">${esc(t(lang, "clear_search"))}</button></div></div>${hasMore ? `
+    <div class="qmore-row" id="qmoreRow">${moreBtn}</div>` : ""}
+    <script>
+    (function () {
+      var q = document.getElementById("q"), c = document.getElementById("qcount"), list = document.getElementById("qlist");
+      if (!q || !list) return;
+      // C1: Load more appends cards, so the total is always the live card count.
+      function total() { return list.querySelectorAll(".qcard").length; }
+      var paged = list.getAttribute("data-page") != null && list.getAttribute("data-paged") === "1";
+      function apply() {
+        var v = q.value.trim().toLowerCase(), n = 0, all = total();
+        list.querySelectorAll(".qcard").forEach(function (el) {
+          var show = !v || (el.getAttribute("data-search") || "").indexOf(v) >= 0;
+          el.style.display = show ? "" : "none";
+          if (show) n++;
+        });
+        c.textContent = v ? n + " ${t(lang, "of")} " + all : "";
+        // M-15: phone empty state for a search with no hits; on a paged tab a second
+        // line says only the loaded emails were searched (Load more stays below).
+        var es = document.getElementById("qemptySearch");
+        if (es) {
+          es.hidden = !(v && n === 0);
+          var ps = es.querySelectorAll("p");
+          if (!es.hidden) ps[0].textContent = ${JSON.stringify(t(lang, "no_matches"))}.replace("{q}", q.value.trim());
+          if (ps[1]) {
+            var sl = paged && !es.hidden;
+            ps[1].textContent = sl ? ${JSON.stringify(t(lang, "searching_loaded"))}.replace("{n}", all) : "";
+            ps[1].hidden = !sl;
+          }
+        }
+        sessionStorage.setItem("axle_q", q.value);
+      }
+      q.addEventListener("input", apply);
+      q.value = sessionStorage.getItem("axle_q") || "";
+      if (q.value) apply();
+      // M-13: phone search toggle and Clear
+      var head = document.querySelector(".queue-head"), sb = document.querySelector(".qsearch-btn"), qc = document.getElementById("qclear");
+      if (sb && head) sb.addEventListener("click", function () {
+        var open = head.classList.toggle("search-open");
+        sb.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) q.focus();
+      });
+      if (qc) qc.addEventListener("click", function () { q.value = ""; apply(); q.focus(); });
+      // Sort (client-side, persisted per tab). "rank" = the server's needs-me-next order.
+      var sel = document.getElementById("qsort");
+      function key(el, k) { return el.getAttribute("data-" + k) || ""; }
+      function applySort(mode) {
+        var cards = Array.prototype.slice.call(list.querySelectorAll(".qcard"));
+        cards.sort(function (a, b) {
+          if (mode === "new") return key(a, "upd") > key(b, "upd") ? -1 : key(a, "upd") < key(b, "upd") ? 1 : 0;
+          if (mode === "old") return key(a, "upd") < key(b, "upd") ? -1 : key(a, "upd") > key(b, "upd") ? 1 : 0;
+          if (mode === "prio") return (+key(a, "prio") - +key(b, "prio")) || (key(a, "upd") > key(b, "upd") ? -1 : 1);
+          return +key(a, "rank") - +key(b, "rank");
+        });
+        cards.forEach(function (x) { list.appendChild(x); });
+        sessionStorage.setItem("axle_qsort", mode);
+      }
+      sel.addEventListener("change", function () { applySort(sel.value); });
+      var saved = sessionStorage.getItem("axle_qsort");
+      if (saved && saved !== "rank") { sel.value = saved; applySort(saved); }
+      // M-14: the Filters sheet sort mirrors #qsort
+      var selm = document.getElementById("qsortm");
+      if (selm) {
+        selm.value = sel.value;
+        selm.addEventListener("change", function () { sel.value = selm.value; sel.dispatchEvent(new Event("change")); });
+      }
+      // C1: after a Load more page lands in #qlist, bump data-page and re-apply sort and search.
+      list.addEventListener("htmx:afterSwap", function (e) {
+        if (e.detail && e.detail.target === list) {
+          list.setAttribute("data-page", String((+list.getAttribute("data-page") || 1) + 1));
+          applySort(sel.value);
+          apply();
+        }
+      });
+      // Keep the highlighted card in step with htmx centre-pane swaps.
+      list.addEventListener("click", function (e) {
+        var a = e.target && e.target.closest ? e.target.closest("a.qcard") : null;
+        if (!a) return;
+        list.querySelectorAll(".qcard.sel").forEach(function (x) { x.classList.remove("sel"); });
+        a.classList.add("sel");
+      });
+    })();
+    </script>
+    ${trScript}
+    <script>
+    (function () {
+      // Queue auto-refresh while a sync or investigation runs. Replaces the old
+      // declarative page refresh, which navigated the whole DOCUMENT back to "/"
+      // (the address it was parsed with) and so closed the open item after a few
+      // seconds. This swaps ONLY the queue pane; the centre/context panes — and any
+      // half-typed reply — are never touched. Singleton timer: each freshly rendered
+      // queue fragment updates the config; sec=0 (idle) makes the timer a no-op, so
+      // it extinguishes itself when the sync finishes. Same cadence and audit side
+      // effects as the old refresh (/queue = the old inbox data path).
+      window.__axQPoll = { sec: ${sync.running ? 8 : investigating ? 15 : 0}, qs: ${JSON.stringify(`mailbox=${mb}&show=${show}&scope=${scope}`)}, last: Date.now() };
+      // The refresh itself, shared by the tick and the #qupd chip.
+      window.__axQFetch = function () {
+        var c = window.__axQPoll;
+        if (!c || !window.htmx) return;
+        c.last = Date.now();
+        var parts = location.pathname.split("/");
+        var sel = parts[1] === "item" ? (parseInt(parts[2], 10) || 0) : 0;
+        htmx.ajax("GET", "/queue?" + c.qs + "&sel=" + sel, { target: "#queuepane", swap: "innerHTML" });
+      };
+      // M-54: remember the last touch on the list (registered once per page).
+      if (!window.__axQTouchWired) {
+        window.__axQTouchWired = true;
+        document.addEventListener("touchstart", function (e) {
+          if (e.target && e.target.closest && e.target.closest("#qlist")) window.__axQTouch = Date.now();
+        }, { capture: true, passive: true });
+      }
+      var upd = document.getElementById("qupd");
+      if (upd) upd.addEventListener("click", function () { window.__axQFetch(); window.scrollTo(0, 0); upd.hidden = true; });
+      if (!window.__axQPollTimer) {
+        window.__axQPollTimer = setInterval(function () {
+          var c = window.__axQPoll;
+          if (!c || !c.sec || !window.htmx) return;
+          if (Date.now() - c.last < c.sec * 1000) return;
+          var qp = document.getElementById("queuepane");
+          // Never yank the queue out from under the user: skip while they're in it
+          // (typing in search, an open menu); retry on the next tick.
+          if (!qp || (document.activeElement && qp.contains(document.activeElement))) return;
+          // M-12, M-54 skip rules: a hidden tab, or a list already paged past page 1.
+          // Phone only: the list not displayed, scrolled, or touched in the last 10 s;
+          // then the chip offers the refresh instead (when the list is displayed).
+          if (document.hidden) return;
+          var ql = document.getElementById("qlist");
+          if (ql && +ql.getAttribute("data-page") > 1) return;
+          if (window.__axPhone && window.__axPhone.matches) {
+            var shown = getComputedStyle(qp).display !== "none";
+            if (!shown || window.scrollY > 0 || Date.now() - (window.__axQTouch || 0) < 10000) {
+              var up = document.getElementById("qupd");
+              if (up && shown) up.hidden = false;
+              return;
+            }
+          }
+          window.__axQFetch();
+        }, 2000);
+      }
+    })();
+    </script>`;
+  return { html: paneHtml, sync, investigating, lang };
+}
+
+// --- Compose modal (C3, 2026-09-26) ---------------------------------------------
+// Rendered once per full page, after the shell and outside #queuepane, so queue
+// fragment swaps never re-create it. Registered as app.locals.composeUi so
+// routes/item.js appends it to deep-link pages the same way GET / does.
+function composeUi(req) {
+  const lang = req.user.lang;
   const defMb = defaultMailbox(req.user);
   const scenList = SCEN.chips(lang);                       // [{key,label,skeleton}]
   const scenChipsHtml = scenList.map((s) => `<button type="button" class="schip" data-key="${esc(s.key)}">${esc(s.label)}</button>`).join("");
@@ -169,7 +411,7 @@ async function buildQueuePane(req, opts) {
     att_total: t(lang, "attach_total"), creating: t(lang, "compose_creating"), sending: t(lang, "compose_sending"),
     need_subject: t(lang, "compose_need_subject"), send_confirm: t(lang, "compose_send_confirm"),
   });
-  const composeUi = `
+  return `
     <div id="composeModal" class="modal" style="display:none" role="dialog" aria-modal="true">
       <div class="modal-card">
         <div class="modal-head"><h2>${esc(t(lang, "compose_title"))}</h2>
@@ -229,9 +471,14 @@ async function buildQueuePane(req, opts) {
       var SKELSET = Object.keys(SKEL).map(function (k) { return SKEL[k]; });
       var MAX = ${MAX_ATTACH_BYTES}, MAXTOT = ${MAX_ATTACH_TOTAL}, staged = [];
       var $ = function (id) { return document.getElementById(id); };
-      function openM() { modal.style.display = "flex"; $("who").focus(); }
+      function openM() { modal.style.display = "flex"; if (!(window.__axPhone && window.__axPhone.matches)) $("who").focus(); }
       function closeM() { modal.style.display = "none"; }
-      $("composeBtn").addEventListener("click", openM);
+      // #composeBtn lives in the queue pane, which htmx re-renders (tabs, poll), so the
+      // click is delegated on document and registered once per page (C3).
+      if (!window.__axComposeWired) {
+        window.__axComposeWired = true;
+        document.addEventListener("click", function (e) { var b = e.target.closest ? e.target.closest("#composeBtn") : null; if (b) openM(); });
+      }
       $("composeClose").addEventListener("click", closeM);
       $("composeCancel").addEventListener("click", closeM);
       // Close only on an explicit action (X / Cancel / Esc). Deliberately NOT on a backdrop/outside
@@ -426,176 +673,16 @@ async function buildQueuePane(req, opts) {
       });
     })();
     </script>`;
-
-  const paneHtml = `
-    ${opts && opts.syncedBanner ? `<div class="banner mini">${esc(t(lang, "sync_started"))}</div>` : ""}
-    <div class="queue-head">
-      <div class="qbar">
-        <button type="button" class="seg compose-open" id="composeBtn">&#43; ${esc(t(lang, "compose_new"))}</button>
-        <span class="seg-group">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</span>
-        <span class="spacer"></span>
-        <details class="menu down qfilter"><summary class="btn mini" title="${esc(t(lang, "mailbox"))}">&#9776; ${esc(t(lang, "filter_btn"))}</summary>
-          <div class="menu-list"><div class="mlabel">${esc(t(lang, "mailbox"))}</div>${mbLink("all", esc(t(lang, "all")))}${mbLink("info", esc(t(lang, "info")))}${mbLink("drachten", esc(t(lang, "drachten")))}
-            <div class="sheet-title m-only">${esc(t(lang, "filters"))}</div>
-            <div class="m-only mrows">
-              <div class="mlabel">${esc(t(lang, "scope_label"))}</div><div class="segrow">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</div>
-              <div class="mlabel">${esc(t(lang, "sort"))}</div>
-              <select id="qsortm" aria-label="${esc(t(lang, "sort_label"))}">
-                <option value="rank">${esc(t(lang, "sort_needs"))}</option>
-                <option value="new">${esc(t(lang, "sort_new"))}</option>
-                <option value="old">${esc(t(lang, "sort_old"))}</option>
-                <option value="prio">${esc(t(lang, "sort_prio"))}</option>
-              </select>
-              <div class="mlabel">${esc(t(lang, "sync"))}</div>
-              <form method="post" action="/sync"><button ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button></form>
-              <button type="button" data-close>${esc(t(lang, "cancel"))}</button>
-            </div></div>
-        </details>
-      </div>
-      <div class="qtabs">${showTab("open", esc(t(lang, "open")), counts.open_n)}${showTab("done", esc(t(lang, "done")), counts.done_n)}${showTab("archived", esc(t(lang, "archived")), counts.arch_n)}${showTab("all", esc(t(lang, "all")), counts.all_n)}<button type="button" class="m-only qsearch-btn" aria-label="${esc(t(lang, "search_open"))}" aria-expanded="false">&#9906;</button></div>
-      <div class="qbar qsearchrow">
-        <input id="q" type="search" placeholder="${esc(t(lang, "search_emails"))}" autocomplete="off">
-        <select id="qsort" title="${esc(t(lang, "sort_label"))}">
-          <option value="rank">${esc(t(lang, "sort_needs"))}</option>
-          <option value="new">${esc(t(lang, "sort_new"))}</option>
-          <option value="old">${esc(t(lang, "sort_old"))}</option>
-          <option value="prio">${esc(t(lang, "sort_prio"))}</option>
-        </select>
-        <span class="qcount" id="qcount"></span>
-      </div>
-      <form method="post" action="/sync" class="qlive">
-        <span class="livedot${sync.running ? " busy" : ""}"></span>
-        <span class="muted">${sync.running ? esc(t(lang, "syncing")) : esc(t(lang, "live_updated").replace("{t}", lastT))}</span>
-        <span class="spacer"></span>
-        <button class="mini" ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button>
-      </form>
-    </div>
-    <div class="qlist" id="qlist">${cards || `<div class="qempty muted">${esc(t(lang, "no_items"))}${mb === "all" ? "" : " — " + esc(mb) + "@"}</div>`}<div class="qempty-search m-only" id="qemptySearch" hidden><p></p><button type="button" id="qclear">${esc(t(lang, "clear_search"))}</button></div></div>
-    <script>
-    (function () {
-      var q = document.getElementById("q"), c = document.getElementById("qcount"), list = document.getElementById("qlist");
-      if (!q || !list) return;
-      var total = list.querySelectorAll(".qcard").length;
-      function apply() {
-        var v = q.value.trim().toLowerCase(), n = 0;
-        list.querySelectorAll(".qcard").forEach(function (el) {
-          var show = !v || (el.getAttribute("data-search") || "").indexOf(v) >= 0;
-          el.style.display = show ? "" : "none";
-          if (show) n++;
-        });
-        c.textContent = v ? n + " ${t(lang, "of")} " + total : "";
-        // M-15: phone empty state for a search with no hits
-        var es = document.getElementById("qemptySearch");
-        if (es) { es.hidden = !(v && n === 0); if (!es.hidden) es.querySelector("p").textContent = ${JSON.stringify(t(lang, "no_matches"))}.replace("{q}", q.value.trim()); }
-        sessionStorage.setItem("axle_q", q.value);
-      }
-      q.addEventListener("input", apply);
-      q.value = sessionStorage.getItem("axle_q") || "";
-      if (q.value) apply();
-      // M-13: phone search toggle and Clear
-      var head = document.querySelector(".queue-head"), sb = document.querySelector(".qsearch-btn"), qc = document.getElementById("qclear");
-      if (sb && head) sb.addEventListener("click", function () {
-        var open = head.classList.toggle("search-open");
-        sb.setAttribute("aria-expanded", open ? "true" : "false");
-        if (open) q.focus();
-      });
-      if (qc) qc.addEventListener("click", function () { q.value = ""; apply(); q.focus(); });
-      // Sort (client-side, persisted per tab). "rank" = the server's needs-me-next order.
-      var sel = document.getElementById("qsort");
-      function key(el, k) { return el.getAttribute("data-" + k) || ""; }
-      function applySort(mode) {
-        var cards = Array.prototype.slice.call(list.querySelectorAll(".qcard"));
-        cards.sort(function (a, b) {
-          if (mode === "new") return key(a, "upd") > key(b, "upd") ? -1 : key(a, "upd") < key(b, "upd") ? 1 : 0;
-          if (mode === "old") return key(a, "upd") < key(b, "upd") ? -1 : key(a, "upd") > key(b, "upd") ? 1 : 0;
-          if (mode === "prio") return (+key(a, "prio") - +key(b, "prio")) || (key(a, "upd") > key(b, "upd") ? -1 : 1);
-          return +key(a, "rank") - +key(b, "rank");
-        });
-        cards.forEach(function (x) { list.appendChild(x); });
-        sessionStorage.setItem("axle_qsort", mode);
-      }
-      sel.addEventListener("change", function () { applySort(sel.value); });
-      var saved = sessionStorage.getItem("axle_qsort");
-      if (saved && saved !== "rank") { sel.value = saved; applySort(saved); }
-      // M-14: the Filters sheet sort mirrors #qsort
-      var selm = document.getElementById("qsortm");
-      if (selm) {
-        selm.value = sel.value;
-        selm.addEventListener("change", function () { sel.value = selm.value; sel.dispatchEvent(new Event("change")); });
-      }
-      // Keep the highlighted card in step with htmx centre-pane swaps.
-      list.addEventListener("click", function (e) {
-        var a = e.target && e.target.closest ? e.target.closest("a.qcard") : null;
-        if (!a) return;
-        list.querySelectorAll(".qcard.sel").forEach(function (x) { x.classList.remove("sel"); });
-        a.classList.add("sel");
-      });
-    })();
-    </script>
-    <script>
-    (function () {
-      // Background summary-translation fill (UX round): cards rendered instantly with
-      // the English summary; one batched call translates the uncached ones and swaps
-      // the text in (textContent - escaped by construction). The translated text is
-      // also appended to the card's data-search so search finds it, like before.
-      // Server-cached, so the next queue render emits no pending markers at all.
-      var pend = document.querySelectorAll("#qlist [data-trs]");
-      if (!pend.length) return;
-      var ids = Array.prototype.map.call(pend, function (el) { return el.getAttribute("data-trs"); });
-      fetch("/queue/summaries", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "ids=" + ids.join(",") })
-        .then(function (x) { return x.json(); })
-        .then(function (d) {
-          Array.prototype.forEach.call(pend, function (el) {
-            var v = d[el.getAttribute("data-trs")];
-            if (!v) return;
-            el.textContent = v;
-            el.removeAttribute("data-trs");
-            var card = el.closest ? el.closest("a.qcard") : null;
-            if (card) card.setAttribute("data-search", (card.getAttribute("data-search") || "") + " " + v.toLowerCase());
-          });
-        })
-        .catch(function () { /* English summaries stay - harmless */ });
-    })();
-    </script>
-    <script>
-    (function () {
-      // Queue auto-refresh while a sync or investigation runs. Replaces the old
-      // declarative page refresh, which navigated the whole DOCUMENT back to "/"
-      // (the address it was parsed with) and so closed the open item after a few
-      // seconds. This swaps ONLY the queue pane; the centre/context panes — and any
-      // half-typed reply — are never touched. Singleton timer: each freshly rendered
-      // queue fragment updates the config; sec=0 (idle) makes the timer a no-op, so
-      // it extinguishes itself when the sync finishes. Same cadence and audit side
-      // effects as the old refresh (/queue = the old inbox data path).
-      window.__axQPoll = { sec: ${sync.running ? 8 : investigating ? 15 : 0}, qs: ${JSON.stringify(`mailbox=${mb}&show=${show}&scope=${scope}`)}, last: Date.now() };
-      if (!window.__axQPollTimer) {
-        window.__axQPollTimer = setInterval(function () {
-          var c = window.__axQPoll;
-          if (!c || !c.sec || !window.htmx) return;
-          if (Date.now() - c.last < c.sec * 1000) return;
-          var qp = document.getElementById("queuepane");
-          // Never yank the queue out from under the user: skip while they're in it
-          // (typing in search, an open menu); retry on the next tick.
-          if (!qp || (document.activeElement && qp.contains(document.activeElement))) return;
-          c.last = Date.now();
-          var parts = location.pathname.split("/");
-          var sel = parts[1] === "item" ? (parseInt(parts[2], 10) || 0) : 0;
-          htmx.ajax("GET", "/queue?" + c.qs + "&sel=" + sel, { target: "#queuepane", swap: "innerHTML" });
-        }, 2000);
-      }
-    })();
-    </script>
-    ${composeUi}`;
-  return { html: paneHtml, sync, investigating, lang };
 }
+app.locals.composeUi = composeUi;
 
 // Inbox: the full three-pane shell. The queue renders INLINE here (audit +
 // translation side effects identical to the old inbox page); the centre pane is
 // an empty state until an item is picked; the context pane fills per item.
 app.get("/", async (req, res) => {
-  const q = await buildQueuePane(req, { sel: 0, syncedBanner: !!req.query.synced });
+  const q = await buildQueuePane(req, { sel: 0, syncedBanner: !!req.query.synced, page: 1 });
   const empty = `<div class="empty-state"><p class="muted">${esc(t(q.lang, "shell_select"))}</p></div>`;
-  const body = shell(q.html, workPanes(empty, ""));
+  const body = shell(q.html, workPanes(empty, "")) + composeUi(req);
   // No <meta> refresh on the shell (it navigated back to "/" and closed the open
   // item) — the queue pane self-polls via the singleton in buildQueuePane instead.
   res.send(page("Inbox", req.user, body, 0, { shell: true }));

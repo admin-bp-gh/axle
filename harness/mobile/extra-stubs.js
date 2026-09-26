@@ -82,13 +82,40 @@ const EXTRA_BY_BASENAME = {
   "customer-summary.js": stubCustomerSummary,
 };
 
+// Phase 3 (C4 / M-51): a controllable forced 500 on GET /item/:id, without touching box-code.
+// routes/item.js has no unguarded JSON.parse of a row column (doc_suggestions_json,
+// compose_customer, contact_form_json, return_json and attachments_json are all parsed
+// inside try/catch), so a malformed fixture value cannot make the handler throw. Instead,
+// when AXLE_HARNESS_FAIL_ITEM is set (an item id; boot.js sets "300" for phase 3), the
+// first time views/ui.js is loaded its export object's renderTimeline is replaced, in
+// place, by a wrapper that throws for that item id and otherwise calls the real function.
+// Patching the shared export object in place (before routes/item.js destructures it at its
+// own require time) is what makes item.js pick the wrapper up. renderTimeline is called
+// only while rendering a real item's detail (item.js, the #mailwrap block), so the throw
+// lands in Express's last-resort error middleware exactly like any route error would: a
+// 500 with the pane-shaped .errbox for an htmx request, the plain error page otherwise.
+const FAIL_ITEM = process.env.AXLE_HARNESS_FAIL_ITEM ? String(process.env.AXLE_HARNESS_FAIL_ITEM) : "";
+let uiPatched = false;
+function maybePatchUi(request, mod) {
+  if (!FAIL_ITEM || uiPatched || !mod || typeof mod.renderTimeline !== "function") return mod;
+  if (path.basename(request) !== "ui.js") return mod;
+  const real = mod.renderTimeline;
+  mod.renderTimeline = function (w) {
+    if (w && String(w.id) === FAIL_ITEM) throw new Error("harness forced failure for item " + FAIL_ITEM);
+    return real.apply(this, arguments);
+  };
+  uiPatched = true;
+  return mod;
+}
+
 const prevLoad = Module._load;
 Module._load = function (request, parent, isMain) {
   if (request.startsWith(".")) {
     const base = path.basename(request);
     if (Object.prototype.hasOwnProperty.call(EXTRA_BY_BASENAME, base)) return EXTRA_BY_BASENAME[base];
   }
-  return prevLoad.apply(this, arguments);
+  const mod = prevLoad.apply(this, arguments);
+  return maybePatchUi(request, mod);
 };
 
 module.exports = { EXTRA_BY_BASENAME };

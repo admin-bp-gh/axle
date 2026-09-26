@@ -7,10 +7,13 @@
 //
 // Usage: node harness/harness-mobile.js <command> [options]
 //   hash                          print the data-confirm capture handler's sha256 (K7 item 4)
-//   walk    [--widths] [--out] [--tree] [--lang] [--only] [--keep]
+//   walk    [--widths] [--out] [--tree] [--lang] [--only] [--keep] [--phase N] [--append]
 //   baseline[--widths] [--out] [--tree] [--lang] [--only] [--keep]
 //   compare --baseline <dir> [--widths] [--out] [--tree] [--lang] [--only] [--mask] [--keep]
-//   phase   --n <N> [--out] [--widths] [--tree] [--lang] [--keep]
+//   phase   --n <N> [--out] [--widths] [--tree] [--lang] [--keep] [--reuse-walk]
+//           n=3 only: [--part earlier|3|2] run one part per call (see the n === "3" branch),
+//           [--skip-earlier] same as --part 3, [--only a,b] just those phase-3 assertion groups
+//           (see phase-3.js GROUPS; an --only run never rebuilds phase-3.json)
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -75,7 +78,7 @@ function cmdHash(opts) {
 }
 
 // ---- shared: the K5 headless walk ----------------------------------------------------
-async function runWalk({ tree, outDir, widths, lang, only, browser, baseUrl }) {
+async function runWalk({ tree, outDir, widths, lang, only, browser, baseUrl, append }) {
   fs.mkdirSync(outDir, { recursive: true });
   const scenesToRun = only ? SCENES.filter((s) => only.includes(s.id)) : SCENES;
   const entries = [];
@@ -118,7 +121,17 @@ async function runWalk({ tree, outDir, widths, lang, only, browser, baseUrl }) {
         fs.writeFileSync(path.join(outDir, width.label + "-" + scene.id + ".png"), pngFull);
         fs.writeFileSync(path.join(outDir, width.label + "-" + scene.id + "-viewport.png"), pngViewport);
 
-        Object.assign(entry, scrollInfo, { tapAudit, overflow, fontSize, fixedSticky, sprocket, phantomScroll, extra, consoleErrors: consoleErrors.slice(), menu });
+        // Phase 3: a scene that deliberately triggers a failing request (item-error: the forced
+        // 500) declares the console messages that failure is expected to log; those are kept
+        // apart in expectedConsoleErrors so the all-scenes console check still sees every
+        // other message.
+        let cErr = consoleErrors.slice(), expectedConsoleErrors;
+        if (scene.expectedConsole) {
+          const re = new RegExp(scene.expectedConsole);
+          expectedConsoleErrors = cErr.filter((m) => re.test(m));
+          cErr = cErr.filter((m) => !re.test(m));
+        }
+        Object.assign(entry, scrollInfo, { tapAudit, overflow, fontSize, fixedSticky, sprocket, phantomScroll, extra, consoleErrors: cErr, expectedConsoleErrors, menu });
       } catch (err) {
         entry.error = String((err && err.stack) || err);
       } finally {
@@ -127,8 +140,21 @@ async function runWalk({ tree, outDir, widths, lang, only, browser, baseUrl }) {
       entries.push(entry);
     }
   }
-  const walk = { generatedAt: new Date().toISOString(), tree, widths: widths.map((w) => w.label), scenes: scenesToRun.map((s) => s.id), entries };
-  fs.writeFileSync(path.join(outDir, "walk.json"), JSON.stringify(walk, null, 1));
+  let walk = { generatedAt: new Date().toISOString(), tree, widths: widths.map((w) => w.label), scenes: scenesToRun.map((s) => s.id), entries };
+  // --append (Phase 3): the sandbox's per-call time cap means one width per walk call, and
+  // walk.json would otherwise hold only the last call's width. With --append, an existing
+  // walk.json is merged: its entries for other width/scene pairs are kept, pairs walked in
+  // this call replace their old entry.
+  const walkFile = path.join(outDir, "walk.json");
+  if (append && fs.existsSync(walkFile)) {
+    const prev = JSON.parse(fs.readFileSync(walkFile, "utf8"));
+    const key = (e) => e.width + "|" + e.scene;
+    const fresh = new Set(entries.map(key));
+    const merged = (prev.entries || []).filter((e) => !fresh.has(key(e))).concat(entries);
+    const uniq = (list) => Array.from(new Set(list));
+    walk = { generatedAt: walk.generatedAt, tree, widths: uniq((prev.widths || []).concat(walk.widths)), scenes: uniq((prev.scenes || []).concat(walk.scenes)), entries: merged };
+  }
+  fs.writeFileSync(walkFile, JSON.stringify(walk, null, 1));
   return walk;
 }
 
@@ -157,10 +183,12 @@ async function cmdWalk(opts) {
   const widths = ENV.parseWidths(opts.widths || "393x852,375x812,430x932");
   const lang = opts.lang || "en";
   const only = onlyFilter(opts);
-  const server = await bootServer({ tree, keep: !!opts.keep });
+  // --phase N: boot with that phase's fixture seed (Phase 3: the 120 done rows the paged Done
+  // tab screenshots need, and the forced-500 item 300), the same seed "phase --n N" uses.
+  const server = await bootServer({ tree, keep: !!opts.keep, phase: opts.phase !== undefined ? String(opts.phase) : undefined });
   const browser = await launchBrowser();
   try {
-    const walk = await runWalk({ tree, outDir, widths, lang, only, browser, baseUrl: server.baseUrl });
+    const walk = await runWalk({ tree, outDir, widths, lang, only, browser, baseUrl: server.baseUrl, append: !!opts.append });
     printWalkSummary(walk);
     console.log("\nwritten to " + outDir);
     return 0;
@@ -322,16 +350,29 @@ async function cmdPhase(opts) {
     if (opts["reuse-walk"] && fs.existsSync(walkFile)) {
       walk = JSON.parse(fs.readFileSync(walkFile, "utf8"));
       console.log("reusing " + walkFile + " (" + (walk.entries || []).length + " entries)");
+      // A width walked into its own subdirectory (the phase layout keeps 430 screenshots in
+      // <out>/430/) is merged in when --widths asks for it and the main walk.json lacks it,
+      // so the per-width walk assertions (phase-0 and later) see every requested width.
+      for (const w of widths) {
+        if ((walk.entries || []).some((e) => e.width === w.label)) continue;
+        const sub = path.join(outDir, String(w.width), "walk.json");
+        if (!fs.existsSync(sub)) continue;
+        const extra = JSON.parse(fs.readFileSync(sub, "utf8"));
+        const add = (extra.entries || []).filter((e) => e.width === w.label);
+        walk.entries = (walk.entries || []).concat(add);
+        walk.widths = Array.from(new Set((walk.widths || []).concat([w.label])));
+        console.log("merged " + add.length + " " + w.label + " entries from " + sub);
+      }
     } else {
       walk = await runWalk({ tree, outDir, widths, lang, only: null, browser, baseUrl: server.baseUrl });
       printWalkSummary(walk);
     }
 
-    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths, dbPath: server.dbPath };
+    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths, dbPath: server.dbPath, only: onlyFilter(opts) };
     // Phase 2's own assertions persist real changes to the shared temp fixture DB (the
     // recipient-confirm form, Save / Save & redraft submits), so its module runs AFTER the
     // earlier, read-mostly phases below rather than first - see the "n === '2'" branch.
-    let result = n === "2" ? null : await phaseModule.assert(ctx);
+    let result = (n === "2" || n === "3") ? null : await phaseModule.assert(ctx);
     // Phase 1A: "phase --n 1a" runs the walk plus BOTH phase-0 and phase-1a assertions -
     // phase 0 must still pass on top of the new phase-1a work.
     if (n === "1a") {
@@ -378,11 +419,58 @@ async function cmdPhase(opts) {
         assertions: r0.assertions.concat(r1a.assertions).concat(r1b.assertions).concat(r2.assertions),
       };
     }
-    fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));
+    // Phase 3: "phase --n 3" runs phase-0, phase-1a, phase-1b, then phase-3, then phase-2
+    // LAST. Same ordering rule as the Phase 2 branch above: phase-2's own assertions persist
+    // real changes to the shared temp fixture DB, so everything read-mostly runs before it.
+    // phase-3 only toggles sync_state.running (and clears it again when it is done), so it
+    // runs before phase-2 against the pristine fixtures.
+    if (n === "3") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      // eslint-disable-next-line global-require
+      const phase1a = require("./mobile/phase-1a.js");
+      // eslint-disable-next-line global-require
+      const phase1b = require("./mobile/phase-1b.js");
+      // eslint-disable-next-line global-require
+      const phase2 = require("./mobile/phase-2.js");
+      // --part earlier|3|2 (the sandbox caps one shell call at about three minutes, and the
+      // five modules together run longer): each part runs in its own call against its own
+      // fresh server and fixture DB, writes phase-3.part-<p>.json, and once all three part
+      // files exist phase-3.json is rebuilt from them in the order earlier, 3, 2. Because each
+      // part boots a fresh DB, phase-2's DB writes still never reach the other parts.
+      const part = opts.part ? String(opts.part) : (opts["skip-earlier"] ? "3" : "all");
+      if (!["all", "earlier", "3", "2"].includes(part)) throw new Error("--part must be earlier, 3 or 2");
+      const parts = [];
+      if (part === "all" || part === "earlier") {
+        parts.push(await phase0.assert(ctx));
+        parts.push(await phase1a.assert(ctx));
+        parts.push(await phase1b.assert(ctx));
+      }
+      if (part === "all" || part === "3") parts.push(await phaseModule.assert(ctx));
+      if (part === "all" || part === "2") parts.push(await phase2.assert(ctx));
+      result = {
+        phase: n,
+        part,
+        pass: parts.every((r) => r.pass),
+        assertions: parts.reduce((acc, r) => acc.concat(r.assertions), []),
+      };
+      if (part !== "all") {
+        fs.writeFileSync(path.join(outDir, "phase-3.part-" + part + ".json"), JSON.stringify(result, null, 1));
+        const files = ["earlier", "3", "2"].map((p) => path.join(outDir, "phase-3.part-" + p + ".json"));
+        if (!ctx.only && files.every((f) => fs.existsSync(f))) {
+          const all = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")));
+          const combined = { phase: n, part: "all (from part files)", pass: all.every((r) => r.pass), assertions: all.reduce((acc, r) => acc.concat(r.assertions), []) };
+          fs.writeFileSync(path.join(outDir, "phase-3.json"), JSON.stringify(combined, null, 1));
+          console.log("combined phase-3.json rebuilt from the three part files: " + (combined.pass ? "PASS" : "FAIL"));
+        }
+      }
+    }
+    if (!(n === "3" && result.part !== "all")) fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));
 
     console.log("\nPhase " + n + " acceptance assertions:");
     for (const a of result.assertions) console.log((a.pass ? "PASS " : "FAIL ") + a.id);
-    console.log("\nRESULT: " + (result.pass ? "PASS" : "FAIL") + " - report written to " + path.join(outDir, "phase-" + n + ".json"));
+    const reportName = (n === "3" && result.part && result.part !== "all") ? "phase-3.part-" + result.part + ".json" : "phase-" + n + ".json";
+    console.log("\nRESULT: " + (result.pass ? "PASS" : "FAIL") + " - report written to " + path.join(outDir, reportName));
     return result.pass ? 0 : 1;
   } finally {
     await browser.close();

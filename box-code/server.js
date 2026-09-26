@@ -550,7 +550,10 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   const lang = langOK(req.user && req.user.lang);
   const msg = `<div class="empty-state"><p class="muted">${esc(t(lang, "load_error"))}</p><p class="muted">${esc(short)}</p></div>`;
-  if (req.get("HX-Request")) return res.status(500).send(workPanes(msg, ""));
+  // C4 / M-51: the detail-shaped error screen; Retry only for a GET
+  const retryBtn = req.method === "GET" ? `<button type="button" class="retry" hx-get="${esc(req.originalUrl)}" hx-target="#workpane" hx-swap="innerHTML">${esc(t(lang, "retry"))}</button>` : "";
+  const errHtml = `<div class="errbox" role="alert"><span class="erric" aria-hidden="true">!</span><h2>${esc(t(lang, "load_failed_title"))}</h2><p class="muted">${esc(t(lang, "load_error"))}</p><p class="muted">${esc(short)}</p>${retryBtn}</div>`;
+  if (req.get("HX-Request")) return res.status(500).send(workPanes(errHtml, "", { back: t(lang, "back_inbox"), title: t(lang, "load_failed_title"), lang }));
   res.status(500).send(page("Error", req.user || { lang, display_name: "-", role: "-" }, msg));
 });
 

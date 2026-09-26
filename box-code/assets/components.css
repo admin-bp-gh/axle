@@ -716,6 +716,41 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .restored-note button.rn-x { width: var(--tap); padding: 0; border: 0; background: none; color: inherit; font-size: 22px; }
   /* M-58: "Draft kept" on a queue card */
   .badge.draft-kept { background: var(--info-bg); color: var(--info-fg); }
+
+  /* ---------- mobile Phase 3 ---------- */
+  /* M-07: twins for the :has() rules, so the detail view does not depend on :has(). */
+  body.ax-detail .shell .pane-queue { display: none; }
+  body.ax-detail .shell #workpane { display: block; }
+  body.ax-detail > header { display: none; }
+
+  /* C1: load more row carries the bottom safe-area reserve that used to sit on .qlist alone */
+  .qmore-row { padding: var(--s2) var(--s4) calc(56px + 32px + env(safe-area-inset-bottom)); }
+  .qmore { width: 100%; min-height: var(--tap); border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-md); }
+
+  /* M-12 / M-54: updates waiting chip in the .qlive form */
+  /* two class selectors, so the chip outranks the phone rule .qlive button { display: none } above */
+  .qlive .qupd { display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 var(--s3); border: 1px solid var(--accent); border-radius: var(--r-chip); background: var(--accent-soft); color: var(--ink); font-size: var(--fs-sm); }
+  .qlive .qupd[hidden] { display: none; }
+
+  /* C4 / M-51: error screen, per the mock's .errbox */
+  .errbox { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: var(--gap-tap); min-height: 60dvh; padding: var(--s5) var(--s4); text-align: center; }
+  .errbox h2 { margin: 0; font-size: var(--fs-xl); }
+  .errbox p { margin: 0 0 var(--s2); }
+  .erric { align-self: center; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--bad-bg); color: var(--bad-fg); font-weight: 700; font-size: var(--fs-xl); }
+  .retry { min-height: var(--tap); width: 100%; }
+
+  /* C3 / M-40 to M-42: compose becomes a full screen, overriding the desktop modal rules above */
+  .modal { padding: 0; align-items: stretch; }
+  .modal-card { min-height: 100dvh; border-radius: 0; max-width: none; display: flex; flex-direction: column; }
+  .modal-head { position: sticky; top: 0; z-index: 2; background: var(--surface); min-height: calc(var(--bar-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) var(--s3) 0 var(--s4); box-sizing: border-box; }
+  .modal-x { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; display: flex; align-items: center; justify-content: center; }
+  .modal form { flex: 1 1 auto; display: flex; flex-direction: column; padding-bottom: 0; }
+  .modal-foot { position: sticky; bottom: 0; margin-top: auto; background: var(--surface); padding: var(--s2) 0 calc(var(--s2) + env(safe-area-inset-bottom)); gap: var(--gap-tap); flex-wrap: wrap; }
+  .modal-foot .spacer { display: none; }
+  .modal-foot button { flex: 1 1 0; min-width: 0; min-height: var(--tap); }
+  .modal-foot > span.muted { flex: 1 1 100%; font-size: var(--fs-xs); text-align: center; }   /* the draft-only note takes its own line; the buttons share the next */
+  .chips { gap: var(--gap-tap); }
+  .schip { min-height: var(--tap); }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------

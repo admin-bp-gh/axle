@@ -69,9 +69,49 @@ function seed(dbPath, phase) {
         d.prepare("UPDATE work_items SET email_text = ? WHERE id = 1").run(longText);
       }
     }
+    if (String(phase) === "3") seedPhase3(d);
   } finally {
     d.close();
   }
+}
+
+// Phase 3 (mobile plan 3.7, C1 / C4):
+//  - 120 extra done work_items, ids 100 to 219, each a copy of fixture row 6's columns with
+//    status 'done', mailbox 'info', subject "Done fixture N" and its own conversation_key
+//    (UNIQUE(mailbox, conversation_key)). updated_at steps back one minute per id from
+//    2026-06-05 12:00, all older than fixture 6, so the Done tab's ORDER BY updated_at DESC
+//    is deterministic: item 6, then 100, 101, ... 219 (121 done items: pages of 50, 50, 21).
+//  - item 300 "Forced 500 fixture", a copy of item 1 (status ready, so its card sits in the
+//    Open tab where a tap can reach it). GET /item/300 is made to throw by extra-stubs.js
+//    (AXLE_HARNESS_FAIL_ITEM=300, set by bootServer for phase 3); see the note there.
+//  - item 8 (fixture "new") is left as is; no 'investigating' row (that is Phase 4).
+//  - The sync lock is NOT seeded here: server.js clears sync_state.running on startup
+//    ("stuckSync", server.js:67), so a lock written before the boot never survives it.
+//    harness/mobile/phase-3.js sets and clears sync_state.running directly in the running
+//    server's DB (ctx.dbPath) around the assertions that need it, so the walk screenshots
+//    stay non-syncing.
+function seedPhase3(d) {
+  const cols = d.prepare("PRAGMA table_info(work_items)").all().map((c) => c.name);
+  const OVERRIDE = new Set(["id", "status", "mailbox", "subject", "conversation_key", "latest_message_id", "updated_at", "created_at"]);
+  const copy = cols.filter((c) => !OVERRIDE.has(c));
+  const insDone = d.prepare(
+    "INSERT INTO work_items (id, status, mailbox, subject, conversation_key, latest_message_id, updated_at, created_at, " + copy.join(", ") + ") " +
+    "SELECT ?, 'done', 'info', ?, ?, ?, ?, ?, " + copy.join(", ") + " FROM work_items WHERE id = 6"
+  );
+  const base = Date.parse("2026-06-05T12:00:00Z");
+  const sqlTs = (ms) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+  for (let i = 0; i < 120; i++) {
+    const id = 100 + i;
+    const ts = sqlTs(base - i * 60000);
+    insDone.run(id, "Done fixture " + (i + 1), "done-fixture|" + id, "MSGD" + id, ts, ts);
+  }
+  const insFail = d.prepare(
+    "INSERT INTO work_items (id, subject, conversation_key, latest_message_id, " +
+    cols.filter((c) => !["id", "subject", "conversation_key", "latest_message_id"].includes(c)).join(", ") + ") " +
+    "SELECT 300, 'Forced 500 fixture', 'forced-500|300', 'MSG300', " +
+    cols.filter((c) => !["id", "subject", "conversation_key", "latest_message_id"].includes(c)).join(", ") + " FROM work_items WHERE id = 1"
+  );
+  insFail.run();
 }
 
 // Boots fixtures.js + child.js (with the mobile harness's extra module stubs layered on
@@ -93,6 +133,8 @@ async function bootServer(opts) {
   const extraStubs = path.join(__dirname, "extra-stubs.js");
   const priorNodeOptions = process.env.NODE_OPTIONS || "";
   const childEnv = { ...env, NODE_OPTIONS: ("--require " + extraStubs + " " + priorNodeOptions).trim() };
+  // Phase 3 (C4): GET /item/300 throws in the child (extra-stubs.js); other phases never set it.
+  if (String(opts.phase) === "3") childEnv.AXLE_HARNESS_FAIL_ITEM = "300";
   const { proc, port } = await startChild(path.join(tree, "server.js"), childEnv);
 
   let stopped = false;

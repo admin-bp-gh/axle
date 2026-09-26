@@ -212,6 +212,11 @@ const STRINGS = {
     sprocket_f_example: "Example", sprocket_f_also: "Also asked by", sprocket_f_notes: "Notes",
     sprocket_status_new: "New", sprocket_status_approved: "Approved", sprocket_status_in_progress: "In progress",
     sprocket_status_done: "Done", sprocket_status_declined: "Declined",
+    load_more: "Load more (50 of {n})",
+    updates_waiting: "Updates waiting, tap to refresh",
+    searching_loaded: "Searched the {n} loaded emails",
+    retry: "Retry",
+    load_failed_title: "Couldn't load this email",
   },
   nl: {
     inbox: "Postvak", audit: "Audit",
@@ -406,6 +411,11 @@ const STRINGS = {
     sprocket_f_example: "Voorbeeld", sprocket_f_also: "Ook gevraagd door", sprocket_f_notes: "Notities",
     sprocket_status_new: "Nieuw", sprocket_status_approved: "Goedgekeurd", sprocket_status_in_progress: "In behandeling",
     sprocket_status_done: "Klaar", sprocket_status_declined: "Afgewezen",
+    load_more: "Meer laden (50 van {n})",
+    updates_waiting: "Updates beschikbaar, tik om te verversen",
+    searching_loaded: "Gezocht in de {n} geladen e-mails",
+    retry: "Opnieuw proberen",
+    load_failed_title: "Deze e-mail kon niet worden geladen",
   },
 };
 const t = (lang, k) => (STRINGS[lang] && STRINGS[lang][k] != null) ? STRINGS[lang][k]
@@ -724,7 +734,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris18";   // 2026-09-26: mobile Phase 2 (bottom bar, editor, autosave, keyboard)
+const ASSET_V = "polaris19";   // 2026-09-26: mobile Phase 3 (pagination, fragment tabs, compose relocation, error screen, ax-detail)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -746,6 +756,10 @@ function appMenu(lang, user) {
 function page(title, user, body, refreshSec, opts) {
   const lang = langOK(user.lang);
   const isShell = !!(opts && opts.shell);
+  // C5: opts.bodyClass joins the appshell class (e.g. ax-detail on an item deep link)
+  const bodyCls = [isShell ? "appshell" : "", (opts && opts.bodyClass) || ""].filter(Boolean).join(" ");
+  // C2: the empty work panes, restored by Back and by a tab swap
+  const emptyPanes = isShell ? workPanes(`<div class="empty-state"><p class="muted">${esc(t(lang, "shell_select"))}</p></div>`, "") : "";
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
@@ -754,7 +768,7 @@ ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <link rel="stylesheet" href="/assets/components.css?v=${ASSET_V}">
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
 <script src="/assets/htmx.min.js?v=${ASSET_V}" defer></script>
-</head><body${isShell ? ' class="appshell"' : ""}>
+</head><body${bodyCls ? ` class="${esc(bodyCls)}"` : ""}>
 <header><span class="brand">Axle</span><a href="/">${esc(t(lang, "inbox"))}</a><a href="/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="/audit">${esc(t(lang, "audit"))}</a><a href="/sprocket/requests">${esc(t(lang, "sprocket_requests_nav"))}${user.sprocketNew ? ` <span class="hbadge" title="${esc(t(lang, "sprocket_new_badge"))}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : ""}
 <span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>
 <main${isShell ? ' class="wide"' : ""}>${opts && opts.desktopNote ? `<div class="banner desktop-note m-only">${esc(t(lang, "best_on_desktop"))}</div>` : ""}${body}</main>
@@ -762,7 +776,9 @@ ${sprocketWidget(lang)}
 <script>
 // M-09: one phone test shared by the positioner and the splitter
 window.__axPhone = window.matchMedia("(max-width: 1100px)");
-// M-08: a [data-close] row closes its sheet
+${isShell ? `// C2: the empty work panes (Back and tab swaps restore them)
+window.__axEmptyPanes = ${JSON.stringify(emptyPanes)};
+` : ""}// M-08: a [data-close] row closes its sheet
 document.addEventListener("click", function (e) {
   var b = e.target.closest ? e.target.closest("[data-close]") : null;
   if (!b) return;
@@ -880,6 +896,7 @@ function axFoldCheck() {
   }
   function later() { if (!cur || !phone()) return; clearTimeout(cur.timer); cur.timer = setTimeout(write, 600); }
   function flush() { if (cur && cur.timer) write(); }
+  window.__axFlush = flush; window.__axMarkCards = markCards;   // M-58: the in-app Back (Phase 3) flushes and re-marks the cards
   function dropNote() { document.querySelectorAll(".restored-note").forEach(function (n) { n.remove(); }); }
   function btn(txt, fn, cls) { var b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = txt; b.addEventListener("click", fn); return b; }
   function note(F, d, offer) {
@@ -1050,11 +1067,75 @@ document.addEventListener("click", function (e) {
     var tgt = e.detail && e.detail.target;
     if (!wp || !tgt || (tgt !== wp && !wp.contains(tgt))) return;
     var xhr = e.detail && e.detail.xhr;
-    if (ev === "htmx:responseError" && xhr && xhr.responseText) { wp.innerHTML = xhr.responseText; return; }
-    wp.innerHTML = '<div class="empty-state"><p class="muted">' + ${JSON.stringify(esc(t(lang, "load_error")))} +
-      (xhr && xhr.status ? " (HTTP " + xhr.status + ")" : "") + "</p></div>";
+    // the server body (pane-shaped error from the middleware or the item 404); wire its Retry
+    if (ev === "htmx:responseError" && xhr && xhr.responseText) {
+      wp.innerHTML = xhr.responseText;
+      if (window.htmx && window.htmx.process) window.htmx.process(wp);
+      document.body.classList.add("ax-detail");
+      return;
+    }
+    // C4 / M-51: the same detail-shaped error screen the server renders, built here
+    wp.innerHTML = ${JSON.stringify(workPanes(`<div class="errbox" role="alert"><span class="erric" aria-hidden="true">!</span><h2>${esc(t(lang, "load_failed_title"))}</h2><p class="muted" data-ax-errmsg></p></div>`, "", { back: t(lang, "back_inbox"), title: t(lang, "load_failed_title"), lang }))};
+    var msg = wp.querySelector("[data-ax-errmsg]");
+    if (msg) { msg.removeAttribute("data-ax-errmsg"); msg.textContent = ${JSON.stringify(t(lang, "load_error"))} + (xhr && xhr.status ? " (HTTP " + xhr.status + ")" : ""); }
+    var rc = e.detail && e.detail.requestConfig, pi = e.detail && e.detail.pathInfo;
+    var path = pi && (pi.finalRequestPath || pi.requestPath);
+    var box = wp.querySelector(".errbox");
+    // Retry only for a GET, never for a POST
+    if (box && path && rc && rc.verb === "get") {
+      var rb = document.createElement("button");
+      rb.type = "button"; rb.className = "retry"; rb.textContent = ${JSON.stringify(t(lang, "retry"))};
+      rb.addEventListener("click", function () { htmx.ajax("GET", path, { target: "#workpane", swap: "innerHTML" }); });
+      box.appendChild(rb);
+    }
+    document.body.classList.add("ax-detail");
   });
 });
+// M-07 / M-17 / M-18 / M-20: phone list and detail navigation, plus the tab swap reset (C2)
+(function () {
+  function phone() { return !!(window.__axPhone && window.__axPhone.matches); }
+  function srcElt(e) { var d = e.detail || {}; return (d.requestConfig && d.requestConfig.elt) || d.elt || null; }
+  function isCard(el) { return !!(el && el.closest && el.closest("a.qcard")); }
+  function resetWork() {
+    var wp = document.getElementById("workpane");
+    if (!wp || typeof window.__axEmptyPanes !== "string") return false;
+    wp.innerHTML = window.__axEmptyPanes;
+    document.body.classList.remove("ax-detail");
+    document.title = "Inbox - Axle";
+    return true;
+  }
+  // card tap: remember the list scroll and URL
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    if (!phone() || !isCard(srcElt(e))) return;
+    if (location.pathname.indexOf("/item/") === 0) return;
+    window.__axList = { y: window.scrollY, url: location.pathname + location.search };
+  });
+  // the opened email starts at the top
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var tg = e.detail && e.detail.target;
+    if (!phone() || !tg || tg.id !== "workpane" || !isCard(srcElt(e))) return;
+    window.scrollTo(0, 0);
+  });
+  // Back: back to the list in place, never history.back()
+  document.addEventListener("click", function (e) {
+    if (!phone() || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest ? e.target.closest("a.m-back:not(.m-ctxback)") : null;
+    if (!a) return;
+    var L = window.__axList;
+    if (window.__axFlush) window.__axFlush();   // M-58: the last keystrokes reach localStorage before the pane empties
+    if (!resetWork()) return;
+    e.preventDefault();
+    window.scrollTo(0, (L && L.y) || 0);
+    history.pushState({ htmx: true }, "", (L && L.url) || "/");
+    if (window.__axMarkCards) window.__axMarkCards();
+  });
+  // a tab swap empties the work panes at every width
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var tg = e.detail && e.detail.target, el = srcElt(e);
+    if (!tg || tg.id !== "queuepane" || !el || !el.closest || !el.closest("a.qtab")) return;
+    resetWork();
+  });
+})();
 // --- Loading feedback singletons (UX round, 2026-06-11): the user must always see
 // that something is happening. Presentation only - no request is changed.
 // (1) Queue-card click -> work-pane swap: spinner on the clicked card + a dimmed
@@ -1167,7 +1248,7 @@ const workPanes = (centerHtml, contextHtml, opts) => {
   const backInner = back ? `<span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">${esc(back)}</span>${title ? `<span class="m-back-title">${esc(title)}</span>` : ""}` : "";
   // M-36: the context sheet's "Back to email" bar; id="ctx" is the no-JS :target fallback
   const ctxBack = back ? `<a class="m-back m-ctxback m-only" id="ctx" href="#" data-ctx-close><span class="m-back-ic" aria-hidden="true">&larr;</span>${esc(t(lang, "back_to_email"))}</a>` : "";
-  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/" onclick="if(window.history.length>1){history.back();return false;}">${backInner}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
+  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/">${backInner}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
 <aside class="pane-context">${ctxBack}${contextHtml}</aside>`;
 };
 

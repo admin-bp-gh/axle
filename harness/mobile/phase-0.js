@@ -69,7 +69,7 @@ async function assert(ctx) {
       // target lives in: .actionbar is itself sticky and #composeModal is the fixed overlay
       // that holds .modal-foot, so both would trivially intersect their own target.
       // Sheets (.menu-list / .chipmenu-list) are the bar's own menus, not overlays over it.
-      const isOverlay = (f) => f.position === "fixed" && f.label !== "#composeModal" && !/^div\.modal(\.|$)/.test(f.label) && !/menu-list/.test(f.label);
+      const isOverlay = (f) => f.position === "fixed" && f.label !== "#composeModal" && !/^div\.modal(\.|$)/.test(f.label) && !/menu-list/.test(f.label) && !/^div\.actionbar(\.|$)/.test(f.label);   // Phase 2 makes the bar itself fixed
       const fixedReady = ((readyEntry && readyEntry.fixedSticky) || []).filter(isOverlay);
       const fixedCompose = ((composeEntry && composeEntry.fixedSticky) || []).filter(isOverlay);
       const intersects = (a, b) => !!a && !!b && a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;

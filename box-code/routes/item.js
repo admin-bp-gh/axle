@@ -558,10 +558,16 @@ app.get("/item/:id", async (req, res) => {
   const pickable = knownAddrs.filter((e) => e.source !== "typed");
   const typedEntry = knownAddrs.find((e) => e.source === "typed");
   const checkedAddr = pickable.some((e) => e.addr === sendTo) ? sendTo : (pickable[0] || {}).addr;
+  // M-28 / M-29: phone-only recipient line inside the caret summary (the summary stays the tap target)
+  const recipNeed = !sendTo || fwdNeedsRecipient;
+  const curSrc = (knownAddrs.find((e) => e.addr === sendTo) || {}).source || (typedTo ? "typed" : (kind === "reply" && !w.recipient ? "sender" : "onfile"));
+  const recipLine = recipNeed
+    ? `<span class="m-only recip-line need"><b class="to-addr">${esc(t(lang, "recip_confirm_btn"))}</b> <span class="src">${esc(t(lang, "recip_none_yet"))}</span></span>`
+    : `<span class="m-only recip-line"><span class="to-label">${esc(t(lang, "to_label"))}</span> <b class="to-addr">${esc(sendTo)}</b> <span class="src">${esc(srcLabel[curSrc] || curSrc)}</span>${redirected ? `<span class="chg">${esc(t(lang, "recip_changed_pill"))}</span>` : ""}</span>`;
 
   const recipPop = (editable && !w.injection_flag) ? `
     <details class="menu recip-pop">
-      <summary class="btn send-caret" title="${esc(t(lang, "recip_change"))}" aria-label="${esc(t(lang, "recip_change"))}">&#9662;</summary>
+      <summary class="btn send-caret" title="${esc(t(lang, "recip_change"))}" aria-label="${esc(t(lang, "recip_change"))}">${recipLine}&#9662;</summary>
       <div class="menu-list">
         ${typedEntry ? `<p class="recip-current muted">${esc(t(lang, "recip_current"))}: <b>${esc(typedEntry.addr)}</b> &mdash; ${esc(srcLabel.typed)}</p>` : ""}
         <form method="post" action="/item/${w.id}/recipient" class="recip-known">
@@ -596,7 +602,7 @@ app.get("/item/:id", async (req, res) => {
        </span>${changedPill}`
     : w.injection_flag ? `<span class="note">${esc(t(lang, "send_disabled_inj"))}</span>`
     : needsRecipient && recipPop
-      ? `<span class="send-split"><span class="btn send-stack recip-needed"><span class="send-now">${esc(t(lang, "recip_confirm_btn"))}</span><span class="send-to">${esc(t(lang, "recip_none_yet"))}</span></span>${recipPop}</span>`
+      ? `<span class="send-split"><span class="btn send-stack recip-needed"><span class="send-now">${esc(t(lang, "recip_confirm_btn"))}</span><span class="send-to">${esc(t(lang, "recip_none_yet"))}</span></span><button type="button" class="m-only send send-ph" disabled>${esc(t(lang, "send_now"))}</button>${recipPop}</span>`
     : isContactForm ? `<span class="note">${esc(t(lang, w.recipient ? "cf_send_not_enabled" : "cf_confirm_first"))}</span>`
     : isRN ? `<span class="note">${esc(t(lang, w.recipient ? "cf_send_not_enabled" : "cf_confirm_first"))}</span>`
     : isCompose ? `<span class="note">${esc(t(lang, "compose_draft_only"))}</span>` : "";
@@ -604,7 +610,13 @@ app.get("/item/:id", async (req, res) => {
   // (grouped on the right alongside the overflow, which keeps the rarer closes). Posts to the
   // same /status route as the old menu item — no route or safety change.
   const markDoneBtn = `<form method="post" action="/item/${w.id}/status"><button name="to" value="done" title="${esc(t(lang, "done_tip"))}">${esc(t(lang, "mark_done"))}</button></form>`;
+  // M-31 / M-32: phone-only mirror rows lead the overflow sheet; same forms, routes and confirm text
   const closeMenu = `<details class="menu"><summary class="btn" title="${esc(t(lang, "more_actions"))}">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary><div class="menu-list">
+      <button class="m-only" form="workform" name="action" value="redraft"><b>${esc(t(lang, "save_redraft"))}</b><span>${esc(t(lang, "redraft_hint"))}</span></button>
+      <form class="m-only" method="post" action="/item/${w.id}/status"><button name="to" value="done"><b>${esc(t(lang, "mark_done"))}</b><span>${esc(t(lang, "done_tip"))}</span></button></form>
+      ${editable ? ownerOpts.map(ownerOption).filter((x) => x.confirm).map((x) => `<form class="m-only" method="post" action="/item/${w.id}/owner">
+        <button name="owner" value="${esc(x.value)}" data-confirm="${esc(x.confirm)}"><b>${esc(t(lang, "owner"))}: ${esc(x.value)}</b><span>${esc(t(lang, "owner_handover_hint"))}</span></button></form>`).join("") : ""}
+      <button class="m-only" form="workform" name="action" value="save"><b>${esc(t(lang, "save"))}</b><span>${esc(t(lang, "save_now"))}</span></button>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="phone"><b>${esc(t(lang, "mark_phone"))}</b><span>${esc(t(lang, "phone_tip"))}</span></button></form>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="archived"><b>${esc(t(lang, "archive"))}</b><span>${esc(t(lang, "archive_tip"))}</span></button></form>
       ${!isCompose ? `<form method="get" action="/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, require("../outlook-block.js").active() ? "block_tip_outlook" : "block_tip"))}</span></button></form>` : ""}
@@ -614,7 +626,7 @@ app.get("/item/:id", async (req, res) => {
   // Bar: left cluster works the reply (Send / Save / Save & redraft — the redraft note is now the
   // button's tooltip, so the bar no longer wraps on it); right cluster closes the item.
   const actionBar = busy ? "" : ["done", "archived"].includes(w.status)
-    ? `<div class="actionbar"><form method="post" action="/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
+    ? `<div class="actionbar closed"><form method="post" action="/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
     : `<div class="actionbar">
         ${sendBtn}
         <button form="workform" name="action" value="save">${esc(t(lang, "save"))}</button>

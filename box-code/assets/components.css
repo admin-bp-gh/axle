@@ -662,6 +662,60 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .cusxbtn { display: flex; align-items: center; gap: var(--s1); width: 100%; min-height: calc(var(--bar-h) + env(safe-area-inset-top));
     padding: env(safe-area-inset-top) var(--s3) 0; font-size: var(--fs-md); font-weight: 600; color: var(--ink); }
   .cusback-label { display: inline; }
+
+  /* ---------- mobile Phase 2 ---------- */
+  /* M-28 / M-30: the thumb-zone bar, fixed above the keyboard (--kb); row 1 recipient line, row 2 Send and "..." */
+  .actionbar { position: fixed; left: 0; right: 0; bottom: var(--kb); margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;
+    padding: var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--tap); gap: var(--gap-tap); align-items: stretch; }
+  .actionbar .send-split { display: contents; }
+  .actionbar details.recip-pop { grid-column: 1 / -1; grid-row: 1; display: block; min-width: 0; }
+  /* M-28: the caret summary becomes the full-width recipient line; .send-caret uses !important on desktop */
+  .actionbar details.recip-pop > summary.send-caret { display: flex !important; width: 100%; min-height: var(--tap); padding: 6px var(--s3) !important; margin: 0;
+    border-radius: var(--r-ctl); background: var(--surface) !important; border: 1px solid var(--border-2) !important; color: var(--ink);
+    font-size: var(--fs-base); font-weight: 400; text-align: left; align-items: center; justify-content: space-between; gap: var(--s2); }
+  .actionbar details.recip-pop[open] > summary.send-caret { background: var(--surface) !important; }
+  .recip-line { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: normal; line-height: 1.3; }
+  .recip-line .to-label { color: var(--muted); }
+  .recip-line .src, .recip-line .chg { display: inline-block; margin-left: var(--s1); padding: 1px 6px; border-radius: var(--r-chip); font-size: var(--fs-xs); font-weight: 400; white-space: nowrap; }
+  .recip-line .src { color: var(--muted); background: var(--surface-2); border: 1px solid var(--border-sub); }
+  .recip-line .chg { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-fg); font-weight: 600; }
+  /* M-29: no recipient yet, the line turns amber */
+  .actionbar details.recip-pop > summary.send-caret:has(.recip-line.need) { background: var(--warn-bg) !important; border-color: var(--warn-fg) !important; color: var(--warn-fg); font-weight: 600; }
+  .recip-line.need .src { margin: 0; padding: 0; border: 0; background: none; color: inherit; font-size: inherit; font-weight: inherit; white-space: normal; }
+  /* M-30: Send full width in row 2; the truncated address is replaced by the line above */
+  .actionbar .send-split > button.send, .actionbar button.send { grid-column: 1; grid-row: 2; width: 100%; min-height: var(--tap); margin: 0;
+    border-radius: var(--r-ctl); font-size: var(--fs-md); flex-direction: row; align-items: center; justify-content: center; }
+  .actionbar .send .send-to { display: none; }
+  .actionbar .send-ph { grid-column: 1; grid-row: 2; }
+  .actionbar button.send-ph:disabled { background: var(--surface-2); border-color: var(--border-2); color: var(--faint); cursor: default; }
+  .actionbar .recip-needed { display: none; }
+  /* M-31: "..." is a 44x44 square in row 2; its label stays for screen readers via the title */
+  .actionbar > details.menu:not(.recip-pop) { grid-column: 2; grid-row: 2; display: block; }
+  .actionbar > details.menu:not(.recip-pop) > summary.btn { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; margin: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 0; overflow: hidden; }
+  .actionbar > details.menu:not(.recip-pop) > summary.btn::after { content: "\22EF"; font-size: 22px; line-height: 1; color: var(--ink); }
+  /* M-32: Save, Save & redraft, Mark done and the pill live in the overflow sheet and the recipient line */
+  .actionbar > button[value=save], .actionbar > button[value=redraft], .actionbar > .spacer, .actionbar > form, .actionbar > .recip-pill { display: none; }
+  .actionbar.closed > form { display: block; grid-column: 1 / -1; }
+  .actionbar.closed > form > button { width: 100%; min-height: var(--tap); font-size: var(--fs-md); }
+  .actionbar > .note { grid-column: 1 / -1; grid-row: 1; align-self: center; margin: 0; font-size: var(--fs-sm); }
+  .menu-list button:has(span) b, .menu-list button:has(span) span { white-space: normal; text-align: left; }
+  /* the last card clears the two-row bar */
+  .pane-center .pane-inner { padding-bottom: calc(120px + env(safe-area-inset-bottom) + 16px); }
+
+  /* M-26 / M-27: 16px editor that grows with its text (ui.js sets the height), no inner scroll */
+  #replybox { min-height: 0; height: auto; resize: none; overflow: hidden; font-size: var(--fs-input); line-height: 1.5; }
+  textarea.ans { resize: none; overflow: hidden; font-size: var(--fs-input); }
+
+  /* M-56: the "Unsaved edits restored" note and the Restore / Discard offer */
+  .restored-note { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s2); padding: var(--s1) var(--s1) var(--s1) var(--s3);
+    border-radius: var(--r-ctl); background: var(--info-bg); color: var(--info-fg); font-size: var(--fs-base); font-weight: 600; }
+  .restored-note .rn-text { flex: 1 1 12em; min-width: 0; }
+  .restored-note button.mini { min-height: var(--tap); padding: 0 var(--s3); font-size: var(--fs-md); }
+  .restored-note button.rn-x { width: var(--tap); padding: 0; border: 0; background: none; color: inherit; font-size: 22px; }
+  /* M-58: "Draft kept" on a queue card */
+  .badge.draft-kept { background: var(--info-bg); color: var(--info-fg); }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------

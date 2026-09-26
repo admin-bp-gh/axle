@@ -1,5 +1,69 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE PHASE 2 BUILT, 26 Sep 2026: two-row bottom bar with the full recipient line, Send
+> and an overflow sheet, inline 16px auto-growing editor, local autosave, keyboard tracking.
+> Committed on `axle/mobile`, not deployed; ships with the single final deploy. No safety path
+> touched; the send confirm handler is byte-identical.**
+>
+> **What happened.** Phase 1B passed Brad's gate. Phase 2 (plan 3.6) closes M-26, M-27, M-28,
+> M-29, M-30, M-31, M-32, M-33, M-56, M-57, M-58. `ASSET_V` `polaris18`. Contract changes:
+> none (no route, field name, form action or value change; the mirror rows post existing
+> forms with identical attributes; Q2 autosave phone-only with Save kept as an overflow row;
+> Q3 native confirm only).
+>
+> **The fix.** `item.js`: a phone-only recipient line inside the existing `summary.send-caret`
+> ("To: full address" plus its source label and a "changed" tag, or amber "Confirm recipient:
+> no recipient yet"), so the whole line is the tap target and the popover forms are untouched
+> (M-29, M-31); a phone-only disabled Send placeholder in the no-recipient state (no form, no
+> route); phone-only mirror rows at the top of the More actions sheet: Save & redraft and Save
+> (`form="workform"`, same `name=action` values), Mark done (same `/status` form), and one
+> owner-handover row per option with a forward target, carrying the same `data-confirm` text
+> as `ownerOption()` (the only `data-confirm` added, listed by the K7 grep); the reopen bar
+> gets `.closed`. `components.css`, phone block: `.actionbar` fixed at `bottom: var(--kb)` with
+> safe-area padding as a two-column grid, `.send-split` as `display: contents` so the
+> recipient line spans row 1, Send fills row 2 with its truncated `.send-to` hidden, and the
+> "..." (44x44, drawn by CSS on the existing summary) takes the corner; direct-child Save,
+> Save & redraft, spacer, Mark done and the pill hidden on the phone (they live in the sheet);
+> injection and not-enabled notes take row 1; `.pane-inner` reserves the bar's height.
+> `#replybox` and `textarea.ans` at 16px, `resize: none`, no inner scroll. `ui.js`: page-script
+> block (phone only) with auto-grow on input, restore and load; the `--kb` tracker from
+> `visualViewport` (`window.__axKb()` for the harness); autosave to `localStorage`
+> `axle.draft.<id>` (reply, subject, feedback, the server values as `base`, a timestamp),
+> debounced 600ms and flushed on `pagehide` and `visibilitychange`; restore after every load
+> and `#workpane` swap with an "Unsaved edits restored" note when `base` matches, or a
+> Restore / Discard offer when the server text changed since, so stale local text never
+> silently replaces a newer draft; a `sessionStorage` pending marker on `#workform` submit
+> clears the key on the next render when the posted text landed (a refused send lands on a
+> page without `#workpane`, so nothing is cleared); side actions (recipient, language, owner,
+> attach) reload with `base` intact, so the text comes back (M-57); keys older than 14 days
+> pruned; "Draft kept" tag on queue cards with a stored key (M-58). Nothing is written at
+> 1440. Seven strings (EN and NL, 357 keys each): restored, restore_offer, restore, discard,
+> draft_kept, to_label, save_now. One deviation: the "More actions" summary markup is
+> unchanged (wrapping its label broke desktop DOM equivalence); the phone "..." is CSS.
+>
+> **Proof.** K1 clean. K4: transport fields and DB dumps byte-identical (120 responses). K5:
+> 110 assertions pass at 393 and 375 (phases 0, 1A, 1B, 2), 430 walked for captures:
+> `design-reference/mobile-audit/phase-2/`. Measured: bar 113px (was 174), reading area 691 at
+> 393 and 651 at 375 (was 503 and 473); Send raises the native confirm with the `data-confirm`
+> text and no request leaves; the autosave scenarios (restore, recipient redirect, changed
+> server draft, Save clears, refusal keeps, Draft kept, nothing at 1440) all scripted. K6:
+> zero pixel, layout and DOM differences at 1440 and 1101. K7: three files changed, no new
+> box-code file, `audit(` counts unchanged, handler hash unchanged. One Phase 0 assertion
+> refined: the bar is now itself fixed, so it is excluded from its own overlap check.
+>
+> **Known edges, recorded.** Mark done or Archive from the sheet does not clear a stored
+> draft (only a `#workform` submit does), so "Draft kept" can show on a closed item until the
+> 14-day prune; "Reset to AI draft" and inline-image insert change the reply without an
+> `input` event, so they are autosaved at the next keystroke; the recipient summary keeps its
+> existing `aria-label` ("change recipient"), so a screen reader does not read the line text.
+> None of these touches a route; candidates for the post-deploy follow-up.
+>
+> **Files:** `box-code/routes/item.js`, `box-code/views/ui.js`, `box-code/assets/components.css`;
+> repo-only `harness/mobile/{phase-2,phase-0,scenes}.js`, `harness/harness-mobile.js`,
+> `design-reference/mobile-audit/phase-2/`. **Deploy notes:** committed on `axle/mobile`, not
+> deployed; ships with the single final deploy. **Next up:** Brad's Phase 2 gate, then
+> Phase 3, which stops before building for his explicit OK on C1 to C5.
+
 > **★ MOBILE PHASE 1B BUILT, 26 Sep 2026: item app bar, state-driven order, folded email,
 > context sheet, customer page. Committed on `axle/mobile`, not deployed; ships with the single
 > final deploy. No safety path touched.**

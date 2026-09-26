@@ -36,6 +36,10 @@ const SCENES = [
   { id: "item-context", path: "/item/1", ctxOpen: true },
   { id: "item-customer-page", path: "/item/1", ctxOpen: true, customerModal: true },
   { id: "item-expanded", path: "/item/1", msgMore: true },
+  // Phase 2 scenes (phase-2.js assertions)
+  { id: "item-overflow", path: "/item/1", open: ".actionbar > details.menu:not(.recip-pop)" },
+  { id: "item-restored", path: "/item/1", typeReplyThenReload: true },
+  { id: "item-keyboard", path: "/item/1", kbStub: true },
 ];
 
 function findScene(id) {
@@ -124,6 +128,30 @@ async function openScene(page, baseUrl, scene) {
     await page.click(".msgmore").catch(() => {});
     await new Promise((r) => setTimeout(r, 150));
     menu = { selector: ".msgmore", method: "click" };
+  }
+
+  // Phase 2 (M-56/M-57): type into the auto-growing reply, let autosave's 600ms debounce
+  // flush to localStorage, then reload so the restore path (and its "Unsaved edits
+  // restored" note) runs for the walk's screenshot.
+  if (scene.typeReplyThenReload) {
+    await page.click("#replybox").catch(() => {});
+    await page.type("#replybox", " Autosave walk text", { delay: 5 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1000));
+    await page.reload({ waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 150));
+    menu = { selector: "#replybox", method: "typeReplyThenReload" };
+  }
+
+  // Phase 2 (M-30 / M-33): stub visualViewport, run the --kb tracker, then focus the reply
+  // box so the walk's screenshot shows the bar docked above the stubbed keyboard.
+  if (scene.kbStub) {
+    await page.evaluate(() => {
+      Object.defineProperty(window, "visualViewport", { value: { height: 552, offsetTop: 0, addEventListener() {} }, configurable: true });
+      if (typeof window.__axKb === "function") window.__axKb();
+    });
+    await page.focus("#replybox").catch(() => {});
+    await new Promise((r) => setTimeout(r, 100));
+    menu = { selector: "#replybox", method: "kbStub" };
   }
 
   if (scene.customerModal) {

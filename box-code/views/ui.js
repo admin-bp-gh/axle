@@ -171,6 +171,10 @@ const STRINGS = {
     show_translation: "Show translation", hide_translation: "Hide translation",
     earlier_msgs: "Earlier in this conversation", footer_fold: "Signature & footer",
     inline_image: "inline image", more_actions: "More actions",
+    // mobile Phase 2 (M-28, M-32, M-56, M-58)
+    restored: "Unsaved edits restored", restore_offer: "You have unsaved edits from {t}. The draft has changed since.",
+    restore: "Restore", discard: "Discard", draft_kept: "Draft kept", to_label: "To:",
+    save_now: "Save your edits without redrafting",
     // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
     menu: "Menu", close: "Close", cancel: "Cancel", filters: "Filters", sort: "Sort", sync: "Mail",
     signed_in_as: "Signed in as", no_matches: "No matches for '{q}'", clear_search: "Clear search",
@@ -361,6 +365,10 @@ const STRINGS = {
     show_translation: "Toon vertaling", hide_translation: "Verberg vertaling",
     earlier_msgs: "Eerder in dit gesprek", footer_fold: "Handtekening & voettekst",
     inline_image: "afbeelding in tekst", more_actions: "Meer acties",
+    // mobile Phase 2 (M-28, M-32, M-56, M-58)
+    restored: "Niet-opgeslagen wijzigingen hersteld", restore_offer: "Je hebt niet-opgeslagen wijzigingen van {t}. De tekst is sindsdien veranderd.",
+    restore: "Herstellen", discard: "Weggooien", draft_kept: "Concept bewaard", to_label: "Aan:",
+    save_now: "Bewaar je wijzigingen zonder opnieuw op te stellen",
     // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
     menu: "Menu", close: "Sluiten", cancel: "Annuleren", filters: "Filters", sort: "Sorteren", sync: "Mail",
     signed_in_as: "Ingelogd als", no_matches: "Geen resultaten voor '{q}'", clear_search: "Zoekopdracht wissen",
@@ -716,7 +724,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris17";   // 2026-09-26: mobile Phase 1B (item brief, folds, context sheet, customer page)
+const ASSET_V = "polaris18";   // 2026-09-26: mobile Phase 2 (bottom bar, editor, autosave, keyboard)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -816,6 +824,166 @@ function axFoldCheck() {
   if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", axFoldCheck); else axFoldCheck();
   window.addEventListener("load", axFoldCheck);
+})();
+// M-26 / M-27 / M-33 / M-56 / M-57 / M-58: phone-only editor auto-grow, keyboard tracker and local autosave.
+// Every storage call is wrapped and gated on __axPhone at the time of the call; nothing is posted.
+(function () {
+  var S = ${JSON.stringify({ restored: t(lang, "restored"), restore_offer: t(lang, "restore_offer"), restore: t(lang, "restore"), discard: t(lang, "discard"), draft_kept: t(lang, "draft_kept"), close: t(lang, "close") })};
+  var PH = window.__axPhone, PRE = "axle.draft.", PEND = "axle.pending.", MAXAGE = 14 * 864e5, CR = String.fromCharCode(13);
+  var FSEL = "#replybox, textarea.ans[name=feedback], input[name=cf_subject], input[name=return_subject], input[name=compose_subject]";
+  var cur = null;   // { id, base, timer } for the item on screen
+  function phone() { return !!(PH && PH.matches); }
+  function ls(fn) { try { return fn(window.localStorage); } catch (e) { return null; } }
+  function ss(fn) { try { return fn(window.sessionStorage); } catch (e) { return null; } }
+  function nz(v) { return v == null ? null : String(v).split(CR).join("").trim(); }
+  // M-26 / M-27: the editor grows with its text, no inner scroll
+  function grow(el) { if (!el || !phone()) return; el.style.height = "auto"; el.style.height = el.scrollHeight + 2 + "px"; }
+  function growAll() { document.querySelectorAll("#replybox, textarea.ans").forEach(grow); }
+  // M-33: --kb follows the on-screen keyboard (the bar and open sheets sit at bottom: var(--kb))
+  function kb() {
+    var vv = window.visualViewport;
+    if (!phone() || !vv) return 0;
+    var v = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+    document.documentElement.style.setProperty("--kb", v + "px");
+    return v;
+  }
+  window.__axKb = kb;
+  if (window.visualViewport) { window.visualViewport.addEventListener("resize", kb); window.visualViewport.addEventListener("scroll", kb); }
+  // M-56: autosave of the reply, subject and feedback, keyed by the item id in #workform's action
+  function fields() {
+    var f = document.getElementById("workform");
+    return { reply: document.getElementById("replybox"),
+      subject: f ? f.querySelector("input[name=cf_subject], input[name=return_subject], input[name=compose_subject]") : null,
+      feedback: f ? f.querySelector("textarea.ans[name=feedback]") : null };
+  }
+  function vals(F) { return { reply: F.reply ? F.reply.value : null, subject: F.subject ? F.subject.value : null, feedback: F.feedback ? F.feedback.value : null }; }
+  // the server-rendered values (defaultValue is immune to the browser's own form restore)
+  function defs(F) { return { reply: F.reply ? F.reply.defaultValue : null, subject: F.subject ? F.subject.defaultValue : null, feedback: F.feedback ? F.feedback.defaultValue : null }; }
+  function same(a, b) { return !!a && !!b && nz(a.reply) === nz(b.reply) && nz(a.subject) === nz(b.subject) && nz(a.feedback) === nz(b.feedback); }
+  function put(F, d) { ["reply", "subject", "feedback"].forEach(function (k) { if (F[k] && d[k] != null) F[k].value = d[k]; }); growAll(); }
+  function idFrom(s) { var m = new RegExp("^/item/([0-9]+)(/|$)").exec(s || ""); return m ? m[1] : null; }
+  function itemId() {
+    var f = document.getElementById("workform");
+    if (f) return idFrom(f.getAttribute("action"));
+    if (!document.querySelector("#workpane .has-item")) return null;
+    var el = document.querySelector("#workpane form[action^='/item/'], #workpane [hx-get^='/item/']");
+    return el ? idFrom(el.getAttribute("action") || el.getAttribute("hx-get")) : null;
+  }
+  function write() {
+    if (!cur) return;
+    clearTimeout(cur.timer); cur.timer = null;
+    if (!phone()) return;
+    var F = fields(); if (!F.reply) return;
+    var v = vals(F), k = PRE + cur.id, base = cur.base;
+    if (same(v, base)) { ls(function (s) { s.removeItem(k); }); return; }
+    ls(function (s) { s.setItem(k, JSON.stringify({ reply: v.reply, subject: v.subject, feedback: v.feedback, base: base, t: Date.now() })); });
+  }
+  function later() { if (!cur || !phone()) return; clearTimeout(cur.timer); cur.timer = setTimeout(write, 600); }
+  function flush() { if (cur && cur.timer) write(); }
+  function dropNote() { document.querySelectorAll(".restored-note").forEach(function (n) { n.remove(); }); }
+  function btn(txt, fn, cls) { var b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = txt; b.addEventListener("click", fn); return b; }
+  function note(F, d, offer) {
+    dropNote();
+    var box = F.reply.closest(".box"); if (!box) return;
+    var n = document.createElement("div"); n.className = "restored-note m-only"; n.setAttribute("role", "status");
+    var p = document.createElement("span"); p.className = "rn-text";
+    if (offer) {
+      var dt = new Date(d.t || 0);
+      p.textContent = S.restore_offer.replace("{t}", ("0" + dt.getHours()).slice(-2) + ":" + ("0" + dt.getMinutes()).slice(-2));
+    } else p.textContent = S.restored;
+    n.appendChild(p);
+    if (offer) {
+      // Restore puts the local text back on top of the new server text and re-bases on it
+      n.appendChild(btn(S.restore, function () { put(F, d); if (cur) { cur.base = defs(F); write(); } dropNote(); }, "mini primary rn-restore"));
+      n.appendChild(btn(S.discard, function () { if (cur) { var k = PRE + cur.id; ls(function (s) { s.removeItem(k); }); } dropNote(); markCards(); }, "mini rn-discard"));
+    } else {
+      var x = btn(String.fromCharCode(215), dropNote, "mini rn-x"); x.setAttribute("aria-label", S.close); n.appendChild(x);
+    }
+    var h = box.querySelector(".boxhead");
+    box.insertBefore(n, h ? h.nextSibling : box.firstChild);
+  }
+  // Runs after every render of an item (load or #workpane swap): clear after a landed submit, then restore
+  function onRender() {
+    cur = null;
+    if (!phone()) return;
+    var id = itemId(), F = fields();
+    if (id) {
+      var p = ss(function (s) { return s.getItem(PEND + id); });
+      if (p != null) {
+        if (!F.reply || nz(F.reply.defaultValue) === nz(p)) ls(function (s) { s.removeItem(PRE + id); });
+        ss(function (s) { s.removeItem(PEND + id); });
+      }
+    }
+    if (!id || !F.reply) return;
+    cur = { id: id, base: defs(F), timer: null };
+    growAll();
+    var raw = ls(function (s) { return s.getItem(PRE + id); }), d = null;
+    try { d = raw ? JSON.parse(raw) : null; } catch (e) { d = null; }
+    if (!d) return;
+    if (same(d, cur.base)) { ls(function (s) { s.removeItem(PRE + id); }); return; }
+    if (same(d.base, cur.base)) { put(F, d); note(F, d, false); }
+    else note(F, d, true);   // the server text changed since: offer, never overwrite
+  }
+  function prune() {
+    if (!phone()) return;
+    ls(function (s) {
+      var now = Date.now(), dead = [];
+      for (var i = 0; i < s.length; i++) {
+        var k = s.key(i); if (!k || k.indexOf(PRE) !== 0) continue;
+        var d = null; try { d = JSON.parse(s.getItem(k)); } catch (e) { d = null; }
+        if (!d || !d.t || now - d.t > MAXAGE) dead.push(k);
+      }
+      dead.forEach(function (k) { s.removeItem(k); });
+    });
+  }
+  // M-58: "Draft kept" on the queue card of every item with a stored draft
+  function markCards() {
+    if (!phone()) return;
+    document.querySelectorAll("a.qcard[href^='/item/']").forEach(function (a) {
+      var h = a.getAttribute("href") || "", id = idFrom(h);
+      if (!id || h !== "/item/" + id) return;
+      var has = !!ls(function (s) { return s.getItem(PRE + id) != null; });
+      var ex = a.querySelector(".draft-kept");
+      if (has && !ex) {
+        var b = a.querySelector(".q-badges"); if (!b) return;
+        var sp = document.createElement("span"); sp.className = "badge draft-kept m-only"; sp.textContent = S.draft_kept; b.appendChild(sp);
+      } else if (!has && ex) ex.remove();
+    });
+  }
+  document.addEventListener("input", function (e) {
+    if (!phone()) return;
+    var el = e.target; if (!el || !el.matches) return;
+    if (el.matches("#replybox, textarea.ans")) grow(el);
+    if (cur && el.matches(FSEL) && el.closest("#workform")) later();
+  });
+  // M-56: a submit of the work form (Save, Save & redraft, Send) marks the draft for clearing on landing
+  document.addEventListener("submit", function (e) {
+    var f = e.target; if (!f || f.id !== "workform" || !cur || !phone()) return;
+    write();
+    var F = fields(), id = cur.id;
+    if (F.reply) { var v = F.reply.value; ss(function (s) { s.setItem(PEND + id, v); }); }
+  });
+  window.addEventListener("pagehide", flush);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(); });
+  function isWork(e) {
+    var wp = document.getElementById("workpane"), tg = e.detail && e.detail.target;
+    return !!(wp && tg && (tg === wp || tg.contains(wp)));
+  }
+  document.body.addEventListener("htmx:beforeSwap", flush);
+  document.body.addEventListener("htmx:afterSwap", function (e) { if (isWork(e)) onRender(); markCards(); });
+  document.body.addEventListener("htmx:historyRestore", function () { onRender(); markCards(); });
+  var onMq = function () {
+    if (PH.matches) { kb(); growAll(); markCards(); return; }
+    if (document.documentElement.style.getPropertyValue("--kb")) document.documentElement.style.setProperty("--kb", "0px");
+    document.querySelectorAll("#replybox, textarea.ans").forEach(function (el) {
+      if (!el.style.height) return;
+      el.style.removeProperty("height"); if (!el.getAttribute("style")) el.removeAttribute("style");
+    });
+  };
+  if (PH.addEventListener) PH.addEventListener("change", onMq); else if (PH.addListener) PH.addListener(onMq);
+  function init() { prune(); onRender(); markCards(); kb(); }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  window.addEventListener("load", growAll);
 })();
 // Close any open chip/action menu on an outside click (presentation only).
 document.addEventListener("click", function (e) {

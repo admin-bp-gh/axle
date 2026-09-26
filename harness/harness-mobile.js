@@ -327,8 +327,11 @@ async function cmdPhase(opts) {
       printWalkSummary(walk);
     }
 
-    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths };
-    let result = await phaseModule.assert(ctx);
+    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths, dbPath: server.dbPath };
+    // Phase 2's own assertions persist real changes to the shared temp fixture DB (the
+    // recipient-confirm form, Save / Save & redraft submits), so its module runs AFTER the
+    // earlier, read-mostly phases below rather than first - see the "n === '2'" branch.
+    let result = n === "2" ? null : await phaseModule.assert(ctx);
     // Phase 1A: "phase --n 1a" runs the walk plus BOTH phase-0 and phase-1a assertions -
     // phase 0 must still pass on top of the new phase-1a work.
     if (n === "1a") {
@@ -350,6 +353,29 @@ async function cmdPhase(opts) {
         phase: n,
         pass: r0.pass && r1a.pass && result.pass,
         assertions: r0.assertions.concat(r1a.assertions).concat(result.assertions),
+      };
+    }
+    // Phase 2: "phase --n 2" runs the walk plus phase-0, phase-1a, phase-1b AND phase-2
+    // assertions - every earlier phase must still pass on top of the new phase-2 work.
+    // Order matters here: phase-2's own assertions (autosave, the recipient-confirm form,
+    // the Save/Save&redraft submits) persist real changes to the shared temp fixture DB
+    // (e.g. item 4's recipient gets confirmed), so the earlier, read-mostly phases run
+    // FIRST against the pristine fixtures and phase-2's own module runs last.
+    if (n === "2") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      // eslint-disable-next-line global-require
+      const phase1a = require("./mobile/phase-1a.js");
+      // eslint-disable-next-line global-require
+      const phase1b = require("./mobile/phase-1b.js");
+      const r0 = await phase0.assert(ctx);
+      const r1a = await phase1a.assert(ctx);
+      const r1b = await phase1b.assert(ctx);
+      const r2 = await phaseModule.assert(ctx);
+      result = {
+        phase: n,
+        pass: r0.pass && r1a.pass && r1b.pass && r2.pass,
+        assertions: r0.assertions.concat(r1a.assertions).concat(r1b.assertions).concat(r2.assertions),
       };
     }
     fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));

@@ -107,8 +107,9 @@ async function runWalk({ tree, outDir, widths, lang, only, browser, baseUrl }) {
         const phantomScroll = scene.id === "queue-open" ? await AUDITS.phantomScrollProbe(page) : null;
         const extra = {
           viewportMeta: await AUDITS.viewportMetaProbe(page),
-          attachByNumber: scene.id === "item-ready" ? await AUDITS.attachByNumberProbe(page) : null,
-          cusdialog: scene.id === "item-customer" ? await AUDITS.cusdialogProbe(page) : null,
+          // From Phase 1B the attach-by-number form lives inside the context sheet (item-context scene).
+          attachByNumber: (scene.id === "item-ready" || scene.id === "item-context") ? await AUDITS.attachByNumberProbe(page) : null,
+          cusdialog: (scene.id === "item-customer" || scene.id === "item-customer-page") ? await AUDITS.cusdialogProbe(page) : null,
           actionbarRect: scene.id === "item-ready" ? await AUDITS.rectOf(page, ".actionbar") : null,
           modalFootRect: scene.id === "compose" ? await AUDITS.rectOf(page, ".modal-foot") : null,
         };
@@ -314,8 +315,17 @@ async function cmdPhase(opts) {
   const server = await bootServer({ tree, keep: !!opts.keep, phase: n });
   const browser = await launchBrowser();
   try {
-    const walk = await runWalk({ tree, outDir, widths, lang, only: null, browser, baseUrl: server.baseUrl });
-    printWalkSummary(walk);
+    // --reuse-walk: take <out>/walk.json from an earlier "walk" run instead of walking again
+    // (the sandbox caps a shell call at about three minutes; walk and assert can then run apart).
+    let walk;
+    const walkFile = path.join(outDir, "walk.json");
+    if (opts["reuse-walk"] && fs.existsSync(walkFile)) {
+      walk = JSON.parse(fs.readFileSync(walkFile, "utf8"));
+      console.log("reusing " + walkFile + " (" + (walk.entries || []).length + " entries)");
+    } else {
+      walk = await runWalk({ tree, outDir, widths, lang, only: null, browser, baseUrl: server.baseUrl });
+      printWalkSummary(walk);
+    }
 
     const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths };
     let result = await phaseModule.assert(ctx);
@@ -326,6 +336,21 @@ async function cmdPhase(opts) {
       const phase0 = require("./mobile/phase-0.js");
       const r0 = await phase0.assert(ctx);
       result = { phase: n, pass: r0.pass && result.pass, assertions: r0.assertions.concat(result.assertions) };
+    }
+    // Phase 1B: "phase --n 1b" runs the walk plus phase-0, phase-1a AND phase-1b assertions -
+    // every earlier phase must still pass on top of the new phase-1b work.
+    if (n === "1b") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      // eslint-disable-next-line global-require
+      const phase1a = require("./mobile/phase-1a.js");
+      const r0 = await phase0.assert(ctx);
+      const r1a = await phase1a.assert(ctx);
+      result = {
+        phase: n,
+        pass: r0.pass && r1a.pass && result.pass,
+        assertions: r0.assertions.concat(r1a.assertions).concat(result.assertions),
+      };
     }
     fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));
 

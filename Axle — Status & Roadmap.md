@@ -1,5 +1,60 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE PHASE 1B BUILT, 26 Sep 2026: item app bar, state-driven order, folded email,
+> context sheet, customer page. Committed on `axle/mobile`, not deployed; ships with the single
+> final deploy. No safety path touched.**
+>
+> **What happened.** Phase 1A passed Brad's gate. Phase 1B (plan 3.5) closes M-19, M-21, M-22,
+> M-23, M-24, M-25, M-36, M-37, M-39, M-44. `ASSET_V` `polaris17`. Contract changes: none
+> (`workPanes()` gains optional `title` and `lang`, used only by phone-only markup; fragment
+> shape unchanged; no route change).
+>
+> **The fix.** `ui.js`: `workPanes()` renders the phone back bar as a 44x44 chevron plus a
+> two-line title (`#id subject`) with the old label kept for screen readers, and puts a
+> phone-only "Back to email" bar (`#ctx`, the no-JS `:target` fallback) at the top of
+> `.pane-context`; `renderTimeline()` marks the newest message `.msg-latest` and adds a
+> phone-only "Show full message" toggle; the page script gains the fold toggle (hidden when the
+> clamped text fits, rechecked after every `#workpane` swap), and the context sheet
+> (`body.ax-ctx`): `[data-ctx-open]` remembers `scrollY` and focuses the back bar, close restores
+> both, no `pushState` and no hash change, and every `#workpane` swap closes it. `item.js`: a
+> phone-only "Customer & docs" link after the chips, `div.m-mail` around the header-plus-email
+> block (zero padding, border and margin, so desktop margins still collapse through it), the
+> `#mq` search unfolds a clamped message on a hit, the customer dialog's close button carries a
+> phone-only "Back to Customer & docs" label. `components.css`, phone block only: the global
+> header hidden on the detail screen (`body:has(#workpane .has-item) > header`), the back bar
+> as a 48px item app bar, `.pane-inner` a flex column with the brief first, `#workform` order 1,
+> `div.m-mail` order 2, the superseded draft 3 and the bar 9 (the work form already orders
+> questions before the reply when answers are needed, so decision 10 falls out of flex order);
+> one-line horizontally scrolling chip row with 44px chipmenu cells and a visible caret; the
+> newest message clamped to 12 lines with a fade; every `details > summary` on the item and
+> context screens a 44px full-width fold row with a chevron; inbound attachments as 44px chips;
+> the context pane a full-screen fixed sheet with SAP document rows stacked (full-width Attach,
+> 44px Preview), two-column customer tiles and a full-width attach-by-number form; the customer
+> `<dialog>` a full-screen page with a sticky back bar (it stays a dialog in the DOM; nothing
+> floats over the sheet). New strings (EN and NL, 350 keys each): customer_docs, show_full,
+> show_less, back_to_email, back_to_ctx.
+>
+> **Proof.** K1 clean. K4: transport fields and DB dumps byte-identical (120 responses). K5:
+> 72 assertions pass at 393 and 375 (phases 0, 1A and 1B together), 430 walked for captures:
+> `design-reference/mobile-audit/phase-1b/`. K6: zero pixel, layout and DOM differences at 1440
+> and 1101 (the harness now unwraps `div.m-mail` on a clone before serialising, the plan's
+> allowed difference). K7: three box-code files changed, no new box-code file, safety grep
+> empty, `audit(` counts unchanged, `data-confirm` handler hash unchanged. Two Phase 0
+> assertions became phase-aware (attach-by-number is measured inside the open context sheet;
+> the customer dialog may be full screen instead of 86dvh). Harness notes: `phase --reuse-walk`
+> runs the assertions on an existing `walk.json` (the sandbox caps a shell call at about three
+> minutes, so walk and assert run apart); the desktop compare must run both widths in one
+> session, because `/audit` lists the run's own page views and a split run has a different row
+> count (seen as a false diff on `/audit` at 1101 only). Fixture seeding: item 1's email is
+> lengthened by 40 lines for phases 1B onwards so the clamp is testable.
+>
+> **Files:** `box-code/views/ui.js`, `box-code/routes/item.js`, `box-code/assets/components.css`;
+> repo-only `harness/mobile/{phase-1b,phase-0,audits,layout,scenes,boot}.js`,
+> `harness/harness-mobile.js`, `design-reference/mobile-audit/phase-1b/`. **Deploy notes:**
+> committed on `axle/mobile`, not deployed; ships with the single final deploy. **Next up:**
+> Brad's Phase 1B gate, then Phase 2 (reply editor, bottom bar, recipient line, overflow,
+> autosave, keyboard).
+
 > **★ MOBILE PHASE 1A BUILT, 25 Sep 2026: app bar with a menu sheet, every menu a bottom sheet,
 > queue chrome, admin and block pages. Committed on `axle/mobile`, not deployed; ships with the
 > single final deploy. No safety path touched.**

@@ -20,7 +20,11 @@ const SCENES = [
   { id: "item-more-actions", path: "/item/1", open: ".actionbar details.menu:not(.recip-pop)" },
   { id: "item-recipient", path: "/item/4", open: "details.recip-pop" },
   { id: "item-language", path: "/item/1", open: "details.chipmenu" },
-  { id: "item-customer", path: "/item/1", customerModal: true },
+  // M-36: on the phone the customer card lives inside the context sheet (hidden until
+  // body.ax-ctx), so the customer-modal button is only reachable after opening it first;
+  // ctxOpen is a no-op at desktop widths where .ctxlink is an .m-only element (the click is
+  // caught and swallowed) and .pane-context is already visible in the split layout.
+  { id: "item-customer", path: "/item/1", ctxOpen: true, customerModal: true },
   { id: "blocks", path: "/blocks" },
   { id: "audit", path: "/audit" },
   { id: "block-page", path: "/item/1/block" },
@@ -28,6 +32,10 @@ const SCENES = [
   // Phase 1A scenes (phase-1a.js assertions)
   { id: "queue-appmenu", path: "/", open: "details.appmenu" },
   { id: "queue-search-open", path: "/", clickSearch: true },
+  // Phase 1B scenes (phase-1b.js assertions)
+  { id: "item-context", path: "/item/1", ctxOpen: true },
+  { id: "item-customer-page", path: "/item/1", ctxOpen: true, customerModal: true },
+  { id: "item-expanded", path: "/item/1", msgMore: true },
 ];
 
 function findScene(id) {
@@ -102,6 +110,20 @@ async function openScene(page, baseUrl, scene) {
     await page.click(".qsearch-btn").catch(() => {});
     await new Promise((r) => setTimeout(r, 100));
     menu = { selector: ".qsearch-btn", method: "click" };
+  }
+
+  // M-36: opens the phone context sheet (body.ax-ctx) via the "Customer & docs" link.
+  if (scene.ctxOpen) {
+    await page.click(".ctxlink").catch(() => {});
+    await new Promise((r) => setTimeout(r, 150));
+    menu = { selector: ".ctxlink", method: "click" };
+  }
+
+  // M-23: expands the clamped newest message via its "Show full message" toggle.
+  if (scene.msgMore) {
+    await page.click(".msgmore").catch(() => {});
+    await new Promise((r) => setTimeout(r, 150));
+    menu = { selector: ".msgmore", method: "click" };
   }
 
   if (scene.customerModal) {

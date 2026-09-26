@@ -568,6 +568,100 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .q-from { font-size: var(--fs-md); }
   .q-subj { font-size: var(--fs-base); }
   .qempty { padding: var(--s6) var(--s4); text-align: center; }
+
+  /* ---------- mobile Phase 1B ---------- */
+  /* M-19: item app bar, 44x44 back chevron and a two-line title */
+  .m-back-title { flex: 1 1 auto; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 600; }
+  .m-back-ic { display: inline-flex; align-items: center; justify-content: center; width: var(--tap); height: var(--tap); flex: none; margin-left: calc(-1 * var(--s3)); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
+  /* M-36: .pane-context is a full-screen sheet, opened by body.ax-ctx (or #ctx:target without JS) */
+  .pane-context { display: none; }
+  body.ax-ctx .pane-context, .pane-context:has(#ctx:target) { display: block; position: fixed; inset: 0; z-index: 85; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: var(--bg); border-top: 0; padding: 0 var(--s4) calc(var(--s4) + env(safe-area-inset-bottom)); }
+  .m-ctxback { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--s4)) var(--s3); }
+  body.ax-ctx { overflow: hidden; }
+  /* M-23: newest message clamped to 12 lines with a fade */
+  .msg-latest:not(.open) > pre.mail { max-height: calc(12 * 1.5em); overflow: hidden;
+    -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent); mask-image: linear-gradient(180deg, #000 75%, transparent); }
+  .msg-latest.open > pre.mail { max-height: none; mask-image: none; -webkit-mask-image: none; }
+  .foldrow { min-height: var(--tap); width: 100%; display: flex; align-items: center; justify-content: space-between; }
+  .msgmore[hidden] { display: none; }
+  .msg-latest.open .msgmore .chev { transform: rotate(180deg); }
+
+  /* M-19: header hidden on the item detail screen; the back bar becomes the 48px app bar */
+  body:has(#workpane .has-item) > header { display: none; }
+  .pane-center > .m-back { top: 0; min-height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--s3) 0 var(--s3); align-items: center; gap: var(--s1); font-size: var(--fs-md); }
+  /* M-37: the context sheet's own back bar, the same 48px app-bar treatment */
+  .pane-context > .m-ctxback { min-height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--s3) 0 var(--s3); align-items: center; gap: var(--s1); font-size: var(--fs-md); }
+  .pane-center .pane-inner > h2 { display: none; }
+
+  /* M-22: state-driven order via flex; boxes lose their margin so the column gap does the spacing */
+  .pane-center .pane-inner { display: flex; flex-direction: column; gap: var(--s3); }
+  .pane-inner > .box, .pane-inner > form#workform > .box, .m-mail > .box { margin: 0; }
+  .pane-inner > form#workform { display: flex; flex-direction: column; gap: var(--s3); }
+  #workform { order: 1; }
+  .m-mail { order: 2; display: flex; flex-direction: column; gap: var(--s3); }
+  .pane-inner > .box:has(> details.prevdraft) { order: 3; }
+  .actionbar { order: 9; }
+
+  /* M-21: chip row scrolls horizontally on one line; only the two chipmenu summaries are tap targets */
+  .chips-row { flex-wrap: nowrap; overflow-x: auto; gap: var(--gap-tap); padding: 2px 0; scrollbar-width: none; margin: 0; }
+  .chips-row::-webkit-scrollbar { display: none; }
+  .chips-row > * { flex: none; }
+  details.chipmenu > summary { display: inline-flex; align-items: center; min-height: var(--tap); }
+  details.chipmenu > summary .chip { border: 1px solid var(--border-2); padding: 6px 10px; }
+  .chip .caret { opacity: 1; font-size: 11px; }
+  .chips-row .chip { display: inline-flex; align-items: center; min-height: 32px; }
+
+  /* M-36: the "Customer & docs" link that opens the context sheet */
+  .ctxlink { display: flex; align-items: center; justify-content: space-between; min-height: var(--tap); padding: 0 var(--s4);
+    border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink);
+    font-weight: 600; text-decoration: none; }
+
+  /* M-24: every fold summary on the item and context screens is a full-width 44px row with a chevron.
+     The <details> itself is forced to full width too - inside a flex column (e.g. recip-other
+     nested in .menu-list) an auto-basis block item can otherwise size to 0 rather than stretch. */
+  details.fold, .pane-context .box > details, .pane-center .box > details { width: 100%; flex: none; }
+  details.fold > summary, details.recip-other > summary,
+  .pane-context .box > details > summary, .pane-center .box > details > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s2); width: 100%; min-height: var(--tap);
+    margin-top: var(--gap-tap); padding: 0 var(--s3); border: 1px solid var(--border); border-radius: var(--r-ctl);
+    background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-base); font-weight: 600; list-style: none; box-sizing: border-box; }
+  details.fold > summary::-webkit-details-marker, details.recip-other > summary::-webkit-details-marker,
+  .pane-context .box > details > summary::-webkit-details-marker, .pane-center .box > details > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::after, details.recip-other > summary::after,
+  .pane-context .box > details > summary::after, .pane-center .box > details > summary::after { content: "\25BE"; }
+  details.fold[open] > summary::after, details.recip-other[open] > summary::after,
+  .pane-context .box > details[open] > summary::after, .pane-center .box > details[open] > summary::after { transform: rotate(180deg); }
+
+  /* M-25: inbound attachments read as 44px chips with an 8px gap */
+  a.att { display: inline-flex; align-items: center; gap: var(--s2); max-width: 100%; min-height: var(--tap); padding: 0 var(--s3);
+    margin: var(--gap-tap) var(--gap-tap) 0 0; border: 1px solid var(--border-2); border-radius: var(--r-ctl);
+    background: var(--surface-2); color: var(--ink); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+
+  /* M-37 / M-39: context sheet contents - SAP document rows, customer grid, attach-by-number */
+  .pane-context .box { margin: 0 0 var(--s3); }
+  .suggdoc { flex-direction: column; align-items: stretch; gap: var(--gap-tap); padding: var(--s3) 0; border-bottom: 1px solid var(--border-sub); margin: 0; }
+  .suggdoc form button { width: 100%; min-height: var(--tap); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  a.preview-doc { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); padding: 0 var(--s4); font-size: var(--fs-base); }
+  .attdoc { flex-direction: column; align-items: stretch; gap: var(--gap-tap); }
+  .attdoc input[name=docnum] { width: 100% !important; }   /* beats the existing inline style="width:8em" */
+  .attdoc button { min-height: var(--tap); }
+  .cusgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cusval { overflow-wrap: anywhere; }
+  .cusbtn { width: 100%; min-height: var(--tap); }
+
+  /* M-44: the customer detail dialog fills the viewport and reads as a pushed page */
+  .cusdialog { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0;
+    border: 0; border-radius: 0; padding: 0 var(--s4) calc(var(--s4) + env(safe-area-inset-bottom)); }
+  .cusdialog::backdrop { background: transparent; }
+  .cusx { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--s4)) var(--s3); background: var(--surface);
+    border-bottom: 1px solid var(--border); text-align: left; }
+  .cusxbtn { display: flex; align-items: center; gap: var(--s1); width: 100%; min-height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--s3) 0; font-size: var(--fs-md); font-weight: 600; color: var(--ink); }
+  .cusback-label { display: inline; }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------

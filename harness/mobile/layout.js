@@ -15,6 +15,9 @@ async function layoutSnapshot(page) {
         // <table>) gets no path segment of its own, so a wrapped table's path still reads
         // the same as an unwrapped one once diffLayout normalises away the indices.
         if (node !== el && node.classList && node.classList.contains("hscroll")) { node = node.parentElement; continue; }
+        // M-22/M-36: the div.m-mail wrapper (phone-only order wrapper, no desktop rules)
+        // gets the same treatment - no path segment of its own.
+        if (node !== el && node.classList && node.classList.contains("m-mail")) { node = node.parentElement; continue; }
         let idx = 1, sib = node;
         while ((sib = sib.previousElementSibling)) idx++;
         let part = node.tagName.toLowerCase() + ":nth-child(" + idx + ")";
@@ -32,6 +35,8 @@ async function layoutSnapshot(page) {
       // existing table, same "existing elements only gain classes or a div.hscroll wrapper"
       // allowance domPath() honours above) - skip its own entry too.
       if (el.classList && el.classList.contains("hscroll")) return;
+      // M-22/M-36: the div.m-mail wrapper has no baseline counterpart either - skip its own entry.
+      if (el.classList && el.classList.contains("m-mail")) return;
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return;
       const cs = getComputedStyle(el);
@@ -63,7 +68,18 @@ async function dropDisplayNoneAndSerialize(page) {
         el.remove();
       }
     }
-    return { html: document.body.outerHTML, dropped };
+    // M-22/M-36: div.m-mail is a cosmetic phone-order wrapper (like div.hscroll) with no
+    // desktop rules and no baseline counterpart. Unlike hscroll it can hold nested divs, so a
+    // non-greedy regex would mispair open/close tags; unwrap it structurally instead, on a
+    // CLONE (never mutate the live page a screenshot may still be taken from), via a
+    // matching-tag walk that moves each wrapper's children out and drops the wrapper itself.
+    const clone = document.body.cloneNode(true);
+    clone.querySelectorAll("div.m-mail").forEach((wrap) => {
+      const parent = wrap.parentNode;
+      while (wrap.firstChild) parent.insertBefore(wrap.firstChild, wrap);
+      parent.removeChild(wrap);
+    });
+    return { html: clone.outerHTML, dropped };
   });
 }
 

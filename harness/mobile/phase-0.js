@@ -43,7 +43,10 @@ async function assert(ctx) {
     const details = [];
     let pass = true;
     for (const width of phoneWidths) {
-      const entry = findWalkEntry(walk, width, "item-ready");
+      // Phase 0 measured it on the item screen; from Phase 1B it sits in the context sheet, so
+      // the item-context scene is preferred when the walk has it.
+      const ctxEntry = findWalkEntry(walk, width, "item-context");
+      const entry = (ctxEntry && ctxEntry.extra && ctxEntry.extra.attachByNumber) ? ctxEntry : findWalkEntry(walk, width, "item-ready");
       const probe = entry && entry.extra && entry.extra.attachByNumber;
       const ok = !!probe && probe.fontSize === 16 && probe.height >= 44;
       if (!ok) pass = false;
@@ -114,7 +117,10 @@ async function assert(ctx) {
     let entry = findWalkEntry(walk, w393.label, "item-customer");
     const probe = entry && entry.extra && entry.extra.cusdialog;
     const expect = w393.height * 0.86;
-    const ok = !!probe && probe.open && Math.abs(probe.maxHeight - expect) < 1;
+    // Phase 0: 86dvh. From Phase 1B (M-44) the dialog is a full-screen page: max-height none
+    // and a rect equal to the viewport. Either satisfies "no vh surprise".
+    const full = !!probe && probe.open && (probe.maxHeight === null || Number.isNaN(probe.maxHeight)) && probe.rect && Math.abs(probe.rect.height - w393.height) < 1 && Math.abs(probe.rect.width - w393.width) < 1;
+    const ok = (!!probe && probe.open && Math.abs(probe.maxHeight - expect) < 1) || full;
     push("cusdialog-86pct-maxheight", ok, { probe: probe || null, expectedMaxHeight: expect, width: w393.label });
   }
 

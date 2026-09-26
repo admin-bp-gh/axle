@@ -177,6 +177,9 @@ const STRINGS = {
     best_on_desktop: "Best on desktop", search_open: "Search emails", send_to: "Send to",
     sap_docs: "SAP documents", attach_manual: "Attach by number",
     relang_note: "Changing the language re-drafts the email.",
+    // M-19/M-23/M-36/M-44: mobile Phase 1B
+    customer_docs: "Customer & docs", show_full: "Show full message", show_less: "Show less",
+    back_to_email: "Back to email", back_to_ctx: "Back to Customer & docs",
     // UI rework Step 2 (2026-06-10): three-pane shell + queue
     shell_select: "Select an item from the list to start.",
     load_error: "This could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.",
@@ -364,6 +367,9 @@ const STRINGS = {
     best_on_desktop: "Werkt het best op een computer", search_open: "E-mails zoeken", send_to: "Verzenden naar",
     sap_docs: "SAP-documenten", attach_manual: "Bijvoegen op nummer",
     relang_note: "Een andere taal stelt de e-mail opnieuw op.",
+    // M-19/M-23/M-36/M-44: mobile Phase 1B
+    customer_docs: "Klant & documenten", show_full: "Volledig bericht tonen", show_less: "Minder tonen",
+    back_to_email: "Terug naar e-mail", back_to_ctx: "Terug naar Klant & documenten",
     // UI rework Step 2 (2026-06-10): three-pane shell + queue
     shell_select: "Kies een item uit de lijst om te beginnen.",
     load_error: "Dit kon niet worden geladen. Kies het item opnieuw of herlaad de pagina — blijft het misgaan, dan staan de details in het auditlog.",
@@ -627,9 +633,11 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
   const { top, quoted } = splitQuoted(raw);
   const { main, footer } = foldFooter(top);
   const who = w.sender_name || w.sender_email || "";
-  let html = `<div class="msg">
+  // M-23: .msg-latest is clamped on the phone; the phone-only toggle unfolds it
+  let html = `<div class="msg msg-latest">
     <div class="msg-head"><span class="who-line"><b>${esc(who)}</b><span class="muted">${esc(fmtDateTime(w.email_received, lang))}</span></span>${emailTr || emailTrPending ? `<button type="button" class="mini" id="emailtrbtn" onclick="toggleEmailTr()">${esc(t(lang, "show_translation"))}</button>` : ""}</div>
     <pre class="mail">${linkify(clean(main))}</pre>
+    <button type="button" class="m-only foldrow msgmore" data-msg-toggle aria-expanded="false" data-more="${esc(t(lang, "show_full"))}" data-less="${esc(t(lang, "show_less"))}"><span>${esc(t(lang, "show_full"))}</span><span class="chev" aria-hidden="true">&#9662;</span></button>
     ${footer ? `<details class="fold"><summary>${esc(t(lang, "footer_fold"))}</summary><pre class="mail muted">${linkify(clean(footer))}</pre></details>` : ""}
     ${emailTr || emailTrPending ? `<div class="trbox msgtr" id="emailtr" style="display:none"><p class="muted trnote">${esc(t(lang, "translation_note").replace("{lang}", langDisplay(lang, (w.language || "").toLowerCase())))}</p><pre class="mail" id="emailtrpre"${emailTrPending ? ' data-pending="1"' : ""}>${emailTr ? linkify(String(emailTr)) : `<span class="spin"></span> ${esc(t(lang, "translating"))}`}</pre></div>` : ""}
   </div>`;
@@ -708,7 +716,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris16";   // 2026-09-25: mobile Phase 1A (app bar, sheets, queue chrome)
+const ASSET_V = "polaris17";   // 2026-09-26: mobile Phase 1B (item brief, folds, context sheet, customer page)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -753,6 +761,62 @@ document.addEventListener("click", function (e) {
   var d = b.closest("details"); if (d) d.removeAttribute("open");
   e.preventDefault();
 });
+// M-23: "Show full message" unfolds the clamped newest message
+document.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest("[data-msg-toggle]") : null;
+  if (!b) return;
+  var m = b.closest(".msg"); if (!m) return;
+  var open = m.classList.toggle("open");
+  b.setAttribute("aria-expanded", open ? "true" : "false");
+  var s = b.querySelector("span"); if (s) s.textContent = open ? b.getAttribute("data-less") : b.getAttribute("data-more");
+});
+// M-23: no toggle when the clamped text fits
+function axFoldCheck() {
+  document.querySelectorAll(".msg-latest").forEach(function (m) {
+    var b = m.querySelector("[data-msg-toggle]"), p = m.querySelector("pre.mail");
+    if (!b || !p || m.classList.contains("open")) return;
+    if (!window.__axPhone.matches) { b.hidden = false; return; }
+    b.hidden = p.scrollHeight <= p.clientHeight + 1;
+  });
+}
+// M-36: the context sheet (body.ax-ctx); no history entry, no hash
+(function () {
+  var savedY = 0;
+  function openCtx() {
+    savedY = window.scrollY;
+    document.body.classList.add("ax-ctx");
+    var c = document.querySelector("#workpane .pane-context") || document.querySelector(".pane-context");
+    if (c) c.scrollTop = 0;
+    var bk = c && c.querySelector(".m-ctxback"); if (bk && bk.focus) bk.focus({ preventScroll: true });
+  }
+  function closeCtx(restore) {
+    if (!document.body.classList.contains("ax-ctx")) return;
+    document.body.classList.remove("ax-ctx");
+    if (!restore) return;
+    window.scrollTo(0, savedY);
+    var l = document.querySelector("[data-ctx-open]"); if (l && l.focus) l.focus({ preventScroll: true });
+  }
+  document.addEventListener("click", function (e) {
+    var o = e.target.closest ? e.target.closest("[data-ctx-open]") : null;
+    if (o) { e.preventDefault(); openCtx(); return; }
+    var x = e.target.closest ? e.target.closest("[data-ctx-close]") : null;
+    if (x) { e.preventDefault(); closeCtx(true); }
+  });
+  function isWork(e) {
+    var wp = document.getElementById("workpane"), tg = e.detail && e.detail.target;
+    return !!(wp && tg && (tg === wp || tg.contains(wp)));
+  }
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (!isWork(e)) return;
+    closeCtx(false);
+    axFoldCheck();
+  });
+  document.body.addEventListener("htmx:beforeHistorySave", function () { closeCtx(false); });
+  var mq = window.__axPhone, onMq = function () { axFoldCheck(); };
+  if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", axFoldCheck); else axFoldCheck();
+  window.addEventListener("load", axFoldCheck);
+})();
 // Close any open chip/action menu on an outside click (presentation only).
 document.addEventListener("click", function (e) {
   document.querySelectorAll("details.chipmenu[open], details.menu[open]").forEach(function (d) {
@@ -929,8 +993,14 @@ document.addEventListener("click", function (e) {
 // throughout; without JS every queue card is a plain link and the page still works.
 const workPanes = (centerHtml, contextHtml, opts) => {
   const back = opts && opts.back;   // mobile Back bar label; also marks this as a real item view
-  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/" onclick="if(window.history.length>1){history.back();return false;}">${esc(back)}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
-<aside class="pane-context">${contextHtml}</aside>`;
+  const title = opts && opts.title;   // M-19: item app bar title (phone-only markup)
+  const lang = (opts && opts.lang) || "en";
+  // M-19: 44x44 chevron, label kept for screen readers, two-line title
+  const backInner = back ? `<span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">${esc(back)}</span>${title ? `<span class="m-back-title">${esc(title)}</span>` : ""}` : "";
+  // M-36: the context sheet's "Back to email" bar; id="ctx" is the no-JS :target fallback
+  const ctxBack = back ? `<a class="m-back m-ctxback m-only" id="ctx" href="#" data-ctx-close><span class="m-back-ic" aria-hidden="true">&larr;</span>${esc(t(lang, "back_to_email"))}</a>` : "";
+  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/" onclick="if(window.history.length>1){history.back();return false;}">${backInner}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
+<aside class="pane-context">${ctxBack}${contextHtml}</aside>`;
 };
 
 // queueHtml is either the inline-rendered queue (GET /) or lazyQueue() below.

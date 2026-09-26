@@ -185,7 +185,7 @@ function customerCard(s, lang, itemId) {
         hx-get="/item/${itemId}/customer-modal" hx-target="#cusModalBody" hx-swap="innerHTML"
         onclick="var d=document.getElementById('cusModal'); if(d&&d.showModal) d.showModal();">${esc(t(lang, "cust_view_full"))}</button>
       <dialog id="cusModal" class="cusdialog" aria-label="${esc(t(lang, "cust_detail_title"))}">
-        <form method="dialog" class="cusx"><button class="cusxbtn" aria-label="${esc(t(lang, "cust_close"))}">&times;</button></form>
+        <form method="dialog" class="cusx"><button class="cusxbtn" aria-label="${esc(t(lang, "cust_close"))}">&times;<span class="m-only cusback-label">${esc(t(lang, "back_to_ctx"))}</span></button></form>
         <div id="cusModalBody"><p class="muted"><span class="spin"></span> ${esc(t(lang, "cust_loading"))}</p></div>
         <script>(function(){var d=document.getElementById('cusModal');if(d&&!d._wired){d._wired=1;d.addEventListener('click',function(e){if(e.target===d)d.close();});}})();</script>
       </dialog>
@@ -728,21 +728,23 @@ app.get("/item/:id", async (req, res) => {
   // the SAP-documents card + the investigation brief — the right pane's contents
   // until Step 3 builds the full context panel (F10). Markup inside each block is
   // unchanged from Step 1; only the placement moved.
+  // M-22/M-36: phone-only "Customer & docs" link; div.m-mail wraps header and email
   const center = `
     <p class="backrow"><a href="&#47;">${esc(t(lang, "back_inbox"))}</a></p>
     <h2>#${w.id} ${esc(w.subject || t(lang, "no_subject"))}</h2>
     <div class="chips-row">${chips}</div>
+    <a class="m-only ctxlink" href="#ctx" data-ctx-open>${esc(t(lang, "customer_docs"))} <span aria-hidden="true">&rsaquo;</span></a>
     ${isCompose
       ? `<p class="muted">${esc(t(lang, "compose_from"))}: ${esc(w.mailbox)}@ &middot; ${esc(fmtDateTime(w.created_at, lang))}</p>`
       : `<p class="muted">${esc(t(lang, "from"))} ${esc(w.sender_name || w.sender_email)}${w.sender_name ? ` (${esc(w.sender_email)})` : ""} &middot; ${esc(fmtDateTime(w.email_received, lang))} &middot; ${esc(w.mailbox)}@</p>`}
     ${w.caller_info ? `<p class="muted">&#128222; ${esc(w.caller_info)}</p>` : ""}
     ${busy ? `<div class="banner busy">${esc(t(lang, "investigating_banner"))}</div>` : ""}
 
-    ${isCompose ? composeHeader : (isContactForm ? contactFormHeader : isRN ? returnHeader : "") + `<div class="box">
+    <div class="m-mail">${isCompose ? composeHeader : (isContactForm ? contactFormHeader : isRN ? returnHeader : "") + `<div class="box">
       <div class="boxhead"><h3>${esc(t(lang, "customer_email"))}</h3>
         <span><input id="mq" type="search" placeholder="${esc(t(lang, "search_in_email"))}" autocomplete="off"><span class="qcount" id="mqcount"></span></span></div>
       <div id="mailwrap">${renderTimeline(w, lang, emailTr, emailTrPending)}${renderAttachments(w)}</div>
-    </div>`}
+    </div>`}</div>
     <script>
     (function () {
       var mq = document.getElementById("mq"), c = document.getElementById("mqcount"),
@@ -785,6 +787,14 @@ app.get("/item/:id", async (req, res) => {
         var n = markAll(v);
         wrap.querySelectorAll("details").forEach(function (d) {
           if (d.querySelector("mark.hit")) d.open = true;
+        });
+        // M-23: a hit inside the clamped message unfolds it
+        wrap.querySelectorAll(".msg").forEach(function (m) {
+          var p = m.querySelector(":scope > pre.mail");
+          if (!p || !p.querySelector("mark.hit")) return;
+          m.classList.add("open");
+          var b = m.querySelector("[data-msg-toggle]");
+          if (b) { b.setAttribute("aria-expanded", "true"); var s = b.querySelector("span"); if (s) s.textContent = b.getAttribute("data-less"); }
         });
         c.textContent = n + " " + (n === 1 ? "${t(lang, "match")}" : "${t(lang, "matches")}");
         var first = wrap.querySelector("mark.hit");
@@ -969,7 +979,7 @@ app.get("/item/:id", async (req, res) => {
     ${custHtml}
     ${sapDocsCard}
     <div class="box"><details><summary>${esc(t(lang, "what_checked"))}</summary><pre class="mail">${esc(w.brief_md || t(lang, "none_paren"))}</pre></details></div>`;
-  const panes = workPanes(center, context, { back: t(lang, "back_inbox") });
+  const panes = workPanes(center, context, { back: t(lang, "back_inbox"), title: "#" + w.id + " " + (w.subject || t(lang, "no_subject")), lang });   // M-19
 
   // htmx queue-card click: swap only the work panes (the queue stays put). While
   // the item is busy, a small self-poller re-swaps the panes every 10s — a

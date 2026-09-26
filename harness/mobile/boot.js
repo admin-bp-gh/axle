@@ -46,13 +46,29 @@ function startChild(entry, env) {
 
 // seed(dbPath, phase) - a hook for later phases to extend the fixture DB that
 // step0/fixtures.js just built (e.g. Phase 3's "120 done items, an investigating item,
-// the sync lock, a forced 500"), using the real schema directly via node:sqlite. No-op
-// today: Phase 0 needs no extra seeding beyond the 9 Step-0 fixture items.
+// the sync lock, a forced 500"), using the real schema directly via node:sqlite. Phase 0
+// needs no extra seeding beyond the 9 Step-0 fixture items.
+const PHASES_WITH_LONG_EMAIL = new Set(["1b", "2", "3"]);   // M-23: the clamp needs a long message to clamp
+
 function seed(dbPath, phase) {
-  void phase;
   const d = new DatabaseSync(dbPath);
   try {
-    // Intentionally empty. A future phase module adds rows here, guarded by `phase`.
+    // M-23: item 1's fixture email (MAIL1, harness/step0/fixtures.js) is 8 lines - too
+    // short to exercise the 12-line clamp/fade/"Show full message" toggle. From Phase 1b
+    // onward, prepend numbered lines so it runs well past the clamp; item 2 stays short
+    // (it is the needs-answer fixture, not the long-message one). Prepended, not appended:
+    // MAIL1 already contains a "Von: ..." reply marker, and ui.js's splitQuoted() folds
+    // everything from the FIRST such marker onward into the collapsed quoted-history
+    // block - text appended after it never reaches the visible (clamped) "top" portion.
+    if (PHASES_WITH_LONG_EMAIL.has(String(phase))) {
+      const row = d.prepare("SELECT email_text FROM work_items WHERE id = 1").get();
+      if (row && row.email_text != null) {
+        const extra = [];
+        for (let i = 1; i <= 40; i++) extra.push("Extra line " + i + " for the mobile clamp fixture.");
+        const longText = extra.join("\n") + "\n" + row.email_text;
+        d.prepare("UPDATE work_items SET email_text = ? WHERE id = 1").run(longText);
+      }
+    }
   } finally {
     d.close();
   }

@@ -190,7 +190,8 @@ async function cusdialogProbe(page) {
     const el = document.getElementById("cusModal");
     if (!el) return null;
     const cs = getComputedStyle(el);
-    return { maxHeight: parseFloat(cs.maxHeight), innerHeight: window.innerHeight, open: el.open === true || el.hasAttribute("open") };
+    const r = el.getBoundingClientRect();
+    return { maxHeight: parseFloat(cs.maxHeight), innerHeight: window.innerHeight, open: el.open === true || el.hasAttribute("open"), rect: { width: r.width, height: r.height } };
   });
 }
 

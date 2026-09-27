@@ -1,5 +1,48 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE FIX 2 DEPLOYED, 27 Sep 2026: the phone list refreshes on its own again (idle
+> floor 45 s), refreshes on return and on Back, keeps the scroll while refreshing, and has
+> pull-to-refresh. `polaris22`, merge `55d74f4`. Phone only; desktop unchanged. No safety path
+> touched.**
+>
+> **What happened.** Brad's iPhone: the Open list only refreshed when he closed and reopened the
+> web app. Cause: `window.__axQPoll.sec` is 8 while a sync runs, 15 with an investigating item
+> listed, else 0, and every queue swap re-renders it; once a swap lands idle the poll is off until
+> a full page load. The desktop re-arms on its full reloads (Back is `href="/"` there), the phone
+> never does because its Back is in place (Phase 3). Pre-existing, exposed by the phone's
+> navigation.
+>
+> **The fix (F8).** `inbox.js` poll script: on the phone an idle config counts as a 45 s cadence
+> (the config object the desktop reads is not changed); a tick skipped only because the list is
+> scrolled now refreshes anyway and restores `scrollY` after the swap (the M-55 pattern); the
+> "Updates waiting" chip is left for the touched-in-the-last-10-s case. `ui.js`: a phone-only
+> block, `window.__axQReturn` fetches once (5 s debounce, list displayed, no `ax-detail`, no
+> focus in the pane, not paged past page 1) on `visibilitychange` to visible, on `pageshow`
+> persisted and from the phone Back; pull-to-refresh with passive touch listeners, a `.qpull`
+> row created from JS on the phone only (never in the desktop DOM) that slides out from behind
+> the sticky queue head, release past 70 px fetches and scrolls to the top, shorter snaps back,
+> reset on swap, failure or 20 s. `components.css` phone block: `.qpull` states, spinner, reduced
+> motion off; `overscroll-behavior-y: contain` on the root scroller in the list state only, so
+> the sheets' own containment (fix 1) and the native pull-to-reload on an item are untouched.
+> Two strings (EN and NL, 364 keys each): pull_refresh, refreshing.
+>
+> **Known cost, recorded.** Every `/queue` fetch writes a `view_inbox` audit row (frozen call);
+> a phone left open on the list now adds about 80 rows an hour. Accepted by Brad for now; the
+> idle floor is one number in inbox.js if it needs to go to 60 s.
+>
+> **Proof.** K1 clean (`node --check` on both files and the inline scripts, CSS braces 582/582).
+> K6 identical: 40 scenes at 1440 and 1101, zero pixel, layout and DOM differences. K5 walk at
+> 393 clean on the queue and an item. K7: `audit(` 5 / 33 / 23 / 4 / 8 unchanged, safety files
+> untouched. Deploy: `-WhatIf` three diffs (components.css, inbox.js, ui.js), zero NEW. Not
+> device-verified yet: iOS's own pull-to-reload on the list, and the 45 s cadence in Safari's
+> background throttling.
+>
+> **Files:** `box-code/routes/inbox.js`, `box-code/views/ui.js`, `box-code/assets/components.css`.
+> **Deploy notes:** deployed 27 Sep 2026, merge `55d74f4`, polaris22. Rollback: `git revert -m 1
+> 55d74f4` on `main`, `ASSET_V` `polaris23`. **Still open:** Brad's iPhone look at fix 1 (F1 to
+> F7) and fix 2 (F8); #2268 to Rob or Huub; mobile fix 3 = D1 (remove the send confirmation)
+> and D2 (auto-use the sender address), both need Brad's written OK on that branch.
+
 > **★ MOBILE REDESIGN DEPLOYED, 27 Sep 2026: phases 0 to 4 merged to `main` and live as
 > `polaris20` (merge `2cba9a5`, 09:43), then the first device-driven follow-up, mobile fix 1,
 > merged and live as `polaris21` (merge `27622eb`, 14:07). Live proof done on test item #2264,

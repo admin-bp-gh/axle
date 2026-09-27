@@ -3,7 +3,7 @@
 > **★ MOBILE REDESIGN DEPLOYED, 27 Sep 2026: phases 0 to 4 merged to `main` and live as
 > `polaris20` (merge `2cba9a5`, 09:43), then the first device-driven follow-up, mobile fix 1,
 > merged and live as `polaris21` (merge `27622eb`, 14:07). Live proof done on test item #2264,
-> nothing sent. Handover script ready; the test item for Rob or Huub is still to be named. No
+> nothing sent. Handover script ready with test item #2268 filled in; Brad hands it over himself. No
 > safety path touched in either deploy; the send confirm handler is byte-identical.**
 >
 > **What happened.** Brad approved Phase 4 and the plan's 4.6 sequence ran in order. `main` had
@@ -75,9 +75,12 @@
 > (step 30); `design-reference/mobile-audit/final-live/`. **Deploy notes:** deployed 27 Sep 2026,
 > merge `2cba9a5`, polaris20; then deployed 27 Sep 2026, merge `27622eb`, polaris21. Rollback
 > (4.8) if ever needed: `git revert -m 1 27622eb` (and `2cba9a5`) on `main`, `ASSET_V`
-> `polaris22`, never a shipped value. **Still open:** Brad's iPhone look at F1 to F7; name the
-> open test item for Rob or Huub (reopen #2264 or a fresh compose draft) and fill it into the
-> script; D1 and D2; the Phase 3 residuals (iOS edge-swipe Back reloads the list, the "Updates
+> `polaris22`, never a shipped value. Decisions taken 27 Sep 2026 for mobile fix 2, not built:
+> D1 remove the send confirmation entirely (phone and desktop) and D2 use the sender's address
+> on customer-message items with no confirm; both change frozen safety paths (`data-confirm`,
+> `needsConfirmedRecipient` / `pickRecipient`) and need Brad's written OK on that branch before
+> the code moves. **Still open:** Brad's iPhone look at F1 to F7; #2268 handed to Rob or Huub by
+> Brad; mobile fix 2 (D1, D2); the Phase 3 residuals (iOS edge-swipe Back reloads the list, the "Updates
 > waiting" chip wraps the live line at 375). **Next up:** hand the script to Rob or Huub, collect
 > their findings, then mobile fix 2 on a new branch if anything comes back.
 

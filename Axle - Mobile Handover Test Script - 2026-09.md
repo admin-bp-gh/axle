@@ -13,7 +13,7 @@ This is a check, not real work. You are looking at real customer items, but you 
 1. Never press Send now. If a step asks you to reach the Send button, stop there. Do not press it.
 2. Do every step on the test item the admin names below, not on any other item, unless a step says otherwise.
 
-Test item: #______ (filled in by Brad)
+Test item: #2268 (a compose draft to admin@budget-parts.nl, made for this script on 27 Sep 2026; it holds no customer)
 
 Go through the sections in order. For each row, do the tap, look at the result, and tick the OK column if it matches. If it does not match, leave it blank and read "If something is wrong" at the end.
 

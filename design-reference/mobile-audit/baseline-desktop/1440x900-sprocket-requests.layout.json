@@ -1,0 +1,288 @@
+[
+ {
+  "path": "body:nth-child(2)",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 196.84
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(241, 241, 241)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1)",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1440,
+   "height": 47.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgb(255, 255, 255)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(1)",
+  "rect": {
+   "x": 16,
+   "y": 11.45,
+   "width": 56.3,
+   "height": 23.09
+  },
+  "fontSize": "15px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(2)",
+  "rect": {
+   "x": 88.3,
+   "y": 10,
+   "width": 31.81,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(3)",
+  "rect": {
+   "x": 136.11,
+   "y": 10,
+   "width": 46.25,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(4)",
+  "rect": {
+   "x": 198.36,
+   "y": 10,
+   "width": 29.64,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > a:nth-child(5)",
+  "rect": {
+   "x": 244,
+   "y": 10,
+   "width": 54.92,
+   "height": 26.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6)",
+  "rect": {
+   "x": 1298.63,
+   "y": 13.77,
+   "width": 125.38,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1)",
+  "rect": {
+   "x": 1298.63,
+   "y": 13.77,
+   "width": 44.02,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1) > a:nth-child(1)",
+  "rect": {
+   "x": 1298.63,
+   "y": 15.77,
+   "width": 20.67,
+   "height": 16
+  },
+  "fontSize": "12px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1) > span:nth-child(2)",
+  "rect": {
+   "x": 1319.3,
+   "y": 15.77,
+   "width": 3.34,
+   "height": 14
+  },
+  "fontSize": "12px",
+  "color": "rgb(138, 138, 138)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(1) > a:nth-child(3)",
+  "rect": {
+   "x": 1322.64,
+   "y": 15.77,
+   "width": 20,
+   "height": 16
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > header:nth-child(1) > span:nth-child(6) > span:nth-child(2)",
+  "rect": {
+   "x": 1354.64,
+   "y": 13.77,
+   "width": 69.36,
+   "height": 18.47
+  },
+  "fontSize": "12px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2)",
+  "rect": {
+   "x": 170,
+   "y": 47.02,
+   "width": 1100,
+   "height": 149.83
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > h2:nth-child(1)",
+  "rect": {
+   "x": 186,
+   "y": 71.02,
+   "width": 1068,
+   "height": 30.8
+  },
+  "fontSize": "20px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > p:nth-child(2)",
+  "rect": {
+   "x": 186,
+   "y": 114.81,
+   "width": 1068,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > main:nth-child(2) > p:nth-child(3)",
+  "rect": {
+   "x": 186,
+   "y": 147.83,
+   "width": 1068,
+   "height": 20.02
+  },
+  "fontSize": "13px",
+  "color": "rgb(97, 97, 97)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket",
+  "rect": {
+   "x": 1368,
+   "y": 828,
+   "width": 52,
+   "height": 52
+  },
+  "fontSize": "13px",
+  "color": "rgb(48, 48, 48)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab",
+  "rect": {
+   "x": 1368,
+   "y": 828,
+   "width": 52,
+   "height": 52
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(0, 128, 96)",
+  "display": "flex"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab > svg:nth-child(1)",
+  "rect": {
+   "x": 1382,
+   "y": 842,
+   "width": 24,
+   "height": 24
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "block"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab > svg:nth-child(1) > circle:nth-child(1)",
+  "rect": {
+   "x": 1391,
+   "y": 851,
+   "width": 6,
+   "height": 6
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ },
+ {
+  "path": "body:nth-child(2) > div:nth-child(3)#sprocket > button:nth-child(1)#sprocketFab > svg:nth-child(1) > path:nth-child(2)",
+  "rect": {
+   "x": 1383,
+   "y": 843,
+   "width": 22,
+   "height": 22
+  },
+  "fontSize": "13px",
+  "color": "rgb(255, 255, 255)",
+  "backgroundColor": "rgba(0, 0, 0, 0)",
+  "display": "inline"
+ }
+]

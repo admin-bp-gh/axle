@@ -1,5 +1,406 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE PHASE 4 BUILT, 26 Sep 2026: skeleton detail on a card tap, skeletons for the busy
+> item, the customer page, translations and uploads, busy-poll scroll kept, ESC and focus, NL
+> parity, handover script. Committed on `axle/mobile`, not deployed; the branch is complete and
+> waits for Brad's Phase 4 gate and the single final deploy (plan 4.6). No safety path touched;
+> the send confirm handler is byte-identical.**
+>
+> **What happened.** Phase 3 passed Brad's gate. Phase 4 (plan 3.8) closes M-52, M-53, M-55 and
+> the non-register items (ESC and focus, NL parity, handover script). `ASSET_V` `polaris20`, the
+> value that ships. Contract changes: none (no route, form, field or value change).
+>
+> **The fix.** `ui.js`: the loading singleton paints a skeleton detail into `#workpane` in the
+> same frame as a phone card tap (app bar with the card's `#id subject`, three chip
+> placeholders, two skeleton boxes and a disabled bar of the ready bar's exact shape, `has-item`
+> and `ax-detail` set, scrolled to the top), while the desktop keeps its overlay and spinner;
+> `window.__axS` carries the three labels; Back during the skeleton aborts the in-flight
+> request (`htmx:abort` on the card) so a late response cannot reopen the item; a busy-poll
+> swap (the `load delay:10s` poller) restores `scrollY` on the phone; ESC closes the last open
+> menu or chip sheet, else the context sheet, at every width (the compose modal and the native
+> dialog keep their own ESC); on the phone an opening sheet focuses its `.sheet-title` (or first
+> row) and a closing one returns focus to its summary unless focus already moved; the pending
+> translation placeholder shows skeleton lines on the phone and the spinner on the desktop
+> (`m-hide` / `m-only`). `item.js`: `skBar(lang)` renders the phone-only disabled bar
+> placeholder for a busy item (same DOM shape as the ready bar: `send-split`, `send-stack`,
+> `recip-pop` summary, More summary, so the phone grid sizes it identically); the busy box
+> gains skeleton lines under "Being drafted now"; `#cusModalBody` shows skeleton lines on the
+> phone; the upload row shows skeleton lines on the phone. `components.css`, phone block only:
+> the `.sk` primitive (the `.qskel` shimmer generalised: `sk-t`, `sk-box`, `sk-tall`, `sk-chip`,
+> `sk-lines`, `sk-chips`, `skbox`), `.sk-bar` inert, reduced-motion off, and the chip row held at
+> the ready row's 48px on the item screen so nothing above the reply slot moves when a busy item
+> flips to ready. Root: `Axle - Mobile Handover Test Script - 2026-09.md` (77 steps, one row per
+> task, every closed register ID, English; never deployed). No new strings (362 keys each).
+>
+> **Deviations, recorded.** Focus moves are phone-only, not every width: a programmatic focus on
+> a desktop menu row could draw a focus ring and break pixel equivalence; ESC itself runs at
+> every width as planned. One harness-found defect fixed before the rerun: the busy chip row was
+> 44px against the ready row's 48px (no chip menus on a busy item), so the "Customer & docs"
+> row moved 4px when the draft landed; now held at 48px.
+>
+> **Proof.** K1 clean (two `node --check`, CSS braces 564/564). K4: 120 responses, transport
+> fields and DB dumps byte-identical; body differences are the asset version, the page script,
+> `__axS` and the phone-only placeholders. K5: 182 assertions pass (phases 0, 1A, 1B, 2, 3 and
+> 4) at 393, 375 and 430, plus the NL walk at 375: `design-reference/mobile-audit/phase-4/`
+> (`430/`, `nl/`). Measured at 393: the skeleton is on screen within one animation frame (11 ms)
+> of the tap and stays for the full 3 s delay; the skeleton bar and the loaded bar are both
+> 0, 739, 393, 113; the busy item shows banner, skeleton reply and a 113px disabled bar; scroll
+> kept across a busy-poll swap (300 to 300); after the flip to ready the reply appears and every
+> element above the slot keeps its position; ESC closes the More actions sheet at 393 and 1440,
+> the context sheet and the customer page; NL: key counts equal, no horizontal scroll on 36
+> scenes, no clipped button, tab counts visible; desktop card tap never writes a skeleton. K6:
+> zero pixel, layout and DOM differences at 1440 and 1101 (40 scenes). K7: three box-code
+> files changed, no new box-code file, safety files identical, safety grep empty, `audit(`
+> counts unchanged, handler hash `8bc9738b…48c2` unchanged. K2 and K3 run on the box.
+>
+> **Harness notes.** The 3 s delay is an HTTP-level hold on `GET /item/<id>` in
+> `harness/mobile/extra-stubs.js` (`AXLE_HARNESS_DELAY_ITEM`, `AXLE_HARNESS_DELAY_MS`) on a
+> short-lived server booted by phase-4.js. Item 301 is seeded `awaiting_input` and flipped to
+> `investigating` after boot (server.js resets investigating items at startup). The 10 s busy
+> poll is fired through `htmx.ajax` from the poller div. `phase --n 4 --part earlier|3|4|2`.
+>
+> **Known edges, recorded.** The NL "Afgehandeld" tab label wraps to two lines at 375 (counts
+> stay visible). Real-device findings arrive after the deploy (plan 3.8) and become a follow-up
+> fix with its own deploy.
+>
+> **Files:** `box-code/views/ui.js`, `box-code/routes/item.js`, `box-code/assets/components.css`;
+> repo-only `harness/harness-mobile.js`, `harness/mobile/{phase-4,boot,extra-stubs,scenes}.js`,
+> `design-reference/mobile-audit/phase-4/`, `Axle - Mobile Handover Test Script - 2026-09.md`.
+> **Deploy notes:** committed on `axle/mobile`, not deployed. **Next up:** Brad's Phase 4 gate,
+> then the single final deploy in the plan's order (4.6): merge to `main`, `-WhatIf`, deploy,
+> runbook checks, `polaris20` in the page source, the 1440 eye check, the iPhone checks, the
+> live proof on a compose draft to admin@budget-parts.nl, then the closing entry.
+
+> **★ MOBILE PHASE 3 BUILT, 26 Sep 2026: paginated Done and All, fragment tabs, compose out of
+> the polled pane and full screen, a detail-shaped error with Retry, the server-set `ax-detail`
+> class, an in-app Back and poll pause rules. Committed on `axle/mobile`, not deployed; ships with
+> the single final deploy. No safety path touched; the send confirm handler is byte-identical.**
+>
+> **What happened.** Phase 2 passed Brad's gate. Phase 3 (plan 3.7) closes M-07, M-11, M-12, M-16,
+> M-17, M-18, M-20, M-40, M-41, M-42, M-43, M-51, M-54, M-59. `ASSET_V` `polaris19`. Contract
+> changes C1 to C5, approved by Brad on 26 Sep 2026 as written in plan 3.7: C1 `page` on
+> `GET /queue` (done and all only, 50 per page, `data-rank` continues across pages, the
+> `view_inbox` audit text unchanged in form with `items=` the tab's matching count); C2 the four
+> status tabs carry `hx-get` / `hx-target="#queuepane"` / `hx-swap="innerHTML"` / `hx-push-url`
+> and keep their `href`; C3 the compose modal renders once per full page outside `#queuepane`
+> (`app.locals.composeUi`, registered by inbox.js and read by item.js for deep links, no new
+> require); C4 the error middleware and the HX 404 return a detail-shaped fragment with a back
+> bar and Retry on GET only; C5 `page()` takes `opts.bodyClass`, the item deep link sets
+> `ax-detail`, the HX item fragment adds it, Back and tab swaps clear it.
+>
+> **The fix.** `inbox.js`: `LIMIT 50 OFFSET (page-1)*50` for done and all; page 1 renders the
+> pane as today plus a "Load more (50 of N)" row after `#qlist` (a sibling, `hx-target="#qlist"`,
+> `hx-swap="beforeend"`); page 2 and later return only the card rows, the next Load more row out
+> of band (`hx-swap-oob`, `delete` on the last page) and the summary-translation fill script;
+> `#qlist` carries `data-page`, the search script recounts, re-sorts and re-filters after each
+> Load more and, on a paginated tab with no hits, says "Searched the N loaded emails" above the
+> Load more row (Q4). Poll: the tick is skipped when `document.hidden`, when the list is past
+> page 1 (any width), and on the phone when `#queuepane` is not displayed, `scrollY > 0` or a
+> touch hit the list in the last 10 s; a phone skip shows the 44px "Updates waiting, tap to
+> refresh" chip in the live line, which runs the same `htmx.ajax` call and scrolls to the top.
+> Cadence 8 / 15 / 0 and the focus-in-pane skip unchanged. Compose: `composeUi(req)` builds the
+> same markup and script; `#composeBtn` is a delegated document click (the button is re-rendered
+> by every queue swap); `openM()` does not focus `#who` on the phone (M-43). `item.js`: HX 404 is
+> the error fragment; the HX fragment script adds `ax-detail`; the deep link passes
+> `bodyClass: "ax-detail"` and appends the compose UI. `server.js`: one hunk at line 553 inside
+> the error middleware (the `.errbox` with Retry for GET), nothing else. `ui.js`: `page()` body
+> class, `window.__axEmptyPanes` on shell pages, the back link is a plain `href="/"` (M-20), the
+> failure handler writes the same detail screen client-side for `sendError`, `timeout` and
+> `responseError` (Retry only when the verb is GET, `htmx.process` on a server error body so its
+> Retry works, `ax-detail` added), a navigation block: the card tap saves `scrollY` and the list
+> URL, the swap scrolls to the top on the phone (M-18), Back resets `#workpane` to the empty panes,
+> removes `ax-detail`, restores the scroll and pushes the saved list URL with `{htmx: true}`
+> (never `history.back()`, M-17), a tab swap resets the work pane at every width (Q5); Back
+> flushes the autosave and re-marks the cards ("Draft kept" stays right). `components.css`,
+> phone block only: `body.ax-detail` twins in separate rule blocks for the three rules that gate
+> the detail view (queue hidden, work pane shown, header hidden); compose full screen (no modal
+> padding, `.modal-card` `min-height: 100dvh`, sticky head with a 44x44 close, sticky foot with
+> Cancel / Draft / Send now at 44px and 8px gaps plus safe-area padding, the draft-only note on
+> its own line, chips 44px with 8px gaps); `.qmore` 44px full width; `.qlive .qupd` chip;
+> `.errbox` per the M1 mock. Five strings (EN and NL, 362 keys each): load_more, retry,
+> load_failed_title, updates_waiting, searching_loaded.
+>
+> **Deviations, recorded.** (1) The `:has()` twins cover the three detail-view rules; the other
+> `:has()` rules in the phone block key on open menus, `:target` and content shape, not on the
+> detail state, and degrade cosmetically as recorded in 1A and 1B. (2) On the All tab the 15 s
+> "investigating" poll cadence is decided from the loaded page only, as before pagination it was
+> decided from the whole list; an investigating item further down All does not arm the poll.
+> (3) The `qsearched` note markup is a second `<p>` inside the existing `#qemptySearch` (phone
+> only, hidden). (4) Two harness-found CSS defects were fixed before the kit was rerun: the chip
+> was hidden by the phone rule `.qlive button { display: none }` (now `.qlive .qupd`), and the
+> compose foot with sending off crushed Cancel and Draft (now `flex-wrap: wrap`).
+>
+> **Proof.** K1 clean (four `node --check`, CSS braces 545/545). K4: 120 responses, transport
+> fields and DB dumps byte-identical; every body difference is the asset version, the tab
+> attributes, the relocated compose, the `ax-detail` body class or the `page()` script. K5: 161
+> assertions pass (phases 0, 1A, 1B, 2 and 3) at 393, 375 and 430:
+> `design-reference/mobile-audit/phase-3/` (430 in `phase-3/430/`). Measured at 393: `/?show=done`
+> with 121 done rows is 50 cards and 105 KB (was 1,532 cards and 4.67 MB live); Load more appends
+> 50 over one XHR and disappears after the last page; a tab tap is one XHR with no document load
+> and the URL follows; `#composeModal` outside `#queuepane`, once per page, absent from `/queue`;
+> compose text survives a sync-driven poll (M-59); the forced 500, the aborted request and the
+> 404 all show the detail screen with a 44px Retry, a failed POST never offers Retry; the item
+> opens with every `:has()` rule deleted from the CSSOM; Back restores the scroll within 2px and
+> the saved URL; a card tapped from `scrollY` 2,000 opens at 0; no `/queue` request with an item
+> open, hidden, scrolled, touched or after Load more; desktop tab switch ends on the empty work
+> pane and the sync poll still runs there. K6: zero pixel, layout and DOM differences at 1440 and
+> 1101 (40 scenes; the harness now roots modal paths at `#composeModal` and moves it to the end
+> of the body on both sides before the DOM diff, the plan's allowed difference). K7: five
+> box-code files changed, no new box-code file, safety files identical, safety grep shows only
+> the `view_inbox` audit line whose text form is unchanged, `audit(` counts unchanged (5 / 33 /
+> 23 / 4 / 8), `data-confirm` handler hash `8bc9738b…48c2` unchanged. K2 and K3 run on the box.
+>
+> **Harness notes.** The forced 500 is an env switch (`AXLE_HARNESS_FAIL_ITEM=300`) in
+> `harness/mobile/extra-stubs.js` that makes `renderTimeline` throw for the seeded item 300
+> ("Forced 500 fixture", a copy of item 1, so the Open tab shows 7 on the fixture); item.js has no
+> unguarded JSON parse to trip by data. server.js clears the sync lock at boot, so phase-3.js sets
+> it in the running server's DB for the poll assertions and clears it after. The 30 s poll windows
+> run as 5 s with `sec = 1`. `walk --phase 3 --append` merges widths into one `walk.json`;
+> `phase --n 3 --part earlier|3|2` splits the run under the sandbox's per-call cap and rebuilds
+> `phase-3.json` from the three part files; phase 2 still runs last because it writes to the DB.
+>
+> **Known edges, recorded.** iOS edge-swipe Back still reloads the list (residual, D9). The
+> "Updates waiting" chip shares the live line with the Filters button at 375, so "Live · updated"
+> wraps to two lines while the chip shows. Candidates for the post-deploy follow-up.
+>
+> **Files:** `box-code/routes/inbox.js`, `box-code/routes/item.js`, `box-code/views/ui.js`,
+> `box-code/server.js` (one hunk, error middleware), `box-code/assets/components.css`; repo-only
+> `harness/harness-mobile.js`, `harness/mobile/{phase-3,layout,boot,extra-stubs,scenes}.js`,
+> `design-reference/mobile-audit/phase-3/`. **Deploy notes:** committed on `axle/mobile`, not
+> deployed; ships with the single final deploy. **Next up:** Brad's Phase 3 gate, then Phase 4
+> (skeletons, busy-poll scroll, ESC and focus, NL parity, handover script).
+
+> **★ MOBILE PHASE 2 BUILT, 26 Sep 2026: two-row bottom bar with the full recipient line, Send
+> and an overflow sheet, inline 16px auto-growing editor, local autosave, keyboard tracking.
+> Committed on `axle/mobile`, not deployed; ships with the single final deploy. No safety path
+> touched; the send confirm handler is byte-identical.**
+>
+> **What happened.** Phase 1B passed Brad's gate. Phase 2 (plan 3.6) closes M-26, M-27, M-28,
+> M-29, M-30, M-31, M-32, M-33, M-56, M-57, M-58. `ASSET_V` `polaris18`. Contract changes:
+> none (no route, field name, form action or value change; the mirror rows post existing
+> forms with identical attributes; Q2 autosave phone-only with Save kept as an overflow row;
+> Q3 native confirm only).
+>
+> **The fix.** `item.js`: a phone-only recipient line inside the existing `summary.send-caret`
+> ("To: full address" plus its source label and a "changed" tag, or amber "Confirm recipient:
+> no recipient yet"), so the whole line is the tap target and the popover forms are untouched
+> (M-29, M-31); a phone-only disabled Send placeholder in the no-recipient state (no form, no
+> route); phone-only mirror rows at the top of the More actions sheet: Save & redraft and Save
+> (`form="workform"`, same `name=action` values), Mark done (same `/status` form), and one
+> owner-handover row per option with a forward target, carrying the same `data-confirm` text
+> as `ownerOption()` (the only `data-confirm` added, listed by the K7 grep); the reopen bar
+> gets `.closed`. `components.css`, phone block: `.actionbar` fixed at `bottom: var(--kb)` with
+> safe-area padding as a two-column grid, `.send-split` as `display: contents` so the
+> recipient line spans row 1, Send fills row 2 with its truncated `.send-to` hidden, and the
+> "..." (44x44, drawn by CSS on the existing summary) takes the corner; direct-child Save,
+> Save & redraft, spacer, Mark done and the pill hidden on the phone (they live in the sheet);
+> injection and not-enabled notes take row 1; `.pane-inner` reserves the bar's height.
+> `#replybox` and `textarea.ans` at 16px, `resize: none`, no inner scroll. `ui.js`: page-script
+> block (phone only) with auto-grow on input, restore and load; the `--kb` tracker from
+> `visualViewport` (`window.__axKb()` for the harness); autosave to `localStorage`
+> `axle.draft.<id>` (reply, subject, feedback, the server values as `base`, a timestamp),
+> debounced 600ms and flushed on `pagehide` and `visibilitychange`; restore after every load
+> and `#workpane` swap with an "Unsaved edits restored" note when `base` matches, or a
+> Restore / Discard offer when the server text changed since, so stale local text never
+> silently replaces a newer draft; a `sessionStorage` pending marker on `#workform` submit
+> clears the key on the next render when the posted text landed (a refused send lands on a
+> page without `#workpane`, so nothing is cleared); side actions (recipient, language, owner,
+> attach) reload with `base` intact, so the text comes back (M-57); keys older than 14 days
+> pruned; "Draft kept" tag on queue cards with a stored key (M-58). Nothing is written at
+> 1440. Seven strings (EN and NL, 357 keys each): restored, restore_offer, restore, discard,
+> draft_kept, to_label, save_now. One deviation: the "More actions" summary markup is
+> unchanged (wrapping its label broke desktop DOM equivalence); the phone "..." is CSS.
+>
+> **Proof.** K1 clean. K4: transport fields and DB dumps byte-identical (120 responses). K5:
+> 110 assertions pass at 393 and 375 (phases 0, 1A, 1B, 2), 430 walked for captures:
+> `design-reference/mobile-audit/phase-2/`. Measured: bar 113px (was 174), reading area 691 at
+> 393 and 651 at 375 (was 503 and 473); Send raises the native confirm with the `data-confirm`
+> text and no request leaves; the autosave scenarios (restore, recipient redirect, changed
+> server draft, Save clears, refusal keeps, Draft kept, nothing at 1440) all scripted. K6:
+> zero pixel, layout and DOM differences at 1440 and 1101. K7: three files changed, no new
+> box-code file, `audit(` counts unchanged, handler hash unchanged. One Phase 0 assertion
+> refined: the bar is now itself fixed, so it is excluded from its own overlap check.
+>
+> **Known edges, recorded.** Mark done or Archive from the sheet does not clear a stored
+> draft (only a `#workform` submit does), so "Draft kept" can show on a closed item until the
+> 14-day prune; "Reset to AI draft" and inline-image insert change the reply without an
+> `input` event, so they are autosaved at the next keystroke; the recipient summary keeps its
+> existing `aria-label` ("change recipient"), so a screen reader does not read the line text.
+> None of these touches a route; candidates for the post-deploy follow-up.
+>
+> **Files:** `box-code/routes/item.js`, `box-code/views/ui.js`, `box-code/assets/components.css`;
+> repo-only `harness/mobile/{phase-2,phase-0,scenes}.js`, `harness/harness-mobile.js`,
+> `design-reference/mobile-audit/phase-2/`. **Deploy notes:** committed on `axle/mobile`, not
+> deployed; ships with the single final deploy. **Next up:** Brad's Phase 2 gate, then
+> Phase 3, which stops before building for his explicit OK on C1 to C5.
+
+> **★ MOBILE PHASE 1B BUILT, 26 Sep 2026: item app bar, state-driven order, folded email,
+> context sheet, customer page. Committed on `axle/mobile`, not deployed; ships with the single
+> final deploy. No safety path touched.**
+>
+> **What happened.** Phase 1A passed Brad's gate. Phase 1B (plan 3.5) closes M-19, M-21, M-22,
+> M-23, M-24, M-25, M-36, M-37, M-39, M-44. `ASSET_V` `polaris17`. Contract changes: none
+> (`workPanes()` gains optional `title` and `lang`, used only by phone-only markup; fragment
+> shape unchanged; no route change).
+>
+> **The fix.** `ui.js`: `workPanes()` renders the phone back bar as a 44x44 chevron plus a
+> two-line title (`#id subject`) with the old label kept for screen readers, and puts a
+> phone-only "Back to email" bar (`#ctx`, the no-JS `:target` fallback) at the top of
+> `.pane-context`; `renderTimeline()` marks the newest message `.msg-latest` and adds a
+> phone-only "Show full message" toggle; the page script gains the fold toggle (hidden when the
+> clamped text fits, rechecked after every `#workpane` swap), and the context sheet
+> (`body.ax-ctx`): `[data-ctx-open]` remembers `scrollY` and focuses the back bar, close restores
+> both, no `pushState` and no hash change, and every `#workpane` swap closes it. `item.js`: a
+> phone-only "Customer & docs" link after the chips, `div.m-mail` around the header-plus-email
+> block (zero padding, border and margin, so desktop margins still collapse through it), the
+> `#mq` search unfolds a clamped message on a hit, the customer dialog's close button carries a
+> phone-only "Back to Customer & docs" label. `components.css`, phone block only: the global
+> header hidden on the detail screen (`body:has(#workpane .has-item) > header`), the back bar
+> as a 48px item app bar, `.pane-inner` a flex column with the brief first, `#workform` order 1,
+> `div.m-mail` order 2, the superseded draft 3 and the bar 9 (the work form already orders
+> questions before the reply when answers are needed, so decision 10 falls out of flex order);
+> one-line horizontally scrolling chip row with 44px chipmenu cells and a visible caret; the
+> newest message clamped to 12 lines with a fade; every `details > summary` on the item and
+> context screens a 44px full-width fold row with a chevron; inbound attachments as 44px chips;
+> the context pane a full-screen fixed sheet with SAP document rows stacked (full-width Attach,
+> 44px Preview), two-column customer tiles and a full-width attach-by-number form; the customer
+> `<dialog>` a full-screen page with a sticky back bar (it stays a dialog in the DOM; nothing
+> floats over the sheet). New strings (EN and NL, 350 keys each): customer_docs, show_full,
+> show_less, back_to_email, back_to_ctx.
+>
+> **Proof.** K1 clean. K4: transport fields and DB dumps byte-identical (120 responses). K5:
+> 72 assertions pass at 393 and 375 (phases 0, 1A and 1B together), 430 walked for captures:
+> `design-reference/mobile-audit/phase-1b/`. K6: zero pixel, layout and DOM differences at 1440
+> and 1101 (the harness now unwraps `div.m-mail` on a clone before serialising, the plan's
+> allowed difference). K7: three box-code files changed, no new box-code file, safety grep
+> empty, `audit(` counts unchanged, `data-confirm` handler hash unchanged. Two Phase 0
+> assertions became phase-aware (attach-by-number is measured inside the open context sheet;
+> the customer dialog may be full screen instead of 86dvh). Harness notes: `phase --reuse-walk`
+> runs the assertions on an existing `walk.json` (the sandbox caps a shell call at about three
+> minutes, so walk and assert run apart); the desktop compare must run both widths in one
+> session, because `/audit` lists the run's own page views and a split run has a different row
+> count (seen as a false diff on `/audit` at 1101 only). Fixture seeding: item 1's email is
+> lengthened by 40 lines for phases 1B onwards so the clamp is testable.
+>
+> **Files:** `box-code/views/ui.js`, `box-code/routes/item.js`, `box-code/assets/components.css`;
+> repo-only `harness/mobile/{phase-1b,phase-0,audits,layout,scenes,boot}.js`,
+> `harness/harness-mobile.js`, `design-reference/mobile-audit/phase-1b/`. **Deploy notes:**
+> committed on `axle/mobile`, not deployed; ships with the single final deploy. **Next up:**
+> Brad's Phase 1B gate, then Phase 2 (reply editor, bottom bar, recipient line, overflow,
+> autosave, keyboard).
+
+> **★ MOBILE PHASE 1A BUILT, 25 Sep 2026: app bar with a menu sheet, every menu a bottom sheet,
+> queue chrome, admin and block pages. Committed on `axle/mobile`, not deployed; ships with the
+> single final deploy. No safety path touched.**
+>
+> **What happened.** Phase 0 passed Brad's gate. Phase 1A (plan 3.4) closes M-01, M-02, M-08,
+> M-09, M-10, M-13, M-14, M-15, M-34, M-35, M-45, M-46. `ASSET_V` `polaris16`.
+>
+> **The fix.** Phone only, all inside the 1100px block plus one `min-width: 1101px` rule that
+> hides `.m-only` markup on desktop (`.m-only` / `.m-hide` are the only mechanism for phone-only
+> markup). `ui.js`: a sticky 48px app bar (brand, 44x44 menu button) whose sheet holds Inbox,
+> Blocked, Audit and Requests (admin, same `hbadge`), EN/NL as two 44px segments on the same
+> `/setlang` links, "Signed in as", Close; the desktop links and `.who` are untouched and hidden
+> on the phone. `window.__axPhone` (one `matchMedia` for CSS and JS); the popover positioner and
+> the splitter return early on the phone and the positioner clears its inline styles on a media
+> change (M-09); a delegated `[data-close]` handler closes the nearest `details`; `page()` gains
+> `opts.desktopNote`; `chipMenu()` gains a phone-only heading (the chip tooltip made visible,
+> M-32) and a `type=button` Cancel row, its `data-confirm` line untouched. Sheet primitive in
+> `components.css`: every `details.menu > .menu-list` and `details.chipmenu > .chipmenu-list`
+> becomes fixed, full width, anchored to `bottom: var(--kb)`, capped at `100dvh - 48px - inset`,
+> with a grab handle, 44px rows, 20px radios and safe-area padding; the scrim is the open
+> `summary::before`, so a scrim tap is a native toggle and closing needs no JS (M-08). `:has()`
+> lifts (`.queue-head`, `.actionbar`, `header` with an open details) live in their own rule
+> blocks. `inbox.js`: the queue head is a CSS grid on the phone (first `.qbar` as
+> `display: contents`): one row of four two-line tabs plus a 44x44 search icon, a slim live
+> line with Filters on the right; search row hidden until the icon opens it; `#qsort` and
+> `#qcount` hidden; the Filters sheet carries Mailbox, Mine/All (same `scopeLink`), a sort
+> select mirroring `#qsort`, Sync now (same `/sync` form) and Cancel; "No matches for 'x'" plus a
+> 44px Clear search (M-15); New email is a fixed 56px bottom-right button and the list reserves
+> room for it. Cards follow the M1 mock (12px radius, 8px gaps). `item.js`: sheet headings
+> ("Send to", "More actions") and Cancel rows; no form, field, value or route change.
+> `admin.js`: block page gets the sticky `.m-back` bar and a 44px Cancel (M-45); `/blocks` and
+> `/audit` tables sit in `div.hscroll` with the "Best on desktop" note (M-46); `sprocket.js`
+> requests page gets the note. New strings (EN and NL, 345 keys each): menu, close, cancel,
+> filters, sort, sync, signed_in_as, no_matches, clear_search, best_on_desktop, search_open,
+> send_to. The Filters button still reads "Filter" on the phone (the desktop text is shared).
+>
+> **Proof.** K1 clean. K4: transport fields and DB dumps byte-identical (120 responses). K5:
+> 44 assertions pass (Phase 0's nine rerun plus 35 for 1A) at 393, 375 and 430:
+> `design-reference/mobile-audit/phase-1a/`. K6: zero pixel, layout and DOM differences at 1440
+> and 1101. K7: six box-code files changed, no new box-code file, safety grep empty, `audit(`
+> counts unchanged, `data-confirm` handler hash unchanged. Harness: the DOM diff now drops
+> `display: none` subtrees on both sides (the plan's allowed difference), re-normalising the
+> committed baseline on load; a sabotage check (an inline colour on a desktop element) is still
+> reported. Three assertion refinements: the phantom-scroll probe ignores a document that does
+> not scroll; sheets are not "fixed overlays" over the bar; only a fixed element at or above the
+> modal's z-index counts over Send now. One CSS fix from review: the sheet has no side borders.
+>
+> **Also this session.** `deploy.ps1 -WhatIf` showed `sap-doc-pdf.js` differing from the box:
+> the `--json` CLI used by the mail MCPs' attach tool had been edited on the box and never
+> committed. Committed on `main` (`f1bdc71`) and merged into `axle/mobile`, so the final deploy
+> cannot overwrite it.
+>
+> **Files:** `box-code/views/ui.js`, `box-code/routes/inbox.js`, `box-code/routes/item.js`,
+> `box-code/routes/admin.js`, `box-code/routes/sprocket.js`, `box-code/assets/components.css`;
+> repo-only `harness/mobile/{phase-1a,layout,scenes,audits,phase-0}.js`, `harness/harness-mobile.js`,
+> `design-reference/mobile-audit/phase-1a/`. **Deploy notes:** committed on `axle/mobile`, not
+> deployed; ships with the single final deploy. **Next up:** Brad's Phase 1A gate, then Phase 1B
+> (item brief, order, folds, context sheet, customer page).
+
+> **★ MOBILE PHASE 0 BUILT, 25 Sep 2026: tokens, safe areas, dvh, 16px inputs, Sprocket off the
+> phone. Committed on `axle/mobile`, not deployed; ships with the single final deploy. No safety
+> path touched.**
+>
+> **What happened.** Step 3 of the mobile redesign started on branch `axle/mobile`. Before any
+> edit, the proof kit was stood up: the Step-0 stub kit boots the current box-code (one stale
+> stub fixed inside `harness/`, see below), the K4 equivalence battery runs (120 responses, three
+> env phases), headless Chromium runs in the sandbox (Google's Chrome-for-Testing CDN is blocked
+> by the sandbox allow-list; `@sparticuz/chromium` from npm works and is installed in the sandbox
+> scratch folder, never in the repo), and the new repo-only `harness/harness-mobile.js` (plus
+> `harness/mobile/*`) walks the stubbed app at 393 x 852, 375 x 812 and 430 x 932 with touch and
+> DPR 3 and at 1440 x 900 and 1101 x 900, runs the tap, overflow and font-size audits, captures
+> the desktop baseline (pixel, layout and DOM), diffs a tree against it, runs per-phase acceptance
+> assertions and prints the `data-confirm` handler fingerprint. Pre-Phase-0 captures are in
+> `design-reference/mobile-audit/phase-pre/` (921 tap violations, 228 sub-16px controls across
+> 60 captures, the register made measurable) and the desktop baseline in
+> `design-reference/mobile-audit/baseline-desktop/`.
+>
+> **The fix (plan 3.3).** Register IDs closed: M-03, M-04, M-05, M-06, M-38. `tokens.css` gains
+> the phone primitives (`--tap` 44px, `--gap-tap` 8px, `--fs-input` 16px, `--scrim`, `--bar-h`
+> 48px, `--kb` 0px), read only inside the 1100px block. `components.css`: `dvh` twins after the
+> `vh` fallbacks on `.cusdialog`, `.empty-state` and both `.sprocket-panel` rules; inside the
+> 1100px block, 16px and 44px on every text-like input, select, textarea and `.instr-editor`
+> (the no-`type` attach-by-number input is caught by the `:not()` rule without adding `type`),
+> a 44px `::file-selector-button`, `.sprocket { display: none }`, and `env(safe-area-inset-*)`
+> through `max()` on `header`, `.m-back`, `.queue-head`, `.actionbar` and `.modal`. `ui.js`:
+> `viewport-fit=cover` on the viewport meta and `ASSET_V = "polaris15"`. The 9px phantom scroll
+> (M-05) did not reproduce on the fixture walk at 393 (probe 0px before and after); the probe
+> stays in the kit and the live check after the deploy decides whether it was data or the FAB.
+>
+> **Proof.** K1 `node --check` and CSS brace balance clean. K4: transport fields and DB dumps
+> byte-identical; every body difference is `polaris14` to `polaris15` or the viewport meta. K5:
+> all nine Phase 0 assertions pass at 393, 375 and 430; screenshots and JSON in
+> `design-reference/mobile-audit/phase-0/`. K6: zero pixel, layout and DOM differences on all
+> 20 scenes at 1440 and 1101 (`phase-0/desktop/compare.json`). K7: only the three files above
+> changed under box-code, no new box-code file, safety grep empty, `audit(` counts unchanged,
+> `data-confirm` handler ui.js:868-886 sha256 `8bc9738b…48c2` unchanged. K2 and K3 run on the
+> box (see the commit step). Two harness assertions were themselves wrong on the pristine tree
+> (a CSS reader that glued a comment onto the `@media` head; an overlap check that let the
+> action bar intersect itself) and were fixed in `harness/mobile/`, not in the CSS.
+>
+> **Harness note, recorded so it is not re-discovered.** `routes/item.js` now requires
+> `customer-summary.js`, which loads `mssql` and calls the live `connectors.getPool()`; the June
+> stub kit did not know it, so the stubbed server hung on the item page. `harness/mobile/extra-stubs.js`
+> layers one deterministic stub for that module on top of `step0/stubs.js` (via `NODE_OPTIONS
+> --require`); `harness/step0/*` is unchanged.
+>
+> **Files:** `box-code/assets/tokens.css`, `box-code/assets/components.css`, `box-code/views/ui.js`
+> (box-code); new repo-only `harness/harness-mobile.js`, `harness/mobile/*.js`,
+> `design-reference/mobile-audit/{phase-pre,baseline-desktop,phase-0}/`. **Deploy notes:**
+> committed on `axle/mobile`, not deployed; ships with the single final deploy. `ASSET_V`
+> `polaris15`. **Next up:** Brad's Phase 0 gate (393 and 375 screenshots, K5 report), then Phase 1A.
+
 > **★ MOBILE REDESIGN: REGISTER, M1 MOCK AND PLAN WRITTEN, 24 to 25 Sep 2026. NOTHING BUILT OR
 > DEPLOYED YET. No safety path touched; read-only walk of the live tool.**
 >

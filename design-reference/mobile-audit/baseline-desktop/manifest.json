@@ -1,0 +1,30 @@
+{
+ "generatedAt": "2026-09-25T10:52:11.510Z",
+ "tree": "/sessions/quirky-relaxed-franklin/mnt/Axle/box-code",
+ "widths": [
+  "1440x900",
+  "1101x900"
+ ],
+ "scenes": [
+  "queue-open",
+  "queue-done",
+  "queue-filter",
+  "queue-search-empty",
+  "compose",
+  "item-needs-answer",
+  "item-ready",
+  "item-contact-form",
+  "item-compose",
+  "item-done",
+  "item-injection",
+  "item-new",
+  "item-more-actions",
+  "item-recipient",
+  "item-language",
+  "item-customer",
+  "blocks",
+  "audit",
+  "block-page",
+  "sprocket-requests"
+ ]
+}

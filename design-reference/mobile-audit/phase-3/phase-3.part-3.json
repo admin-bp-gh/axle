@@ -1,0 +1,903 @@
+{
+ "phase": "3",
+ "part": "3",
+ "pass": true,
+ "assertions": [
+  {
+   "id": "P3-C1-size-under-250k",
+   "pass": true,
+   "detail": {
+    "status": 200,
+    "bytes": 105154,
+    "limit": 256000
+   }
+  },
+  {
+   "id": "P3-C1-done-50-cards",
+   "pass": true,
+   "detail": {
+    "n": 50
+   }
+  },
+  {
+   "id": "P3-C1-load-more-44",
+   "pass": true,
+   "detail": {
+    "btn": {
+     "text": "Load more (50 of 121)",
+     "h": 44,
+     "w": 361,
+     "outsideList": true,
+     "total": "121"
+    },
+    "tabN": "121",
+    "labelOk": true
+   }
+  },
+  {
+   "id": "P3-C1-append-not-replace",
+   "pass": true,
+   "detail": {
+    "n": 100,
+    "firstKept": true,
+    "noDupes": true,
+    "ranksOk": true,
+    "dataPage": "2",
+    "xhr": [
+     "http://127.0.0.1:42619/queue?mailbox=info&show=done&scope=all&page=2"
+    ],
+    "navs": 0,
+    "nextHx": "/queue?mailbox=info&show=done&scope=all&page=3"
+   }
+  },
+  {
+   "id": "P3-C1-last-page-no-control",
+   "pass": true,
+   "detail": {
+    "n": 121,
+    "expected": "121",
+    "btn": false,
+    "row": false
+   }
+  },
+  {
+   "id": "P3-C1-all-tab-same",
+   "pass": true,
+   "detail": {
+    "first": {
+     "n": 50,
+     "text": "Load more (50 of 129)",
+     "h": 44,
+     "tabN": "129"
+    },
+    "afterLoadMore": 100,
+    "kept": true
+   }
+  },
+  {
+   "id": "P3-C1-open-unchanged",
+   "pass": true,
+   "detail": {
+    "open": {
+     "n": 7,
+     "tabN": 7,
+     "more": false,
+     "paged": null
+    },
+    "archived": {
+     "n": 1,
+     "tabN": 1,
+     "more": false,
+     "paged": null
+    }
+   }
+  },
+  {
+   "id": "P3-C2-tab-one-xhr-no-load",
+   "pass": true,
+   "detail": {
+    "xhr": [
+     "GET http://127.0.0.1:42619/queue?mailbox=info&show=done&scope=all"
+    ],
+    "navs": [],
+    "marker": 1,
+    "cards": 50
+   }
+  },
+  {
+   "id": "P3-C2-url-and-back",
+   "pass": true,
+   "detail": {
+    "afterTab": "/?mailbox=info&show=done&scope=all",
+    "back": {
+     "url": "/",
+     "urlShow": "open",
+     "tabShow": "open",
+     "cards": 7
+    }
+   }
+  },
+  {
+   "id": "P3-C3-compose-outside-queuepane-393",
+   "pass": true,
+   "detail": {
+    "count": 1,
+    "inQueue": false
+   }
+  },
+  {
+   "id": "P3-C3-compose-once-deep-link-393",
+   "pass": true,
+   "detail": {
+    "root": {
+     "count": 1,
+     "inQueue": false
+    },
+    "deep": {
+     "count": 1,
+     "inQueue": false,
+     "lazyQueueLoaded": true
+    },
+    "rawRoot": 1,
+    "rawDeep": 1
+   }
+  },
+  {
+   "id": "P3-C3-compose-outside-queuepane-375",
+   "pass": true,
+   "detail": {
+    "count": 1,
+    "inQueue": false
+   }
+  },
+  {
+   "id": "P3-C3-compose-once-deep-link-375",
+   "pass": true,
+   "detail": {
+    "root": {
+     "count": 1,
+     "inQueue": false
+    },
+    "deep": {
+     "count": 1,
+     "inQueue": false,
+     "lazyQueueLoaded": true
+    },
+    "rawRoot": 1,
+    "rawDeep": 1
+   }
+  },
+  {
+   "id": "P3-C3-queue-fragment-no-compose",
+   "pass": true,
+   "detail": {
+    "status": 200,
+    "bytes": 22452,
+    "page2Status": 200,
+    "hasCompose": false,
+    "page2HasCompose": false
+   }
+  },
+  {
+   "id": "P3-M40-modal-fills-viewport-393",
+   "pass": true,
+   "detail": {
+    "vw": 393,
+    "vh": 852,
+    "modal": {
+     "label": "modal",
+     "x": 0,
+     "y": 0,
+     "right": 393,
+     "bottom": 852,
+     "w": 393,
+     "h": 852
+    },
+    "card": {
+     "label": "card",
+     "x": 0,
+     "y": 0,
+     "right": 393,
+     "bottom": 852,
+     "w": 393,
+     "h": 852
+    }
+   }
+  },
+  {
+   "id": "P3-M42-close-44-393",
+   "pass": true,
+   "detail": {
+    "close": {
+     "label": "close",
+     "x": 337,
+     "y": 1.5,
+     "right": 381,
+     "bottom": 45.5,
+     "w": 44,
+     "h": 44
+    }
+   }
+  },
+  {
+   "id": "P3-M41-foot-visible-44-gap8-393",
+   "pass": true,
+   "detail": {
+    "allThree": true,
+    "visible": true,
+    "tall": true,
+    "minGap": 8,
+    "pair": [
+     "composeCancel",
+     "composeSubmit"
+    ],
+    "foot": [
+     {
+      "label": "composeCancel",
+      "x": 18,
+      "y": 800,
+      "right": 131.65625,
+      "bottom": 844,
+      "w": 113.65625,
+      "h": 44
+     },
+     {
+      "label": "composeSubmit",
+      "x": 139.65625,
+      "y": 800,
+      "right": 253.328125,
+      "bottom": 844,
+      "w": 113.671875,
+      "h": 44
+     },
+     {
+      "label": "composeSendBtn",
+      "x": 261.328125,
+      "y": 800,
+      "right": 375,
+      "bottom": 844,
+      "w": 113.671875,
+      "h": 44
+     }
+    ],
+    "vh": 852
+   }
+  },
+  {
+   "id": "P3-M42-chips-44-gap8-393",
+   "pass": true,
+   "detail": {
+    "count": 6,
+    "minH": 44,
+    "minGap": 8,
+    "pair": [
+     "schip0",
+     "schip1"
+    ]
+   }
+  },
+  {
+   "id": "P3-M43-no-autofocus-393",
+   "pass": true,
+   "detail": {
+    "activeElement": "composeBtn"
+   }
+  },
+  {
+   "id": "P3-M40-modal-fills-viewport-375",
+   "pass": true,
+   "detail": {
+    "vw": 375,
+    "vh": 812,
+    "modal": {
+     "label": "modal",
+     "x": 0,
+     "y": 0,
+     "right": 375,
+     "bottom": 812,
+     "w": 375,
+     "h": 812
+    },
+    "card": {
+     "label": "card",
+     "x": 0,
+     "y": 0,
+     "right": 375,
+     "bottom": 812,
+     "w": 375,
+     "h": 812
+    }
+   }
+  },
+  {
+   "id": "P3-M42-close-44-375",
+   "pass": true,
+   "detail": {
+    "close": {
+     "label": "close",
+     "x": 319,
+     "y": 1.5,
+     "right": 363,
+     "bottom": 45.5,
+     "w": 44,
+     "h": 44
+    }
+   }
+  },
+  {
+   "id": "P3-M41-foot-visible-44-gap8-375",
+   "pass": true,
+   "detail": {
+    "allThree": true,
+    "visible": true,
+    "tall": true,
+    "minGap": 8,
+    "pair": [
+     "composeCancel",
+     "composeSubmit"
+    ],
+    "foot": [
+     {
+      "label": "composeCancel",
+      "x": 18,
+      "y": 760,
+      "right": 125.65625,
+      "bottom": 804,
+      "w": 107.65625,
+      "h": 44
+     },
+     {
+      "label": "composeSubmit",
+      "x": 133.65625,
+      "y": 760,
+      "right": 241.328125,
+      "bottom": 804,
+      "w": 107.671875,
+      "h": 44
+     },
+     {
+      "label": "composeSendBtn",
+      "x": 249.328125,
+      "y": 760,
+      "right": 357,
+      "bottom": 804,
+      "w": 107.671875,
+      "h": 44
+     }
+    ],
+    "vh": 812
+   }
+  },
+  {
+   "id": "P3-M42-chips-44-gap8-375",
+   "pass": true,
+   "detail": {
+    "count": 6,
+    "minH": 44,
+    "minGap": 8,
+    "pair": [
+     "schip0",
+     "schip1"
+    ]
+   }
+  },
+  {
+   "id": "P3-M43-no-autofocus-375",
+   "pass": true,
+   "detail": {
+    "activeElement": "composeBtn"
+   }
+  },
+  {
+   "id": "P3-M41-foot-draft-only-44-gap8-393",
+   "pass": true,
+   "detail": {
+    "foot": [
+     {
+      "label": "composeCancel",
+      "x": 18,
+      "y": 800,
+      "right": 192.5,
+      "bottom": 844,
+      "w": 174.5,
+      "h": 44,
+      "clipped": false
+     },
+     {
+      "label": "composeSubmit",
+      "x": 200.5,
+      "y": 800,
+      "right": 375,
+      "bottom": 844,
+      "w": 174.5,
+      "h": 44,
+      "clipped": false
+     }
+    ],
+    "note": {
+     "label": "note",
+     "x": 18,
+     "y": 773.53125,
+     "right": 375,
+     "bottom": 792,
+     "w": 357,
+     "h": 18.46875,
+     "clipped": false
+    },
+    "modalFootFlexWrap": "wrap",
+    "minGap": 8
+   }
+  },
+  {
+   "id": "P3-M41-foot-draft-only-44-gap8-375",
+   "pass": true,
+   "detail": {
+    "foot": [
+     {
+      "label": "composeCancel",
+      "x": 18,
+      "y": 760,
+      "right": 183.5,
+      "bottom": 804,
+      "w": 165.5,
+      "h": 44,
+      "clipped": false
+     },
+     {
+      "label": "composeSubmit",
+      "x": 191.5,
+      "y": 760,
+      "right": 357,
+      "bottom": 804,
+      "w": 165.5,
+      "h": 44,
+      "clipped": false
+     }
+    ],
+    "note": {
+     "label": "note",
+     "x": 18,
+     "y": 733.53125,
+     "right": 357,
+     "bottom": 752,
+     "w": 339,
+     "h": 18.46875,
+     "clipped": false
+    },
+    "modalFootFlexWrap": "wrap",
+    "minGap": 8
+   }
+  },
+  {
+   "id": "P3-M59-compose-survives-poll",
+   "pass": true,
+   "detail": {
+    "pollSecFromServer": 8,
+    "pollFired": true,
+    "queueRequests": [
+     "http://127.0.0.1:42619/queue?mailbox=info&show=open&scope=all&sel=0"
+    ],
+    "state": {
+     "display": "flex",
+     "who": "M59 typed recipient",
+     "subj": "M59 typed subject",
+     "count": 1,
+     "inQueue": false
+    }
+   }
+  },
+  {
+   "id": "P3-C4-500-detail-screen-393",
+   "pass": true,
+   "detail": {
+    "statuses": [
+     500,
+     500
+    ],
+    "probe": {
+     "errbox": true,
+     "wpDisplay": "block",
+     "qpDisplay": "none",
+     "back": {
+      "h": 48,
+      "w": 393,
+      "display": "flex"
+     },
+     "retry": {
+      "h": 44,
+      "w": 329,
+      "hxGet": "/item/300"
+     },
+     "axDetail": true,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.harness forced failure for item 300Retry"
+    }
+   }
+  },
+  {
+   "id": "P3-C4-retry-reissues-get-393",
+   "pass": true,
+   "detail": {
+    "requests": [
+     "GET http://127.0.0.1:42619/item/300"
+    ],
+    "statusesAfter": [
+     500
+    ],
+    "probe": {
+     "errbox": true,
+     "wpDisplay": "block",
+     "qpDisplay": "none",
+     "back": {
+      "h": 48,
+      "w": 393,
+      "display": "flex"
+     },
+     "retry": {
+      "h": 44,
+      "w": 329,
+      "hxGet": "/item/300"
+     },
+     "axDetail": true,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.harness forced failure for item 300Retry"
+    }
+   }
+  },
+  {
+   "id": "P3-C4-network-failure-same-screen-393",
+   "pass": true,
+   "detail": {
+    "aborted": 1,
+    "probe": {
+     "errbox": true,
+     "wpDisplay": "block",
+     "qpDisplay": "none",
+     "back": {
+      "h": 48,
+      "w": 393,
+      "display": "flex"
+     },
+     "retry": {
+      "h": 44,
+      "w": 329,
+      "hxGet": null
+     },
+     "axDetail": true,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.Retry"
+    }
+   }
+  },
+  {
+   "id": "P3-C4-post-no-retry-393",
+   "pass": true,
+   "detail": {
+    "responseCase": {
+     "status": 404,
+     "retry": false,
+     "axDetail": true,
+     "workpane": " <meta charset=\"utf-8\"> <title>Error</title> <pre>Cannot POST /item/300/nonexistent</pre> "
+    },
+    "networkCase": {
+     "errbox": true,
+     "retry": false,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details."
+    }
+   }
+  },
+  {
+   "id": "P3-C4-500-detail-screen-375",
+   "pass": true,
+   "detail": {
+    "statuses": [
+     500,
+     500
+    ],
+    "probe": {
+     "errbox": true,
+     "wpDisplay": "block",
+     "qpDisplay": "none",
+     "back": {
+      "h": 48,
+      "w": 375,
+      "display": "flex"
+     },
+     "retry": {
+      "h": 44,
+      "w": 311,
+      "hxGet": "/item/300"
+     },
+     "axDetail": true,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.harness forced failure for item 300Retry"
+    }
+   }
+  },
+  {
+   "id": "P3-C4-retry-reissues-get-375",
+   "pass": true,
+   "detail": {
+    "requests": [
+     "GET http://127.0.0.1:42619/item/300"
+    ],
+    "statusesAfter": [
+     500
+    ],
+    "probe": {
+     "errbox": true,
+     "wpDisplay": "block",
+     "qpDisplay": "none",
+     "back": {
+      "h": 48,
+      "w": 375,
+      "display": "flex"
+     },
+     "retry": {
+      "h": 44,
+      "w": 311,
+      "hxGet": "/item/300"
+     },
+     "axDetail": true,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.harness forced failure for item 300Retry"
+    }
+   }
+  },
+  {
+   "id": "P3-C4-network-failure-same-screen-375",
+   "pass": true,
+   "detail": {
+    "aborted": 1,
+    "probe": {
+     "errbox": true,
+     "wpDisplay": "block",
+     "qpDisplay": "none",
+     "back": {
+      "h": 48,
+      "w": 375,
+      "display": "flex"
+     },
+     "retry": {
+      "h": 44,
+      "w": 311,
+      "hxGet": null
+     },
+     "axDetail": true,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.Retry"
+    }
+   }
+  },
+  {
+   "id": "P3-C4-post-no-retry-375",
+   "pass": true,
+   "detail": {
+    "responseCase": {
+     "status": 404,
+     "retry": false,
+     "axDetail": true,
+     "workpane": " <meta charset=\"utf-8\"> <title>Error</title> <pre>Cannot POST /item/300/nonexistent</pre> "
+    },
+    "networkCase": {
+     "errbox": true,
+     "retry": false,
+     "text": "!Couldn't load this emailThis could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details."
+    }
+   }
+  },
+  {
+   "id": "P3-C5-ax-detail-set-and-cleared",
+   "pass": true,
+   "detail": {
+    "before": false,
+    "open": true,
+    "after": false
+   }
+  },
+  {
+   "id": "P3-M07-works-without-has",
+   "pass": true,
+   "detail": {
+    "hasRulesRemoved": 9,
+    "state": {
+     "wpDisplay": "block",
+     "wpH": 1719.921875,
+     "qpDisplay": "none",
+     "axDetail": true,
+     "headerDisplay": "none"
+    }
+   }
+  },
+  {
+   "id": "P3-M17-back-no-reload-scroll-url",
+   "pass": true,
+   "detail": {
+    "before": {
+     "y": 600,
+     "href": "/item/105",
+     "url": "/?show=done"
+    },
+    "saved": {
+     "y": 600,
+     "url": "/?show=done"
+    },
+    "after": {
+     "marker": 1,
+     "y": 600,
+     "url": "/?show=done",
+     "qpDisplay": "flex",
+     "cards": 50,
+     "hasItem": false
+    },
+    "navs": []
+   }
+  },
+  {
+   "id": "P3-M20-deep-link-back-to-root",
+   "pass": true,
+   "detail": {
+    "url": "/",
+    "qpDisplay": "flex",
+    "cards": 7,
+    "axDetail": false
+   }
+  },
+  {
+   "id": "P3-M18-card-from-2000-opens-at-0",
+   "pass": true,
+   "detail": {
+    "before": {
+     "y": 2000,
+     "href": "/item/119"
+    },
+    "after": 0
+   }
+  },
+  {
+   "id": "P3-M12-item-open-no-queue-30s",
+   "pass": true,
+   "detail": {
+    "pollSecFromServer": 8,
+    "queueRequests": [],
+    "window": "5 s at sec 1 (shortcut for 30 s at sec 8)"
+   }
+  },
+  {
+   "id": "P3-M54-scrolled-no-swap-chip",
+   "pass": true,
+   "detail": {
+    "scrolled": {
+     "y": 95,
+     "queue": [],
+     "chip": {
+      "h": 44,
+      "w": 188.765625
+     },
+     "chipRaw": {
+      "hiddenAttr": false,
+      "display": "flex"
+     }
+    },
+    "touched": {
+     "y": 0,
+     "touchT": true,
+     "queue": [],
+     "chip": {
+      "h": 44,
+      "w": 188.765625
+     },
+     "chipRaw": {
+      "hiddenAttr": false,
+      "display": "flex"
+     }
+    }
+   }
+  },
+  {
+   "id": "P3-M54-chip-tap-refreshes",
+   "pass": true,
+   "detail": {
+    "chipState": {
+     "hiddenAttr": false,
+     "display": "flex",
+     "w": 188.765625,
+     "h": 44,
+     "y": 95
+    },
+    "tapError": null,
+    "queue": [
+     "http://127.0.0.1:42619/queue?mailbox=info&show=open&scope=all&sel=0"
+    ],
+    "y": 0
+   }
+  },
+  {
+   "id": "P3-M12-hidden-no-requests",
+   "pass": true,
+   "detail": {
+    "requests": []
+   }
+  },
+  {
+   "id": "P3-M12-after-load-more-no-swap-393",
+   "pass": true,
+   "detail": {
+    "queueRequests": [],
+    "state": {
+     "n": 100,
+     "dataPage": "2",
+     "y": 0
+    }
+   }
+  },
+  {
+   "id": "P3-D-tab-swap-empty-pane-1440",
+   "pass": true,
+   "detail": {
+    "xhr": [
+     "GET http://127.0.0.1:42619/queue?mailbox=info&show=done&scope=all"
+    ],
+    "navs": [],
+    "state": {
+     "marker": 1,
+     "url": "/?mailbox=info&show=done&scope=all",
+     "empty": true,
+     "hasItem": false,
+     "axDetail": false,
+     "title": "Inbox - Axle",
+     "cards": 50
+    }
+   }
+  },
+  {
+   "id": "P3-D-sync-refresh-1440",
+   "pass": true,
+   "detail": {
+    "pollSecFromServer": 8,
+    "queueRequests": [
+     "http://127.0.0.1:42619/queue?mailbox=info&show=open&scope=all&sel=0"
+    ]
+   }
+  },
+  {
+   "id": "P3-M12-after-load-more-no-swap-1440",
+   "pass": true,
+   "detail": {
+    "queueRequests": [],
+    "cards": 100
+   }
+  },
+  {
+   "id": "P3-D-tab-swap-empty-pane-1101",
+   "pass": true,
+   "detail": {
+    "xhr": [
+     "GET http://127.0.0.1:42619/queue?mailbox=info&show=done&scope=all"
+    ],
+    "navs": [],
+    "state": {
+     "marker": 1,
+     "url": "/?mailbox=info&show=done&scope=all",
+     "empty": true,
+     "hasItem": false,
+     "axDetail": false,
+     "title": "Inbox - Axle",
+     "cards": 50
+    }
+   }
+  },
+  {
+   "id": "P3-D-sync-refresh-1101",
+   "pass": true,
+   "detail": {
+    "pollSecFromServer": 8,
+    "queueRequests": [
+     "http://127.0.0.1:42619/queue?mailbox=info&show=open&scope=all&sel=0"
+    ]
+   }
+  },
+  {
+   "id": "P3-M12-after-load-more-no-swap-1101",
+   "pass": true,
+   "detail": {
+    "queueRequests": [],
+    "cards": 100
+   }
+  }
+ ]
+}

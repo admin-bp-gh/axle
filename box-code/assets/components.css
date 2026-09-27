@@ -175,7 +175,7 @@ a.preview-doc:hover { background: var(--surface-2); }
 .st-warn, .st-ok { font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-chip); white-space: nowrap; }
 .st-warn { background: var(--warn-bg); color: var(--warn-fg); }
 .st-ok { background: var(--ok-bg); color: var(--ok-fg); }
-.cusdialog { width: min(640px, 92vw); max-height: 86vh; overflow: auto; border: 0.5px solid var(--border-2);
+.cusdialog { width: min(640px, 92vw); max-height: 86vh; max-height: 86dvh; overflow: auto; border: 0.5px solid var(--border-2);
   border-radius: var(--r-card); padding: 22px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow-modal); }
 .cusdialog::backdrop { background: rgba(0, 0, 0, .45); }
 .cusx { text-align: right; margin: -8px -6px 4px 0; }
@@ -322,7 +322,7 @@ body.ax-resizing { cursor: col-resize; user-select: none; }
 .pane-context { min-height: 0; overflow-y: auto; border-left: 1px solid var(--border); background: var(--bg); padding: var(--s3); }
 .pane-context:empty { padding: 0; border: 0; background: transparent; }
 .backrow { margin: 0 0 var(--s1); font-size: var(--fs-sm); }
-.empty-state { display: flex; align-items: center; justify-content: center; height: 60vh; }
+.empty-state { display: flex; align-items: center; justify-content: center; height: 60vh; height: 60dvh; }
 .queue-lazy { padding: var(--s3); }
 
 /* ---------- queue toolbar (F3/F4) ---------- */
@@ -427,6 +427,9 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
    tapping an item shows its detail full-screen with a sticky Back bar; Back (the
    .m-back link or the browser) returns to the list. Pure CSS via :has() so it works
    with htmx swaps AND without JS. Touch targets >= 44px. */
+/* M-01: phone-only markup never shows on desktop */
+@media (min-width: 1101px) { .m-only { display: none !important; } }
+
 @media (max-width: 1100px) {
   body.appshell { height: auto; overflow: auto; display: block; }
   main.wide { display: block; }
@@ -456,6 +459,326 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .qtab { padding-top: 12px; padding-bottom: 12px; }
   header { gap: var(--s3); flex-wrap: wrap; }
   header a, .langtoggle a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 4px; }
+
+  /* M-06 / M-38: text inputs at 16px (stops iOS zoom on focus) and a 44px tap target */
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), select, textarea, .instr-editor { font-size: var(--fs-input); min-height: var(--tap); }
+  ::file-selector-button { min-height: var(--tap); }
+  input[type=file] { font-size: var(--fs-input); }
+  /* M-06: these selectors set a smaller font-size in desktop rules above with equal or higher
+     specificity, so they are repeated here to win on phone without resorting to !important */
+  textarea.ans, #replybox, .cfsubj, .qbar select, input[type=search], input[type=text], input[type=email], .sp-input textarea, .modal input, .modal select, .modal textarea { font-size: var(--fs-input); }
+
+  /* M-03: Sprocket helper is off the phone */
+  .sprocket { display: none; }
+
+  /* M-04: safe areas, using max() so nothing changes when the inset is 0 */
+  header { padding-left: max(var(--s4), env(safe-area-inset-left)); padding-right: max(var(--s4), env(safe-area-inset-right)); padding-top: max(10px, env(safe-area-inset-top)); }
+  .m-back { padding-left: max(var(--s4), env(safe-area-inset-left)); padding-right: max(var(--s4), env(safe-area-inset-right)); }
+  .queue-head { padding-left: max(var(--s3), env(safe-area-inset-left)); padding-right: max(var(--s3), env(safe-area-inset-right)); }
+  .actionbar { bottom: max(10px, env(safe-area-inset-bottom)); }
+  .modal { padding: max(var(--s5), env(safe-area-inset-top)) max(var(--s5), env(safe-area-inset-right)) max(var(--s5), env(safe-area-inset-bottom)) max(var(--s5), env(safe-area-inset-left)); }
+
+  /* ---------- mobile Phase 1A ---------- */
+  .m-hide { display: none !important; }
+
+  /* M-01: app bar, exactly --bar-h tall plus the top inset */
+  header { position: sticky; top: 0; z-index: 20; flex-wrap: nowrap; box-sizing: border-box;
+    min-height: calc(var(--bar-h) + env(safe-area-inset-top)); height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top); padding-bottom: 0; }
+  header > a, header .who { display: none; }
+  header .appmenu { margin-left: auto; }
+  header .appmenu > summary.appmenu-btn { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0;
+    display: flex; align-items: center; justify-content: center; border-radius: var(--r-ctl); }
+  .appmenu .burger, .appmenu .burger::before, .appmenu .burger::after { display: block; width: 18px; height: 2px; background: var(--ink); border-radius: 1px; }
+  .appmenu .burger { position: relative; }
+  .appmenu .burger::before, .appmenu .burger::after { content: ""; position: absolute; left: 0; }
+  .appmenu .burger::before { top: -6px; }
+  .appmenu .burger::after { top: 6px; }
+  .appmenu .who-row { font-size: var(--fs-sm); padding: var(--s2) var(--s1); }
+  .queue-head, .m-back { top: calc(var(--bar-h) + env(safe-area-inset-top)); }
+  .pane-queue { overflow: visible; }   /* M-01: stick to the page scroll, under the app bar */
+
+  /* M-08: every details menu opens as a bottom sheet */
+  details.menu > .menu-list, details.chipmenu > .chipmenu-list,
+  details.menu.down > .menu-list, details.menu.recip-pop > .menu-list {
+    position: fixed; left: 0; right: 0; top: auto; bottom: var(--kb); width: auto; min-width: 0; max-width: none; margin: 0;
+    max-height: calc(100dvh - var(--bar-h) - env(safe-area-inset-top)); overflow-y: auto;
+    border-radius: var(--r-card) var(--r-card) 0 0; border-bottom: 0; border-left: 0; border-right: 0;
+    padding: var(--s2) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom));
+    box-shadow: var(--shadow-modal); z-index: 91; display: flex; flex-direction: column; gap: var(--gap-tap); }
+  details.menu > .menu-list::before, details.chipmenu > .chipmenu-list::before {
+    content: ""; order: -2; flex: none; align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--border-2); margin: 0 0 var(--s1); }
+  details.menu[open] > summary::before, details.chipmenu[open] > summary::before {
+    content: ""; position: fixed; inset: 0; background: var(--scrim); z-index: 90; }
+  .menu-list button, .menu-list a.mitem, .chipmenu-list button, .recip-pop .cfopt {
+    min-height: var(--tap); display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s3);
+    border: 1px solid var(--border-sub); border-radius: var(--r-ctl); background: var(--surface-2); font-size: var(--fs-md); }
+  .recip-pop .menu-list button.mini { min-height: var(--tap); font-size: var(--fs-md); }
+  .recip-pop .cfopt input[type=radio] { width: 20px; height: 20px; margin: 0; flex: none; }
+  .menu-list .mrows { display: flex; flex-direction: column; gap: var(--gap-tap); }
+  .menu-list form { display: flex; flex-direction: column; gap: var(--gap-tap); }
+  .menu-list form > p { margin: 0; }
+  .sheet-title { order: -1; font-size: var(--fs-lg); font-weight: 600; min-height: 52px; display: flex; align-items: center; }
+  .segrow { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--gap-tap); }
+  .segrow .seg { min-height: var(--tap); display: flex; align-items: center; justify-content: center; margin: 0; border-radius: var(--r-ctl); text-decoration: none; font-size: var(--fs-md); }
+
+  /* M-07: the desktop-only page note */
+  .desktop-note { margin: var(--s3) var(--s4) 0; }
+
+  /* M-10 / M-13 / M-14: queue chrome */
+  .queue-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--gap-tap); padding-top: var(--s2); padding-bottom: calc(var(--s2) - 1px); }   /* 1px border keeps the block at 112 */
+  .queue-head > .qbar:first-child { display: contents; }
+  #composeBtn { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); height: 56px; padding: 0 20px 0 16px;
+    border-radius: 16px; z-index: 40; font-size: var(--fs-md); box-shadow: var(--shadow-pop); margin: 0; }
+  .queue-head .seg-group, .queue-head .qbar .spacer { display: none; }
+  .qtabs { grid-column: 1 / -1; order: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) var(--tap); gap: var(--gap-tap); }
+  .qtab { min-height: var(--tap); display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid var(--border-2); border-radius: var(--r-ctl); padding: 2px; line-height: 1.25; }
+  .qtab .n { display: block; margin: 0; background: none; padding: 0; }
+  .qtab.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .qtab.on .n { background: none; color: #fff; }
+  .qsearch-btn { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; margin: 0; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); font-size: 18px; }
+  .queue-head .qsearchrow { grid-column: 1 / -1; order: 4; display: none; }
+  .queue-head.search-open .qsearchrow { display: flex; }
+  #qsort, #qcount { display: none; }
+  .qlive { grid-column: 1; order: 2; min-height: var(--tap); }
+  .qlive button { display: none; }
+  .qfilter { grid-column: 2; order: 3; align-self: center; }
+  .qfilter > summary.btn.mini { min-height: var(--tap); display: flex; align-items: center; padding: 0 var(--s3); font-size: var(--fs-md); }
+  .qfilter .menu-list select { width: 100%; max-width: none; }
+  .qlist { padding-bottom: calc(56px + 32px + env(safe-area-inset-bottom)); }
+  .qempty-search { text-align: center; padding: var(--s6) var(--s4); }
+  .qempty-search[hidden] { display: none; }
+  .qempty-search button { min-height: var(--tap); }
+  /* M-08: lift the open sheet's sticky parent above the scrim. Own rules: a browser without
+     :has() drops only these and loses the dim, nothing else. */
+  .queue-head:has(details[open]), .actionbar:has(details[open]), header:has(details[open]) { z-index: 95; }
+  .menu-list button:has(span) { flex-direction: column; align-items: flex-start; justify-content: center; min-height: 56px; gap: 0; }
+
+  /* M-45 / M-46: admin and block pages */
+  .block-cancel { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); padding: 0 var(--s4); margin-left: var(--gap-tap) !important; border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); text-decoration: none; }
+  .hscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .hscroll table { min-width: 600px; }
+
+  /* M-10: queue cards per the M1 mock */
+  .qlist { display: flex; flex-direction: column; gap: var(--gap-tap); padding: var(--s3) var(--s4) calc(56px + 32px + env(safe-area-inset-bottom)); }
+  .qcard { min-height: 72px; padding: 10px var(--s3); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
+  .qcard.sel { box-shadow: inset 3px 0 0 var(--brand), var(--shadow-card); }
+  .q-from { font-size: var(--fs-md); }
+  .q-subj { font-size: var(--fs-base); }
+  .qempty { padding: var(--s6) var(--s4); text-align: center; }
+
+  /* ---------- mobile Phase 1B ---------- */
+  /* M-19: item app bar, 44x44 back chevron and a two-line title */
+  .m-back-title { flex: 1 1 auto; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 600; }
+  .m-back-ic { display: inline-flex; align-items: center; justify-content: center; width: var(--tap); height: var(--tap); flex: none; margin-left: calc(-1 * var(--s3)); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
+  /* M-36: .pane-context is a full-screen sheet, opened by body.ax-ctx (or #ctx:target without JS) */
+  .pane-context { display: none; }
+  body.ax-ctx .pane-context, .pane-context:has(#ctx:target) { display: block; position: fixed; inset: 0; z-index: 85; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: var(--bg); border-top: 0; padding: 0 var(--s4) calc(var(--s4) + env(safe-area-inset-bottom)); }
+  .m-ctxback { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--s4)) var(--s3); }
+  body.ax-ctx { overflow: hidden; }
+  /* M-23: newest message clamped to 12 lines with a fade */
+  .msg-latest:not(.open) > pre.mail { max-height: calc(12 * 1.5em); overflow: hidden;
+    -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent); mask-image: linear-gradient(180deg, #000 75%, transparent); }
+  .msg-latest.open > pre.mail { max-height: none; mask-image: none; -webkit-mask-image: none; }
+  .foldrow { min-height: var(--tap); width: 100%; display: flex; align-items: center; justify-content: space-between; }
+  .msgmore[hidden] { display: none; }
+  .msg-latest.open .msgmore .chev { transform: rotate(180deg); }
+
+  /* M-19: header hidden on the item detail screen; the back bar becomes the 48px app bar */
+  body:has(#workpane .has-item) > header { display: none; }
+  .pane-center > .m-back { top: 0; min-height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--s3) 0 var(--s3); align-items: center; gap: var(--s1); font-size: var(--fs-md); }
+  /* M-37: the context sheet's own back bar, the same 48px app-bar treatment */
+  .pane-context > .m-ctxback { min-height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--s3) 0 var(--s3); align-items: center; gap: var(--s1); font-size: var(--fs-md); }
+  .pane-center .pane-inner > h2 { display: none; }
+
+  /* M-22: state-driven order via flex; boxes lose their margin so the column gap does the spacing */
+  .pane-center .pane-inner { display: flex; flex-direction: column; gap: var(--s3); }
+  .pane-inner > .box, .pane-inner > form#workform > .box, .m-mail > .box { margin: 0; }
+  .pane-inner > form#workform { display: flex; flex-direction: column; gap: var(--s3); }
+  #workform { order: 1; }
+  .m-mail { order: 2; display: flex; flex-direction: column; gap: var(--s3); }
+  .pane-inner > .box:has(> details.prevdraft) { order: 3; }
+  .actionbar { order: 9; }
+
+  /* M-21: chip row scrolls horizontally on one line; only the two chipmenu summaries are tap targets */
+  .chips-row { flex-wrap: nowrap; overflow-x: auto; gap: var(--gap-tap); padding: 2px 0; scrollbar-width: none; margin: 0; }
+  .chips-row::-webkit-scrollbar { display: none; }
+  .chips-row > * { flex: none; }
+  details.chipmenu > summary { display: inline-flex; align-items: center; min-height: var(--tap); }
+  details.chipmenu > summary .chip { border: 1px solid var(--border-2); padding: 6px 10px; }
+  .chip .caret { opacity: 1; font-size: 11px; }
+  .chips-row .chip { display: inline-flex; align-items: center; min-height: 32px; }
+
+  /* M-36: the "Customer & docs" link that opens the context sheet */
+  .ctxlink { display: flex; align-items: center; justify-content: space-between; min-height: var(--tap); padding: 0 var(--s4);
+    border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink);
+    font-weight: 600; text-decoration: none; }
+
+  /* M-24: every fold summary on the item and context screens is a full-width 44px row with a chevron.
+     The <details> itself is forced to full width too - inside a flex column (e.g. recip-other
+     nested in .menu-list) an auto-basis block item can otherwise size to 0 rather than stretch. */
+  details.fold, .pane-context .box > details, .pane-center .box > details { width: 100%; flex: none; }
+  details.fold > summary, details.recip-other > summary,
+  .pane-context .box > details > summary, .pane-center .box > details > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s2); width: 100%; min-height: var(--tap);
+    margin-top: var(--gap-tap); padding: 0 var(--s3); border: 1px solid var(--border); border-radius: var(--r-ctl);
+    background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-base); font-weight: 600; list-style: none; box-sizing: border-box; }
+  details.fold > summary::-webkit-details-marker, details.recip-other > summary::-webkit-details-marker,
+  .pane-context .box > details > summary::-webkit-details-marker, .pane-center .box > details > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::after, details.recip-other > summary::after,
+  .pane-context .box > details > summary::after, .pane-center .box > details > summary::after { content: "\25BE"; }
+  details.fold[open] > summary::after, details.recip-other[open] > summary::after,
+  .pane-context .box > details[open] > summary::after, .pane-center .box > details[open] > summary::after { transform: rotate(180deg); }
+
+  /* M-25: inbound attachments read as 44px chips with an 8px gap */
+  a.att { display: inline-flex; align-items: center; gap: var(--s2); max-width: 100%; min-height: var(--tap); padding: 0 var(--s3);
+    margin: var(--gap-tap) var(--gap-tap) 0 0; border: 1px solid var(--border-2); border-radius: var(--r-ctl);
+    background: var(--surface-2); color: var(--ink); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+
+  /* M-37 / M-39: context sheet contents - SAP document rows, customer grid, attach-by-number */
+  .pane-context .box { margin: 0 0 var(--s3); }
+  .suggdoc { flex-direction: column; align-items: stretch; gap: var(--gap-tap); padding: var(--s3) 0; border-bottom: 1px solid var(--border-sub); margin: 0; }
+  .suggdoc form button { width: 100%; min-height: var(--tap); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  a.preview-doc { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); padding: 0 var(--s4); font-size: var(--fs-base); }
+  .attdoc { flex-direction: column; align-items: stretch; gap: var(--gap-tap); }
+  .attdoc input[name=docnum] { width: 100% !important; }   /* beats the existing inline style="width:8em" */
+  .attdoc button { min-height: var(--tap); }
+  .cusgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cusval { overflow-wrap: anywhere; }
+  .cusbtn { width: 100%; min-height: var(--tap); }
+
+  /* M-44: the customer detail dialog fills the viewport and reads as a pushed page */
+  .cusdialog { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0;
+    border: 0; border-radius: 0; padding: 0 var(--s4) calc(var(--s4) + env(safe-area-inset-bottom)); }
+  .cusdialog::backdrop { background: transparent; }
+  .cusx { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--s4)) var(--s3); background: var(--surface);
+    border-bottom: 1px solid var(--border); text-align: left; }
+  .cusxbtn { display: flex; align-items: center; gap: var(--s1); width: 100%; min-height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--s3) 0; font-size: var(--fs-md); font-weight: 600; color: var(--ink); }
+  .cusback-label { display: inline; }
+
+  /* ---------- mobile Phase 2 ---------- */
+  /* M-28 / M-30: the thumb-zone bar, fixed above the keyboard (--kb); row 1 recipient line, row 2 Send and "..." */
+  .actionbar { position: fixed; left: 0; right: 0; bottom: var(--kb); margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;
+    padding: var(--s2) var(--s4) calc(var(--s2) + env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--tap); gap: var(--gap-tap); align-items: stretch; }
+  .actionbar .send-split { display: contents; }
+  .actionbar details.recip-pop { grid-column: 1 / -1; grid-row: 1; display: block; min-width: 0; }
+  /* M-28: the caret summary becomes the full-width recipient line; .send-caret uses !important on desktop */
+  .actionbar details.recip-pop > summary.send-caret { display: flex !important; width: 100%; min-height: var(--tap); padding: 6px var(--s3) !important; margin: 0;
+    border-radius: var(--r-ctl); background: var(--surface) !important; border: 1px solid var(--border-2) !important; color: var(--ink);
+    font-size: var(--fs-base); font-weight: 400; text-align: left; align-items: center; justify-content: space-between; gap: var(--s2); }
+  .actionbar details.recip-pop[open] > summary.send-caret { background: var(--surface) !important; }
+  .recip-line { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: normal; line-height: 1.3; }
+  .recip-line .to-label { color: var(--muted); }
+  .recip-line .src, .recip-line .chg { display: inline-block; margin-left: var(--s1); padding: 1px 6px; border-radius: var(--r-chip); font-size: var(--fs-xs); font-weight: 400; white-space: nowrap; }
+  .recip-line .src { color: var(--muted); background: var(--surface-2); border: 1px solid var(--border-sub); }
+  .recip-line .chg { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-fg); font-weight: 600; }
+  /* M-29: no recipient yet, the line turns amber */
+  .actionbar details.recip-pop > summary.send-caret:has(.recip-line.need) { background: var(--warn-bg) !important; border-color: var(--warn-fg) !important; color: var(--warn-fg); font-weight: 600; }
+  .recip-line.need .src { margin: 0; padding: 0; border: 0; background: none; color: inherit; font-size: inherit; font-weight: inherit; white-space: normal; }
+  /* M-30: Send full width in row 2; the truncated address is replaced by the line above */
+  .actionbar .send-split > button.send, .actionbar button.send { grid-column: 1; grid-row: 2; width: 100%; min-height: var(--tap); margin: 0;
+    border-radius: var(--r-ctl); font-size: var(--fs-md); flex-direction: row; align-items: center; justify-content: center; }
+  .actionbar .send .send-to { display: none; }
+  .actionbar .send-ph { grid-column: 1; grid-row: 2; }
+  .actionbar button.send-ph:disabled { background: var(--surface-2); border-color: var(--border-2); color: var(--faint); cursor: default; }
+  .actionbar .recip-needed { display: none; }
+  /* M-31: "..." is a 44x44 square in row 2; its label stays for screen readers via the title */
+  .actionbar > details.menu:not(.recip-pop) { grid-column: 2; grid-row: 2; display: block; }
+  .actionbar > details.menu:not(.recip-pop) > summary.btn { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; margin: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 0; overflow: hidden; }
+  .actionbar > details.menu:not(.recip-pop) > summary.btn::after { content: "\22EF"; font-size: 22px; line-height: 1; color: var(--ink); }
+  /* M-32: Save, Save & redraft, Mark done and the pill live in the overflow sheet and the recipient line */
+  .actionbar > button[value=save], .actionbar > button[value=redraft], .actionbar > .spacer, .actionbar > form, .actionbar > .recip-pill { display: none; }
+  .actionbar.closed > form { display: block; grid-column: 1 / -1; }
+  .actionbar.closed > form > button { width: 100%; min-height: var(--tap); font-size: var(--fs-md); }
+  .actionbar > .note { grid-column: 1 / -1; grid-row: 1; align-self: center; margin: 0; font-size: var(--fs-sm); }
+  .menu-list button:has(span) b, .menu-list button:has(span) span { white-space: normal; text-align: left; }
+  /* the last card clears the two-row bar */
+  .pane-center .pane-inner { padding-bottom: calc(120px + env(safe-area-inset-bottom) + 16px); }
+
+  /* M-26 / M-27: 16px editor that grows with its text (ui.js sets the height), no inner scroll */
+  #replybox { min-height: 0; height: auto; resize: none; overflow: hidden; font-size: var(--fs-input); line-height: 1.5; }
+  textarea.ans { resize: none; overflow: hidden; font-size: var(--fs-input); }
+
+  /* M-56: the "Unsaved edits restored" note and the Restore / Discard offer */
+  .restored-note { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s2); padding: var(--s1) var(--s1) var(--s1) var(--s3);
+    border-radius: var(--r-ctl); background: var(--info-bg); color: var(--info-fg); font-size: var(--fs-base); font-weight: 600; }
+  .restored-note .rn-text { flex: 1 1 12em; min-width: 0; }
+  .restored-note button.mini { min-height: var(--tap); padding: 0 var(--s3); font-size: var(--fs-md); }
+  .restored-note button.rn-x { width: var(--tap); padding: 0; border: 0; background: none; color: inherit; font-size: 22px; }
+  /* M-58: "Draft kept" on a queue card */
+  .badge.draft-kept { background: var(--info-bg); color: var(--info-fg); }
+
+  /* ---------- mobile Phase 3 ---------- */
+  /* M-07: twins for the :has() rules, so the detail view does not depend on :has(). */
+  body.ax-detail .shell .pane-queue { display: none; }
+  body.ax-detail .shell #workpane { display: block; }
+  body.ax-detail > header { display: none; }
+
+  /* C1: load more row carries the bottom safe-area reserve that used to sit on .qlist alone */
+  .qmore-row { padding: var(--s2) var(--s4) calc(56px + 32px + env(safe-area-inset-bottom)); }
+  .qmore { width: 100%; min-height: var(--tap); border: 1px solid var(--border-2); border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-md); }
+
+  /* M-12 / M-54: updates waiting chip in the .qlive form */
+  /* two class selectors, so the chip outranks the phone rule .qlive button { display: none } above */
+  .qlive .qupd { display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 var(--s3); border: 1px solid var(--accent); border-radius: var(--r-chip); background: var(--accent-soft); color: var(--ink); font-size: var(--fs-sm); }
+  .qlive .qupd[hidden] { display: none; }
+
+  /* C4 / M-51: error screen, per the mock's .errbox */
+  .errbox { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: var(--gap-tap); min-height: 60dvh; padding: var(--s5) var(--s4); text-align: center; }
+  .errbox h2 { margin: 0; font-size: var(--fs-xl); }
+  .errbox p { margin: 0 0 var(--s2); }
+  .erric { align-self: center; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--bad-bg); color: var(--bad-fg); font-weight: 700; font-size: var(--fs-xl); }
+  .retry { min-height: var(--tap); width: 100%; }
+
+  /* C3 / M-40 to M-42: compose becomes a full screen, overriding the desktop modal rules above */
+  .modal { padding: 0; align-items: stretch; }
+  .modal-card { min-height: 100dvh; border-radius: 0; max-width: none; display: flex; flex-direction: column; }
+  .modal-head { position: sticky; top: 0; z-index: 2; background: var(--surface); min-height: calc(var(--bar-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) var(--s3) 0 var(--s4); box-sizing: border-box; }
+  .modal-x { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; display: flex; align-items: center; justify-content: center; }
+  .modal form { flex: 1 1 auto; display: flex; flex-direction: column; padding-bottom: 0; }
+  .modal-foot { position: sticky; bottom: 0; margin-top: auto; background: var(--surface); padding: var(--s2) 0 calc(var(--s2) + env(safe-area-inset-bottom)); gap: var(--gap-tap); flex-wrap: wrap; }
+  .modal-foot .spacer { display: none; }
+  .modal-foot button { flex: 1 1 0; min-width: 0; min-height: var(--tap); }
+  .modal-foot > span.muted { flex: 1 1 100%; font-size: var(--fs-xs); text-align: center; }   /* the draft-only note takes its own line; the buttons share the next */
+  .chips { gap: var(--gap-tap); }
+  .schip { min-height: var(--tap); }
+
+  /* ---------- mobile Phase 4 ---------- */
+  /* M-55: the busy item has no chip menus, so its chip row is held at the ready row height (44 + 2 x 2 padding = 48) and nothing moves when the draft lands */
+  .pane-inner > .chips-row { min-height: calc(var(--tap) + 4px); }
+  /* S2: skeleton primitive. Shimmer copies .qskel span (same gradient and animation). */
+  .sk { display: block; height: 12px; border-radius: var(--r-chip); margin: 6px 0;
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%; animation: ax-shimmer 1.2s linear infinite; }
+  .sk.sk-t { height: 16px; }
+  .sk.sk-box { height: 72px; border-radius: var(--r-ctl); }
+  .sk.sk-tall { height: 200px; border-radius: var(--r-ctl); }
+  .sk.sk-chip { display: inline-block; width: 96px; height: 32px; border-radius: 16px; margin: 0 8px 0 0; }
+  .sk-lines, span.sk-lines { display: block; }
+  .sk-lines .sk:nth-child(1) { width: 45%; }
+  .sk-lines .sk:nth-child(2) { width: 85%; }
+  .sk-lines .sk:nth-child(3) { width: 65%; }
+  .sk-chips { display: flex; gap: var(--gap-tap); overflow: hidden; margin: var(--s2) 0; }
+  .skbox .sk { margin: 8px 0; }
+  /* .sk-detail .pane-inner keeps the padding already set above for .pane-center .pane-inner */
+
+  /* S2: the disabled SKBAR placeholder, same DOM shape as the ready bar */
+  .sk-bar { pointer-events: none; }
+  .sk-bar details > summary { list-style: none; }
+  .sk-bar details > summary::-webkit-details-marker { display: none; }
+  .sk-bar .send:disabled { opacity: .5; }
+  .sk-bar .recip-line .sk { display: inline-block; width: 70%; margin: 0; vertical-align: middle; }
+
+  @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------
@@ -469,7 +792,7 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
 .sprocket-fab:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
 .sprocket-fab svg { width: 24px; height: 24px; }
 .sprocket-panel { position: absolute; right: 0; bottom: 64px; width: 340px; max-width: calc(100vw - 32px);
-  height: min(70vh, 560px); display: flex; flex-direction: column; overflow: hidden;
+  height: min(70vh, 560px); height: min(70dvh, 560px); display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-card); box-shadow: var(--shadow-modal); }
 /* The panel toggles via the [hidden] attribute; this beats the display:flex above so close/open
    (X button and the cog) actually hide it. Without it the panel can never be dismissed. */
@@ -498,7 +821,7 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
 .sp-send:disabled { opacity: .5; cursor: default; }
 @media (max-width: 600px) {
   .sprocket { right: 14px; bottom: 14px; }
-  .sprocket-panel { width: calc(100vw - 28px); height: min(75vh, 560px); }
+  .sprocket-panel { width: calc(100vw - 28px); height: min(75vh, 560px); height: min(75dvh, 560px); }
 }
 
 /* Sprocket: unread-requests count badge on the header "Requests" link */

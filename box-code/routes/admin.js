@@ -44,7 +44,8 @@ app.get("/item/:id/block", async (req, res) => {
   } catch (e) { /* keep the unknown note */ }
 
   res.send(page(t(lang, "block_title"), req.user, `
-    <p><a href="/item/${w.id}">&larr; #${w.id}</a></p>
+    <a class="m-back m-only" href="/item/${w.id}">&larr; #${w.id}</a>
+    <p class="m-hide"><a href="/item/${w.id}">&larr; #${w.id}</a></p>
     <h2>${esc(t(lang, "block_title"))}</h2>
     <div class="box">
       <p><b>${esc(w.sender_name || addr)}</b> &lt;${esc(addr)}&gt;</p>
@@ -53,7 +54,7 @@ app.get("/item/:id/block", async (req, res) => {
       <form method="post" action="/item/${w.id}/block">
         <p><b>${esc(t(lang, "block_addr_opt"))}:</b> ${esc(addr)}</p>
         <button class="primary">${esc(t(lang, "block_confirm_btn"))}</button>
-        <a href="/item/${w.id}" style="margin-left:10px">${esc(t(lang, "block_back"))}</a>
+        <a class="block-cancel" href="/item/${w.id}" style="margin-left:10px">${esc(t(lang, "block_back"))}</a>
       </form>
     </div>`));
 });
@@ -126,8 +127,8 @@ app.get("/blocks", async (req, res) => {
     <p class="muted">${esc(t(lang, OB.active() ? "blocks_explain_outlook" : "blocks_explain"))}</p>
     ${olPanel}
     ${rows.length
-      ? `<table><tr><th>${esc(t(lang, "col_sender_b"))}</th><th>${esc(t(lang, "col_kind_b"))}</th><th>${esc(t(lang, "col_by_b"))}</th><th>${esc(t(lang, "col_when_b"))}</th><th>${esc(t(lang, "col_item_b"))}</th><th></th></tr>${trs}</table>`
-      : `<p class="muted">${esc(t(lang, "blocks_none"))}</p>`}`));
+      ? `<div class="hscroll"><table><tr><th>${esc(t(lang, "col_sender_b"))}</th><th>${esc(t(lang, "col_kind_b"))}</th><th>${esc(t(lang, "col_by_b"))}</th><th>${esc(t(lang, "col_when_b"))}</th><th>${esc(t(lang, "col_item_b"))}</th><th></th></tr>${trs}</table></div>`
+      : `<p class="muted">${esc(t(lang, "blocks_none"))}</p>`}`, null, { desktopNote: true }));
 });
 
 app.post("/blocks/:id/unblock", async (req, res) => {
@@ -181,7 +182,7 @@ app.get("/audit", (req, res) => {
   const note = (q || act || item)
     ? `${rows.length} match(es)${rows.length === 500 ? " — newest 500 shown, narrow the search for older entries" : ""}, newest first. Times are UTC.`
     : "Last 500 entries, newest first. Times are UTC.";
-  res.send(page("Audit", req.user, `${form}<p class="muted">${esc(note)}</p><table><tr><th>#</th><th>When</th><th>User</th><th>Action</th><th>Item</th><th>Detail</th></tr>${trs}</table>`));
+  res.send(page("Audit", req.user, `${form}<p class="muted">${esc(note)}</p><div class="hscroll"><table><tr><th>#</th><th>When</th><th>User</th><th>Action</th><th>Item</th><th>Detail</th></tr>${trs}</table></div>`, null, { desktopNote: true }));
 });
 
 };

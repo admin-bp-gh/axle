@@ -1,0 +1,471 @@
+{
+ "generatedAt": "2026-09-26T09:29:09.549Z",
+ "tree": "/sessions/quirky-relaxed-franklin/mnt/Axle/box-code",
+ "baselineDir": "/sessions/quirky-relaxed-franklin/mnt/Axle/design-reference/mobile-audit/baseline-desktop",
+ "results": [
+  {
+   "width": "1101x900",
+   "scene": "queue-open",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "queue-done",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "queue-filter",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "queue-search-empty",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "compose",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-needs-answer",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-ready",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-contact-form",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-compose",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-done",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-injection",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-new",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-more-actions",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-recipient",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-language",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "item-customer",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "blocks",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "audit",
+   "pixelDiffCount": 1222701,
+   "layoutDiffCount": 228,
+   "domDiffCount": 203,
+   "layoutDiffs": [
+    {
+     "path": "body:nth-child(2)",
+     "kind": "rect",
+     "field": "height",
+     "baseline": 2487.47,
+     "current": 1377
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2)",
+     "kind": "rect",
+     "field": "height",
+     "baseline": 2440.45,
+     "current": 1329.98
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3)",
+     "kind": "rect",
+     "field": "height",
+     "baseline": 2331.44,
+     "current": 1220.97
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1)",
+     "kind": "rect",
+     "field": "height",
+     "baseline": 2330.44,
+     "current": 1219.97
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(34)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(35)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(36)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(37)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(38)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(39)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(40)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(41)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(42)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(43)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(44)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(45)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(46)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(47)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(48)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(49)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(50)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(51)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(52)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(53)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(54)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(55)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(56)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(57)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(58)",
+     "kind": "missing_in_current"
+    },
+    {
+     "path": "body:nth-child(2) > main:nth-child(2) > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(59)",
+     "kind": "missing_in_current"
+    }
+   ],
+   "domDiffs": [
+    {
+     "index": 0,
+     "baseline": "<option value=\"view_sprocket_requests\">",
+     "current": "</select>"
+    },
+    {
+     "index": 1,
+     "baseline": "</option>",
+     "current": "<input name=\"item\" value=\"\" inputmode=\"numeric\" placeholder=\"Item #\" style=\"width:6em\">"
+    },
+    {
+     "index": 2,
+     "baseline": "</select>",
+     "current": "<button class=\"mini\">"
+    },
+    {
+     "index": 3,
+     "baseline": "<input name=\"item\" value=\"\" inputmode=\"numeric\" placeholder=\"Item #\" style=\"width:6em\">",
+     "current": "</button>"
+    },
+    {
+     "index": 4,
+     "baseline": "<button class=\"mini\">",
+     "current": "</form>"
+    },
+    {
+     "index": 5,
+     "baseline": "</button>",
+     "current": "<p class=\"muted\">"
+    },
+    {
+     "index": 6,
+     "baseline": "</form>",
+     "current": "</p>"
+    },
+    {
+     "index": 7,
+     "baseline": "<p class=\"muted\">",
+     "current": "<table>"
+    },
+    {
+     "index": 8,
+     "baseline": "</p>",
+     "current": "<tbody>"
+    },
+    {
+     "index": 9,
+     "baseline": "<table>",
+     "current": "<tr>"
+    },
+    {
+     "index": 10,
+     "baseline": "<tbody>",
+     "current": "<th>"
+    },
+    {
+     "index": 11,
+     "baseline": "<tr>",
+     "current": "</th>"
+    },
+    {
+     "index": 12,
+     "baseline": "<th>",
+     "current": "</tr>"
+    },
+    {
+     "index": 13,
+     "baseline": "</th>",
+     "current": "<tr>"
+    },
+    {
+     "index": 14,
+     "baseline": "</tr>",
+     "current": "<td>"
+    },
+    {
+     "index": 15,
+     "baseline": "<tr>",
+     "current": "</td>"
+    },
+    {
+     "index": 16,
+     "baseline": "<td class=\"muted\">",
+     "current": "<td>"
+    },
+    {
+     "index": 17,
+     "baseline": "<td class=\"muted\">",
+     "current": "</tr>"
+    },
+    {
+     "index": 18,
+     "baseline": "</td>",
+     "current": "<tr>"
+    },
+    {
+     "index": 19,
+     "baseline": "</tr>",
+     "current": "<td>"
+    },
+    {
+     "index": 20,
+     "baseline": "<tr>",
+     "current": "</td>"
+    },
+    {
+     "index": 21,
+     "baseline": "<td class=\"muted\">",
+     "current": "<td>"
+    },
+    {
+     "index": 22,
+     "baseline": "</td>",
+     "current": "<a href=\"/item/1\">"
+    },
+    {
+     "index": 23,
+     "baseline": "<td>",
+     "current": "</a>"
+    },
+    {
+     "index": 24,
+     "baseline": "<a href=\"/item/1\">",
+     "current": "</td>"
+    },
+    {
+     "index": 25,
+     "baseline": "</a>",
+     "current": "<td class=\"muted\">"
+    },
+    {
+     "index": 26,
+     "baseline": "<td class=\"muted\">",
+     "current": "</tr>"
+    },
+    {
+     "index": 27,
+     "baseline": "</td>",
+     "current": "<tr>"
+    },
+    {
+     "index": 28,
+     "baseline": "</tr>",
+     "current": "<td>"
+    },
+    {
+     "index": 29,
+     "baseline": "<tr>",
+     "current": "</td>"
+    }
+   ]
+  },
+  {
+   "width": "1101x900",
+   "scene": "block-page",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  },
+  {
+   "width": "1101x900",
+   "scene": "sprocket-requests",
+   "pixelDiffCount": 0,
+   "layoutDiffCount": 0,
+   "domDiffCount": 0,
+   "layoutDiffs": [],
+   "domDiffs": []
+  }
+ ]
+}

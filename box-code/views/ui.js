@@ -171,8 +171,19 @@ const STRINGS = {
     show_translation: "Show translation", hide_translation: "Hide translation",
     earlier_msgs: "Earlier in this conversation", footer_fold: "Signature & footer",
     inline_image: "inline image", more_actions: "More actions",
+    // mobile Phase 2 (M-28, M-32, M-56, M-58)
+    restored: "Unsaved edits restored", restore_offer: "You have unsaved edits from {t}. The draft has changed since.",
+    restore: "Restore", discard: "Discard", draft_kept: "Draft kept", to_label: "To:",
+    save_now: "Save your edits without redrafting",
+    // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
+    menu: "Menu", close: "Close", cancel: "Cancel", filters: "Filters", sort: "Sort", sync: "Mail",
+    signed_in_as: "Signed in as", no_matches: "No matches for '{q}'", clear_search: "Clear search",
+    best_on_desktop: "Best on desktop", search_open: "Search emails", send_to: "Send to",
     sap_docs: "SAP documents", attach_manual: "Attach by number",
     relang_note: "Changing the language re-drafts the email.",
+    // M-19/M-23/M-36/M-44: mobile Phase 1B
+    customer_docs: "Customer & docs", show_full: "Show full message", show_less: "Show less",
+    back_to_email: "Back to email", back_to_ctx: "Back to Customer & docs",
     // UI rework Step 2 (2026-06-10): three-pane shell + queue
     shell_select: "Select an item from the list to start.",
     load_error: "This could not be loaded. Pick the item again or reload the page — if it keeps failing, the audit log has the details.",
@@ -201,6 +212,11 @@ const STRINGS = {
     sprocket_f_example: "Example", sprocket_f_also: "Also asked by", sprocket_f_notes: "Notes",
     sprocket_status_new: "New", sprocket_status_approved: "Approved", sprocket_status_in_progress: "In progress",
     sprocket_status_done: "Done", sprocket_status_declined: "Declined",
+    load_more: "Load more (50 of {n})",
+    updates_waiting: "Updates waiting, tap to refresh",
+    searching_loaded: "Searched the {n} loaded emails",
+    retry: "Retry",
+    load_failed_title: "Couldn't load this email",
   },
   nl: {
     inbox: "Postvak", audit: "Audit",
@@ -354,8 +370,19 @@ const STRINGS = {
     show_translation: "Toon vertaling", hide_translation: "Verberg vertaling",
     earlier_msgs: "Eerder in dit gesprek", footer_fold: "Handtekening & voettekst",
     inline_image: "afbeelding in tekst", more_actions: "Meer acties",
+    // mobile Phase 2 (M-28, M-32, M-56, M-58)
+    restored: "Niet-opgeslagen wijzigingen hersteld", restore_offer: "Je hebt niet-opgeslagen wijzigingen van {t}. De tekst is sindsdien veranderd.",
+    restore: "Herstellen", discard: "Weggooien", draft_kept: "Concept bewaard", to_label: "Aan:",
+    save_now: "Bewaar je wijzigingen zonder opnieuw op te stellen",
+    // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
+    menu: "Menu", close: "Sluiten", cancel: "Annuleren", filters: "Filters", sort: "Sorteren", sync: "Mail",
+    signed_in_as: "Ingelogd als", no_matches: "Geen resultaten voor '{q}'", clear_search: "Zoekopdracht wissen",
+    best_on_desktop: "Werkt het best op een computer", search_open: "E-mails zoeken", send_to: "Verzenden naar",
     sap_docs: "SAP-documenten", attach_manual: "Bijvoegen op nummer",
     relang_note: "Een andere taal stelt de e-mail opnieuw op.",
+    // M-19/M-23/M-36/M-44: mobile Phase 1B
+    customer_docs: "Klant & documenten", show_full: "Volledig bericht tonen", show_less: "Minder tonen",
+    back_to_email: "Terug naar e-mail", back_to_ctx: "Terug naar Klant & documenten",
     // UI rework Step 2 (2026-06-10): three-pane shell + queue
     shell_select: "Kies een item uit de lijst om te beginnen.",
     load_error: "Dit kon niet worden geladen. Kies het item opnieuw of herlaad de pagina — blijft het misgaan, dan staan de details in het auditlog.",
@@ -384,6 +411,11 @@ const STRINGS = {
     sprocket_f_example: "Voorbeeld", sprocket_f_also: "Ook gevraagd door", sprocket_f_notes: "Notities",
     sprocket_status_new: "Nieuw", sprocket_status_approved: "Goedgekeurd", sprocket_status_in_progress: "In behandeling",
     sprocket_status_done: "Klaar", sprocket_status_declined: "Afgewezen",
+    load_more: "Meer laden (50 van {n})",
+    updates_waiting: "Updates beschikbaar, tik om te verversen",
+    searching_loaded: "Gezocht in de {n} geladen e-mails",
+    retry: "Opnieuw proberen",
+    load_failed_title: "Deze e-mail kon niet worden geladen",
   },
 };
 const t = (lang, k) => (STRINGS[lang] && STRINGS[lang][k] != null) ? STRINGS[lang][k]
@@ -558,11 +590,11 @@ function renderMail(text, lang) {
 // data-confirm and read via dataset by the shared handler at the bottom of the page script -
 // as DATA, never as JavaScript source (see the long note there; interpolating a translated
 // string into JS inside an attribute silently disables the confirmation).
-function chipMenu({ chipClass, chipHtml, title, action, field, options, current, note }) {
+function chipMenu({ chipClass, chipHtml, title, action, field, options, current, note, lang }) {
   const items = options.map((o) =>
     `<button name="${esc(field)}" value="${esc(o.value)}"${o.value === current ? ' class="on"' : ""}${o.confirm ? ` data-confirm="${esc(o.confirm)}"` : ""}>${esc(o.label)}</button>`).join("");
   return `<details class="chipmenu"><summary title="${esc(title)}"><span class="chip ${chipClass}">${chipHtml}<span class="caret">&#9662;</span></span></summary>
-<form method="post" action="${action}" class="chipmenu-list">${items}${note ? `<div class="menunote">${esc(note)}</div>` : ""}</form></details>`;
+<form method="post" action="${action}" class="chipmenu-list">${items}${note ? `<div class="menunote">${esc(note)}</div>` : ""}<div class="sheet-title m-only">${esc(title)}</div><button type="button" class="m-only" data-close>${esc(t(lang || "en", "cancel"))}</button></form></details>`;
 }
 
 // Render-side folding for the conversation timeline (F7). The regexes mirror the
@@ -619,11 +651,13 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
   const { top, quoted } = splitQuoted(raw);
   const { main, footer } = foldFooter(top);
   const who = w.sender_name || w.sender_email || "";
-  let html = `<div class="msg">
+  // M-23: .msg-latest is clamped on the phone; the phone-only toggle unfolds it
+  let html = `<div class="msg msg-latest">
     <div class="msg-head"><span class="who-line"><b>${esc(who)}</b><span class="muted">${esc(fmtDateTime(w.email_received, lang))}</span></span>${emailTr || emailTrPending ? `<button type="button" class="mini" id="emailtrbtn" onclick="toggleEmailTr()">${esc(t(lang, "show_translation"))}</button>` : ""}</div>
     <pre class="mail">${linkify(clean(main))}</pre>
+    <button type="button" class="m-only foldrow msgmore" data-msg-toggle aria-expanded="false" data-more="${esc(t(lang, "show_full"))}" data-less="${esc(t(lang, "show_less"))}"><span>${esc(t(lang, "show_full"))}</span><span class="chev" aria-hidden="true">&#9662;</span></button>
     ${footer ? `<details class="fold"><summary>${esc(t(lang, "footer_fold"))}</summary><pre class="mail muted">${linkify(clean(footer))}</pre></details>` : ""}
-    ${emailTr || emailTrPending ? `<div class="trbox msgtr" id="emailtr" style="display:none"><p class="muted trnote">${esc(t(lang, "translation_note").replace("{lang}", langDisplay(lang, (w.language || "").toLowerCase())))}</p><pre class="mail" id="emailtrpre"${emailTrPending ? ' data-pending="1"' : ""}>${emailTr ? linkify(String(emailTr)) : `<span class="spin"></span> ${esc(t(lang, "translating"))}`}</pre></div>` : ""}
+    ${emailTr || emailTrPending ? `<div class="trbox msgtr" id="emailtr" style="display:none"><p class="muted trnote">${esc(t(lang, "translation_note").replace("{lang}", langDisplay(lang, (w.language || "").toLowerCase())))}</p><pre class="mail" id="emailtrpre"${emailTrPending ? ' data-pending="1"' : ""}>${emailTr ? linkify(String(emailTr)) : `<span class="spin m-hide"></span><span class="m-hide"> ${esc(t(lang, "translating"))}</span><span class="m-only sk-lines" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span></span>`}</pre></div>` : ""}
   </div>`;
   if (quoted) {
     const segs = segmentQuoted(quoted);
@@ -700,30 +734,276 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris14";   // 2026-08-12: withdrawn-draft card added then removed
+const ASSET_V = "polaris20";   // 2026-09-26: mobile Phase 4 (skeletons, busy-poll scroll, ESC and focus)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
 // vendored locally and loaded on every page — inert without hx- attributes, so the
 // non-shell pages (blocks, audit, block-confirm) are unaffected. refreshOnHistoryMiss
 // makes a back/forward without a cached snapshot do a plain full reload.
+// M-01/M-02: phone app bar menu, rendered as a bottom sheet. Hidden on desktop (.m-only).
+function appMenu(lang, user) {
+  const L = (k) => esc(t(lang, k));
+  return `<details class="menu appmenu m-only"><summary class="btn appmenu-btn" aria-label="${L("menu")}"><span class="burger" aria-hidden="true"></span></summary><div class="menu-list">`
+    + `<div class="sheet-title">${L("menu")}</div>`
+    + `<a class="mitem" href="/">${L("inbox")}</a><a class="mitem" href="/blocks">${L("nav_blocks")}</a>`
+    + (user.role === "admin" ? `<a class="mitem" href="/audit">${L("audit")}</a><a class="mitem" href="/sprocket/requests">${L("sprocket_requests_nav")}${user.sprocketNew ? ` <span class="hbadge" title="${L("sprocket_new_badge")}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : "")
+    + `<div class="mlabel">${L("language")}</div><div class="segrow"><a class="seg${lang === "en" ? " on" : ""}" href="/setlang?lang=en">EN</a><a class="seg${lang === "nl" ? " on" : ""}" href="/setlang?lang=nl">NL</a></div>`
+    + `<div class="who-row muted">${L("signed_in_as")} <b>${esc(user.display_name)}</b> (${esc(user.role)})</div>`
+    + `<button type="button" data-close>${L("close")}</button></div></details>`;
+}
+
 function page(title, user, body, refreshSec, opts) {
   const lang = langOK(user.lang);
   const isShell = !!(opts && opts.shell);
+  // C5: opts.bodyClass joins the appshell class (e.g. ax-detail on an item deep link)
+  const bodyCls = [isShell ? "appshell" : "", (opts && opts.bodyClass) || ""].filter(Boolean).join(" ");
+  // C2: the empty work panes, restored by Back and by a tab swap
+  const emptyPanes = isShell ? workPanes(`<div class="empty-state"><p class="muted">${esc(t(lang, "shell_select"))}</p></div>`, "") : "";
   return `<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <title>${esc(title)} - Axle</title>
 <link rel="stylesheet" href="/assets/tokens.css?v=${ASSET_V}">
 <link rel="stylesheet" href="/assets/components.css?v=${ASSET_V}">
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
 <script src="/assets/htmx.min.js?v=${ASSET_V}" defer></script>
-</head><body${isShell ? ' class="appshell"' : ""}>
+</head><body${bodyCls ? ` class="${esc(bodyCls)}"` : ""}>
 <header><span class="brand">Axle</span><a href="/">${esc(t(lang, "inbox"))}</a><a href="/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="/audit">${esc(t(lang, "audit"))}</a><a href="/sprocket/requests">${esc(t(lang, "sprocket_requests_nav"))}${user.sprocketNew ? ` <span class="hbadge" title="${esc(t(lang, "sprocket_new_badge"))}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : ""}
-<span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span></header>
-<main${isShell ? ' class="wide"' : ""}>${body}</main>
+<span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>
+<main${isShell ? ' class="wide"' : ""}>${opts && opts.desktopNote ? `<div class="banner desktop-note m-only">${esc(t(lang, "best_on_desktop"))}</div>` : ""}${body}</main>
 ${sprocketWidget(lang)}
 <script>
+// M-09: one phone test shared by the positioner and the splitter
+window.__axPhone = window.matchMedia("(max-width: 1100px)");
+${isShell ? `// C2: the empty work panes (Back and tab swaps restore them)
+window.__axEmptyPanes = ${JSON.stringify(emptyPanes)};
+// M-52: labels for the client-built skeleton detail
+window.__axS = ${JSON.stringify({ back_inbox: t(lang, "back_inbox"), send_now: t(lang, "send_now"), more_actions: t(lang, "more_actions") })};
+` : ""}// M-08: a [data-close] row closes its sheet
+document.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest("[data-close]") : null;
+  if (!b) return;
+  var d = b.closest("details"); if (d) d.removeAttribute("open");
+  e.preventDefault();
+});
+// M-23: "Show full message" unfolds the clamped newest message
+document.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest("[data-msg-toggle]") : null;
+  if (!b) return;
+  var m = b.closest(".msg"); if (!m) return;
+  var open = m.classList.toggle("open");
+  b.setAttribute("aria-expanded", open ? "true" : "false");
+  var s = b.querySelector("span"); if (s) s.textContent = open ? b.getAttribute("data-less") : b.getAttribute("data-more");
+});
+// M-23: no toggle when the clamped text fits
+function axFoldCheck() {
+  document.querySelectorAll(".msg-latest").forEach(function (m) {
+    var b = m.querySelector("[data-msg-toggle]"), p = m.querySelector("pre.mail");
+    if (!b || !p || m.classList.contains("open")) return;
+    if (!window.__axPhone.matches) { b.hidden = false; return; }
+    b.hidden = p.scrollHeight <= p.clientHeight + 1;
+  });
+}
+// M-36: the context sheet (body.ax-ctx); no history entry, no hash
+(function () {
+  var savedY = 0;
+  function openCtx() {
+    savedY = window.scrollY;
+    document.body.classList.add("ax-ctx");
+    var c = document.querySelector("#workpane .pane-context") || document.querySelector(".pane-context");
+    if (c) c.scrollTop = 0;
+    var bk = c && c.querySelector(".m-ctxback"); if (bk && bk.focus) bk.focus({ preventScroll: true });
+  }
+  function closeCtx(restore) {
+    if (!document.body.classList.contains("ax-ctx")) return;
+    document.body.classList.remove("ax-ctx");
+    if (!restore) return;
+    window.scrollTo(0, savedY);
+    var l = document.querySelector("[data-ctx-open]"); if (l && l.focus) l.focus({ preventScroll: true });
+  }
+  document.addEventListener("click", function (e) {
+    var o = e.target.closest ? e.target.closest("[data-ctx-open]") : null;
+    if (o) { e.preventDefault(); openCtx(); return; }
+    var x = e.target.closest ? e.target.closest("[data-ctx-close]") : null;
+    if (x) { e.preventDefault(); closeCtx(true); }
+  });
+  function isWork(e) {
+    var wp = document.getElementById("workpane"), tg = e.detail && e.detail.target;
+    return !!(wp && tg && (tg === wp || tg.contains(wp)));
+  }
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (!isWork(e)) return;
+    closeCtx(false);
+    axFoldCheck();
+  });
+  document.body.addEventListener("htmx:beforeHistorySave", function () { closeCtx(false); });
+  var mq = window.__axPhone, onMq = function () { axFoldCheck(); };
+  if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", axFoldCheck); else axFoldCheck();
+  window.addEventListener("load", axFoldCheck);
+})();
+// M-26 / M-27 / M-33 / M-56 / M-57 / M-58: phone-only editor auto-grow, keyboard tracker and local autosave.
+// Every storage call is wrapped and gated on __axPhone at the time of the call; nothing is posted.
+(function () {
+  var S = ${JSON.stringify({ restored: t(lang, "restored"), restore_offer: t(lang, "restore_offer"), restore: t(lang, "restore"), discard: t(lang, "discard"), draft_kept: t(lang, "draft_kept"), close: t(lang, "close") })};
+  var PH = window.__axPhone, PRE = "axle.draft.", PEND = "axle.pending.", MAXAGE = 14 * 864e5, CR = String.fromCharCode(13);
+  var FSEL = "#replybox, textarea.ans[name=feedback], input[name=cf_subject], input[name=return_subject], input[name=compose_subject]";
+  var cur = null;   // { id, base, timer } for the item on screen
+  function phone() { return !!(PH && PH.matches); }
+  function ls(fn) { try { return fn(window.localStorage); } catch (e) { return null; } }
+  function ss(fn) { try { return fn(window.sessionStorage); } catch (e) { return null; } }
+  function nz(v) { return v == null ? null : String(v).split(CR).join("").trim(); }
+  // M-26 / M-27: the editor grows with its text, no inner scroll
+  function grow(el) { if (!el || !phone()) return; el.style.height = "auto"; el.style.height = el.scrollHeight + 2 + "px"; }
+  function growAll() { document.querySelectorAll("#replybox, textarea.ans").forEach(grow); }
+  // M-33: --kb follows the on-screen keyboard (the bar and open sheets sit at bottom: var(--kb))
+  function kb() {
+    var vv = window.visualViewport;
+    if (!phone() || !vv) return 0;
+    var v = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+    document.documentElement.style.setProperty("--kb", v + "px");
+    return v;
+  }
+  window.__axKb = kb;
+  if (window.visualViewport) { window.visualViewport.addEventListener("resize", kb); window.visualViewport.addEventListener("scroll", kb); }
+  // M-56: autosave of the reply, subject and feedback, keyed by the item id in #workform's action
+  function fields() {
+    var f = document.getElementById("workform");
+    return { reply: document.getElementById("replybox"),
+      subject: f ? f.querySelector("input[name=cf_subject], input[name=return_subject], input[name=compose_subject]") : null,
+      feedback: f ? f.querySelector("textarea.ans[name=feedback]") : null };
+  }
+  function vals(F) { return { reply: F.reply ? F.reply.value : null, subject: F.subject ? F.subject.value : null, feedback: F.feedback ? F.feedback.value : null }; }
+  // the server-rendered values (defaultValue is immune to the browser's own form restore)
+  function defs(F) { return { reply: F.reply ? F.reply.defaultValue : null, subject: F.subject ? F.subject.defaultValue : null, feedback: F.feedback ? F.feedback.defaultValue : null }; }
+  function same(a, b) { return !!a && !!b && nz(a.reply) === nz(b.reply) && nz(a.subject) === nz(b.subject) && nz(a.feedback) === nz(b.feedback); }
+  function put(F, d) { ["reply", "subject", "feedback"].forEach(function (k) { if (F[k] && d[k] != null) F[k].value = d[k]; }); growAll(); }
+  function idFrom(s) { var m = new RegExp("^/item/([0-9]+)(/|$)").exec(s || ""); return m ? m[1] : null; }
+  function itemId() {
+    var f = document.getElementById("workform");
+    if (f) return idFrom(f.getAttribute("action"));
+    if (!document.querySelector("#workpane .has-item")) return null;
+    var el = document.querySelector("#workpane form[action^='/item/'], #workpane [hx-get^='/item/']");
+    return el ? idFrom(el.getAttribute("action") || el.getAttribute("hx-get")) : null;
+  }
+  function write() {
+    if (!cur) return;
+    clearTimeout(cur.timer); cur.timer = null;
+    if (!phone()) return;
+    var F = fields(); if (!F.reply) return;
+    var v = vals(F), k = PRE + cur.id, base = cur.base;
+    if (same(v, base)) { ls(function (s) { s.removeItem(k); }); return; }
+    ls(function (s) { s.setItem(k, JSON.stringify({ reply: v.reply, subject: v.subject, feedback: v.feedback, base: base, t: Date.now() })); });
+  }
+  function later() { if (!cur || !phone()) return; clearTimeout(cur.timer); cur.timer = setTimeout(write, 600); }
+  function flush() { if (cur && cur.timer) write(); }
+  window.__axFlush = flush; window.__axMarkCards = markCards;   // M-58: the in-app Back (Phase 3) flushes and re-marks the cards
+  function dropNote() { document.querySelectorAll(".restored-note").forEach(function (n) { n.remove(); }); }
+  function btn(txt, fn, cls) { var b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = txt; b.addEventListener("click", fn); return b; }
+  function note(F, d, offer) {
+    dropNote();
+    var box = F.reply.closest(".box"); if (!box) return;
+    var n = document.createElement("div"); n.className = "restored-note m-only"; n.setAttribute("role", "status");
+    var p = document.createElement("span"); p.className = "rn-text";
+    if (offer) {
+      var dt = new Date(d.t || 0);
+      p.textContent = S.restore_offer.replace("{t}", ("0" + dt.getHours()).slice(-2) + ":" + ("0" + dt.getMinutes()).slice(-2));
+    } else p.textContent = S.restored;
+    n.appendChild(p);
+    if (offer) {
+      // Restore puts the local text back on top of the new server text and re-bases on it
+      n.appendChild(btn(S.restore, function () { put(F, d); if (cur) { cur.base = defs(F); write(); } dropNote(); }, "mini primary rn-restore"));
+      n.appendChild(btn(S.discard, function () { if (cur) { var k = PRE + cur.id; ls(function (s) { s.removeItem(k); }); } dropNote(); markCards(); }, "mini rn-discard"));
+    } else {
+      var x = btn(String.fromCharCode(215), dropNote, "mini rn-x"); x.setAttribute("aria-label", S.close); n.appendChild(x);
+    }
+    var h = box.querySelector(".boxhead");
+    box.insertBefore(n, h ? h.nextSibling : box.firstChild);
+  }
+  // Runs after every render of an item (load or #workpane swap): clear after a landed submit, then restore
+  function onRender() {
+    cur = null;
+    if (!phone()) return;
+    var id = itemId(), F = fields();
+    if (id) {
+      var p = ss(function (s) { return s.getItem(PEND + id); });
+      if (p != null) {
+        if (!F.reply || nz(F.reply.defaultValue) === nz(p)) ls(function (s) { s.removeItem(PRE + id); });
+        ss(function (s) { s.removeItem(PEND + id); });
+      }
+    }
+    if (!id || !F.reply) return;
+    cur = { id: id, base: defs(F), timer: null };
+    growAll();
+    var raw = ls(function (s) { return s.getItem(PRE + id); }), d = null;
+    try { d = raw ? JSON.parse(raw) : null; } catch (e) { d = null; }
+    if (!d) return;
+    if (same(d, cur.base)) { ls(function (s) { s.removeItem(PRE + id); }); return; }
+    if (same(d.base, cur.base)) { put(F, d); note(F, d, false); }
+    else note(F, d, true);   // the server text changed since: offer, never overwrite
+  }
+  function prune() {
+    if (!phone()) return;
+    ls(function (s) {
+      var now = Date.now(), dead = [];
+      for (var i = 0; i < s.length; i++) {
+        var k = s.key(i); if (!k || k.indexOf(PRE) !== 0) continue;
+        var d = null; try { d = JSON.parse(s.getItem(k)); } catch (e) { d = null; }
+        if (!d || !d.t || now - d.t > MAXAGE) dead.push(k);
+      }
+      dead.forEach(function (k) { s.removeItem(k); });
+    });
+  }
+  // M-58: "Draft kept" on the queue card of every item with a stored draft
+  function markCards() {
+    if (!phone()) return;
+    document.querySelectorAll("a.qcard[href^='/item/']").forEach(function (a) {
+      var h = a.getAttribute("href") || "", id = idFrom(h);
+      if (!id || h !== "/item/" + id) return;
+      var has = !!ls(function (s) { return s.getItem(PRE + id) != null; });
+      var ex = a.querySelector(".draft-kept");
+      if (has && !ex) {
+        var b = a.querySelector(".q-badges"); if (!b) return;
+        var sp = document.createElement("span"); sp.className = "badge draft-kept m-only"; sp.textContent = S.draft_kept; b.appendChild(sp);
+      } else if (!has && ex) ex.remove();
+    });
+  }
+  document.addEventListener("input", function (e) {
+    if (!phone()) return;
+    var el = e.target; if (!el || !el.matches) return;
+    if (el.matches("#replybox, textarea.ans")) grow(el);
+    if (cur && el.matches(FSEL) && el.closest("#workform")) later();
+  });
+  // M-56: a submit of the work form (Save, Save & redraft, Send) marks the draft for clearing on landing
+  document.addEventListener("submit", function (e) {
+    var f = e.target; if (!f || f.id !== "workform" || !cur || !phone()) return;
+    write();
+    var F = fields(), id = cur.id;
+    if (F.reply) { var v = F.reply.value; ss(function (s) { s.setItem(PEND + id, v); }); }
+  });
+  window.addEventListener("pagehide", flush);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(); });
+  function isWork(e) {
+    var wp = document.getElementById("workpane"), tg = e.detail && e.detail.target;
+    return !!(wp && tg && (tg === wp || tg.contains(wp)));
+  }
+  document.body.addEventListener("htmx:beforeSwap", flush);
+  document.body.addEventListener("htmx:afterSwap", function (e) { if (isWork(e)) onRender(); markCards(); });
+  document.body.addEventListener("htmx:historyRestore", function () { onRender(); markCards(); });
+  var onMq = function () {
+    if (PH.matches) { kb(); growAll(); markCards(); return; }
+    if (document.documentElement.style.getPropertyValue("--kb")) document.documentElement.style.setProperty("--kb", "0px");
+    document.querySelectorAll("#replybox, textarea.ans").forEach(function (el) {
+      if (!el.style.height) return;
+      el.style.removeProperty("height"); if (!el.getAttribute("style")) el.removeAttribute("style");
+    });
+  };
+  if (PH.addEventListener) PH.addEventListener("change", onMq); else if (PH.addListener) PH.addListener(onMq);
+  function init() { prune(); onRender(); markCards(); kb(); }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  window.addEventListener("load", growAll);
+})();
 // Close any open chip/action menu on an outside click (presentation only).
 document.addEventListener("click", function (e) {
   document.querySelectorAll("details.chipmenu[open], details.menu[open]").forEach(function (d) {
@@ -742,6 +1022,7 @@ document.addEventListener("click", function (e) {
   var GAP = 6, PAD = 8, openEl = null;
   function listOf(d) { return d.querySelector(".menu-list, .chipmenu-list"); }
   function place(d) {
+    if (window.__axPhone.matches) return;   // M-09: the phone uses CSS bottom sheets
     var s = d.querySelector("summary"), l = listOf(d);
     if (!s || !l) return;
     l.style.position = "fixed"; l.style.margin = "0";
@@ -772,6 +1053,9 @@ document.addEventListener("click", function (e) {
   }, true);
   function reflow() { if (openEl && openEl.open) place(openEl); }
   window.addEventListener("resize", reflow);
+  // M-09: no inline placement survives a desktop/phone switch
+  var mq = window.__axPhone, onMq = function () { document.querySelectorAll("details.menu[open], details.chipmenu[open]").forEach(clear); if (!mq.matches) reflow(); };
+  if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
   window.addEventListener("scroll", reflow, true);
 })();
 // htmx failure surface: by default htmx silently ignores error responses, network
@@ -785,11 +1069,77 @@ document.addEventListener("click", function (e) {
     var tgt = e.detail && e.detail.target;
     if (!wp || !tgt || (tgt !== wp && !wp.contains(tgt))) return;
     var xhr = e.detail && e.detail.xhr;
-    if (ev === "htmx:responseError" && xhr && xhr.responseText) { wp.innerHTML = xhr.responseText; return; }
-    wp.innerHTML = '<div class="empty-state"><p class="muted">' + ${JSON.stringify(esc(t(lang, "load_error")))} +
-      (xhr && xhr.status ? " (HTTP " + xhr.status + ")" : "") + "</p></div>";
+    // the server body (pane-shaped error from the middleware or the item 404); wire its Retry
+    if (ev === "htmx:responseError" && xhr && xhr.responseText) {
+      wp.innerHTML = xhr.responseText;
+      if (window.htmx && window.htmx.process) window.htmx.process(wp);
+      document.body.classList.add("ax-detail");
+      return;
+    }
+    // C4 / M-51: the same detail-shaped error screen the server renders, built here
+    wp.innerHTML = ${JSON.stringify(workPanes(`<div class="errbox" role="alert"><span class="erric" aria-hidden="true">!</span><h2>${esc(t(lang, "load_failed_title"))}</h2><p class="muted" data-ax-errmsg></p></div>`, "", { back: t(lang, "back_inbox"), title: t(lang, "load_failed_title"), lang }))};
+    var msg = wp.querySelector("[data-ax-errmsg]");
+    if (msg) { msg.removeAttribute("data-ax-errmsg"); msg.textContent = ${JSON.stringify(t(lang, "load_error"))} + (xhr && xhr.status ? " (HTTP " + xhr.status + ")" : ""); }
+    var rc = e.detail && e.detail.requestConfig, pi = e.detail && e.detail.pathInfo;
+    var path = pi && (pi.finalRequestPath || pi.requestPath);
+    var box = wp.querySelector(".errbox");
+    // Retry only for a GET, never for a POST
+    if (box && path && rc && rc.verb === "get") {
+      var rb = document.createElement("button");
+      rb.type = "button"; rb.className = "retry"; rb.textContent = ${JSON.stringify(t(lang, "retry"))};
+      rb.addEventListener("click", function () { htmx.ajax("GET", path, { target: "#workpane", swap: "innerHTML" }); });
+      box.appendChild(rb);
+    }
+    document.body.classList.add("ax-detail");
   });
 });
+// M-07 / M-17 / M-18 / M-20: phone list and detail navigation, plus the tab swap reset (C2)
+(function () {
+  function phone() { return !!(window.__axPhone && window.__axPhone.matches); }
+  function srcElt(e) { var d = e.detail || {}; return (d.requestConfig && d.requestConfig.elt) || d.elt || null; }
+  function isCard(el) { return !!(el && el.closest && el.closest("a.qcard")); }
+  function resetWork() {
+    var wp = document.getElementById("workpane");
+    if (!wp || typeof window.__axEmptyPanes !== "string") return false;
+    wp.innerHTML = window.__axEmptyPanes;
+    document.body.classList.remove("ax-detail");
+    document.title = "Inbox - Axle";
+    return true;
+  }
+  // card tap: remember the list scroll and URL
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    if (!phone() || !isCard(srcElt(e))) return;
+    window.__axCardElt = srcElt(e);   // M-52: Back during the skeleton aborts this request
+    if (location.pathname.indexOf("/item/") === 0) return;
+    window.__axList = { y: window.scrollY, url: location.pathname + location.search };
+  });
+  // the opened email starts at the top
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var tg = e.detail && e.detail.target;
+    if (!phone() || !tg || tg.id !== "workpane" || !isCard(srcElt(e))) return;
+    window.scrollTo(0, 0);
+  });
+  // Back: back to the list in place, never history.back()
+  document.addEventListener("click", function (e) {
+    if (!phone() || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest ? e.target.closest("a.m-back:not(.m-ctxback)") : null;
+    if (!a) return;
+    var L = window.__axList;
+    if (window.__axFlush) window.__axFlush();   // M-58: the last keystrokes reach localStorage before the pane empties
+    if (window.__axCardElt && window.htmx) { try { htmx.trigger(window.__axCardElt, "htmx:abort"); } catch (x) {} window.__axCardElt = null; }
+    if (!resetWork()) return;
+    e.preventDefault();
+    window.scrollTo(0, (L && L.y) || 0);
+    history.pushState({ htmx: true }, "", (L && L.url) || "/");
+    if (window.__axMarkCards) window.__axMarkCards();
+  });
+  // a tab swap empties the work panes at every width
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var tg = e.detail && e.detail.target, el = srcElt(e);
+    if (!tg || tg.id !== "queuepane" || !el || !el.closest || !el.closest("a.qtab")) return;
+    resetWork();
+  });
+})();
 // --- Loading feedback singletons (UX round, 2026-06-11): the user must always see
 // that something is happening. Presentation only - no request is changed.
 // (1) Queue-card click -> work-pane swap: spinner on the clicked card + a dimmed
@@ -804,11 +1154,78 @@ document.addEventListener("click", function (e) {
     clearLoad();
     card.classList.add("ax-loading");
     var wp = document.getElementById("workpane");
-    if (wp) wp.classList.add("ax-loading");
+    if (!wp) return;
+    // M-52: the phone paints a skeleton detail instead of the dimmed overlay
+    if (window.__axPhone.matches && window.__axS) { skDetail(wp, card); return; }
+    wp.classList.add("ax-loading");
   });
+  function h(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
+  function skDetail(wp, card) {
+    var S = window.__axS;
+    // SKBAR: mirrors skBar(lang) in routes/item.js
+    var bar = '<div class="actionbar sk-bar m-only" aria-hidden="true"><span class="send-split"><button class="send send-stack" type="button" disabled><span class="send-now">' + h(S.send_now) + '</span><span class="send-to"></span></button><details class="menu recip-pop"><summary class="btn send-caret"><span class="m-only recip-line"><span class="sk" style="width:70%"></span></span>&#9662;</summary></details></span><details class="menu"><summary class="btn">&#8943;&nbsp;' + h(S.more_actions) + '</summary></details></div>';
+    wp.innerHTML = '<section class="pane-center has-item sk-detail"><a class="m-back" href="/"><span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">' + h(S.back_inbox) + '</span><span class="m-back-title"></span></a>'
+      + '<div class="pane-inner" aria-hidden="true"><div class="sk-chips"><span class="sk sk-chip"></span><span class="sk sk-chip"></span><span class="sk sk-chip"></span></div>'
+      + '<div class="box skbox"><span class="sk sk-t" style="width:45%"></span><span class="sk" style="width:95%"></span><span class="sk" style="width:88%"></span><span class="sk" style="width:60%"></span><span class="sk sk-box"></span></div>'
+      + '<div class="box skbox"><span class="sk sk-t" style="width:35%"></span><span class="sk sk-box" style="height:44px"></span><span class="sk sk-tall"></span></div>'
+      + bar + '</div></section><aside class="pane-context"></aside>';
+    // the title "#id subject" from the card, set as text
+    var m = new RegExp("^/item/([0-9]+)").exec(card.getAttribute("href") || ""), sj = card.querySelector(".q-subj");
+    var subj = sj ? sj.textContent.trim() : "";
+    if (subj.charCodeAt(0) === 9998) subj = subj.slice(1).trim();   // the compose pencil
+    var tt = wp.querySelector(".m-back-title"); if (tt) tt.textContent = (m ? "#" + m[1] + " " : "") + subj;
+    document.body.classList.add("ax-detail");
+    window.scrollTo(0, 0);
+  }
   ["htmx:afterRequest", "htmx:sendError", "htmx:timeout"].forEach(function (ev) {
     document.body.addEventListener(ev, clearLoad);
   });
+})();
+// M-55: a busy-item poll swap keeps the phone reader's scroll position
+(function () {
+  var pollEl = null, y = 0;
+  function srcElt(e) { var d = e.detail || {}; return (d.requestConfig && d.requestConfig.elt) || d.elt || null; }
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var el = srcElt(e);
+    if (!el || !el.getAttribute || (el.getAttribute("hx-trigger") || "").indexOf("load delay:10s") < 0) return;
+    if (!window.__axPhone.matches) { pollEl = null; return; }
+    pollEl = el; y = window.scrollY;
+  });
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var tg = e.detail && e.detail.target;
+    if (!pollEl || !tg || tg.id !== "workpane" || srcElt(e) !== pollEl) return;
+    pollEl = null;
+    if (window.__axPhone.matches) window.scrollTo(0, y);
+  });
+})();
+// ESC (every width): the last open menu, else the context sheet; focus moves (phone only)
+(function () {
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape" && e.key !== "Esc") return;
+    var cm = document.getElementById("composeModal");
+    if (cm && cm.style.display !== "none") return;   // the compose modal has its own ESC
+    if (document.querySelector("dialog[open]")) return;   // native dialogs (#cusModal) close themselves
+    var open = document.querySelectorAll("details.menu[open], details.chipmenu[open]");
+    if (open.length) { open[open.length - 1].removeAttribute("open"); return; }
+    if (document.body.classList.contains("ax-ctx")) {
+      var bk = document.querySelector("#workpane .m-ctxback") || document.querySelector(".m-ctxback");
+      if (bk) bk.click();   // the [data-ctx-close] path, scroll and focus restored
+    }
+  });
+  document.addEventListener("toggle", function (e) {
+    var d = e.target;
+    if (!window.__axPhone.matches || !d || !d.matches || !d.matches("details.menu, details.chipmenu")) return;
+    if (d.open) {
+      var tl = d.querySelector(".sheet-title");
+      if (!tl) { var l = d.querySelector(".menu-list, .chipmenu-list"); tl = l && l.querySelector("button, a[href]"); }
+      else tl.setAttribute("tabindex", "-1");
+      if (tl && tl.focus) tl.focus({ preventScroll: true });
+    } else {
+      // back to the summary, unless the focus already moved elsewhere (an outside tap)
+      var a = document.activeElement, s = d.querySelector("summary");
+      if (s && s.focus && (!a || a === document.body || d.contains(a))) s.focus({ preventScroll: true });
+    }
+  }, true);
 })();
 // (2) Any form submit: lock the pressed button with a spinner and start the top
 // progress bar. The setTimeout(0) runs AFTER the form has serialised, so disabling
@@ -843,6 +1260,7 @@ document.addEventListener("click", function (e) {
 // keys nudge when the handle is focused. Desktop only (the handle is hidden in the mobile layout).
 (function () {
   var KEY = "axleQueueW", MIN = 220, MAX = 560;
+  if (window.__axPhone.matches) return;   // M-09: no splitter on the phone
   function shellEl() { return document.querySelector(".shell"); }
   function setW(px) { var s = shellEl(); if (s) s.style.setProperty("--queue-w", px + "px"); }
   function clampW(px) { return Math.max(MIN, Math.min(MAX, Math.round(px))); }
@@ -895,8 +1313,14 @@ document.addEventListener("click", function (e) {
 // throughout; without JS every queue card is a plain link and the page still works.
 const workPanes = (centerHtml, contextHtml, opts) => {
   const back = opts && opts.back;   // mobile Back bar label; also marks this as a real item view
-  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/" onclick="if(window.history.length>1){history.back();return false;}">${esc(back)}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
-<aside class="pane-context">${contextHtml}</aside>`;
+  const title = opts && opts.title;   // M-19: item app bar title (phone-only markup)
+  const lang = (opts && opts.lang) || "en";
+  // M-19: 44x44 chevron, label kept for screen readers, two-line title
+  const backInner = back ? `<span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">${esc(back)}</span>${title ? `<span class="m-back-title">${esc(title)}</span>` : ""}` : "";
+  // M-36: the context sheet's "Back to email" bar; id="ctx" is the no-JS :target fallback
+  const ctxBack = back ? `<a class="m-back m-ctxback m-only" id="ctx" href="#" data-ctx-close><span class="m-back-ic" aria-hidden="true">&larr;</span>${esc(t(lang, "back_to_email"))}</a>` : "";
+  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/">${backInner}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
+<aside class="pane-context">${ctxBack}${contextHtml}</aside>`;
 };
 
 // queueHtml is either the inline-rendered queue (GET /) or lazyQueue() below.

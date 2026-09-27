@@ -185,8 +185,8 @@ function customerCard(s, lang, itemId) {
         hx-get="/item/${itemId}/customer-modal" hx-target="#cusModalBody" hx-swap="innerHTML"
         onclick="var d=document.getElementById('cusModal'); if(d&&d.showModal) d.showModal();">${esc(t(lang, "cust_view_full"))}</button>
       <dialog id="cusModal" class="cusdialog" aria-label="${esc(t(lang, "cust_detail_title"))}">
-        <form method="dialog" class="cusx"><button class="cusxbtn" aria-label="${esc(t(lang, "cust_close"))}">&times;</button></form>
-        <div id="cusModalBody"><p class="muted"><span class="spin"></span> ${esc(t(lang, "cust_loading"))}</p></div>
+        <form method="dialog" class="cusx"><button class="cusxbtn" aria-label="${esc(t(lang, "cust_close"))}">&times;<span class="m-only cusback-label">${esc(t(lang, "back_to_ctx"))}</span></button></form>
+        <div id="cusModalBody"><p class="muted m-hide"><span class="spin"></span> ${esc(t(lang, "cust_loading"))}</p><div class="m-only sk-lines" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div></div>
         <script>(function(){var d=document.getElementById('cusModal');if(d&&!d._wired){d._wired=1;d.addEventListener('click',function(e){if(e.target===d)d.close();});}})();</script>
       </dialog>
     </div>`;
@@ -228,7 +228,7 @@ app.get("/item/:id", async (req, res) => {
   if (!w) {
     // An htmx queue-click gets a pane-shaped 404 so the swap stays tidy; a plain
     // navigation gets the full page exactly as before.
-    if (req.get("HX-Request")) return res.status(404).send(workPanes(`<p>${esc(t(lang, "not_found"))}</p>`, ""));
+    if (req.get("HX-Request")) return res.status(404).send(workPanes(`<div class="errbox" role="alert"><span class="erric" aria-hidden="true">!</span><h2>${esc(t(lang, "load_failed_title"))}</h2><p class="muted">${esc(t(lang, "not_found"))}</p><button type="button" class="retry" hx-get="${esc(req.originalUrl)}" hx-target="#workpane" hx-swap="innerHTML">${esc(t(lang, "retry"))}</button></div>`, "", { back: t(lang, "back_inbox"), title: t(lang, "load_failed_title"), lang }));   // C4 / M-51
     return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
   }
   audit(req.user.tailscale_login, "view_item", w.id, `lang=${lang}`);
@@ -371,7 +371,7 @@ app.get("/item/:id", async (req, res) => {
   const langChipHtml = `${esc(t(lang, "language"))}: ${esc((w.language || "?").toUpperCase())}`;
   const langChip = editable
     ? chipMenu({
-        chipClass: "", chipHtml: langChipHtml, title: t(lang, "lang_fix"),
+        lang, chipClass: "", chipHtml: langChipHtml, title: t(lang, "lang_fix"),
         action: `/item/${w.id}/language`, field: "language", current: w.language || "",
         options: LANGS.map((l) => ({ value: l, label: `${l.toUpperCase()} — ${langDisplay(lang, l)}` })),
         note: isCompose ? t(lang, "relang_note") : "",
@@ -394,7 +394,7 @@ app.get("/item/:id", async (req, res) => {
   };
   const ownerChip = (editable && ownerOpts.some((o) => o !== (w.owner || "")))
     ? chipMenu({
-        chipClass: "", chipHtml: ownerChipHtml, title: t(lang, "owner_fix"),
+        lang, chipClass: "", chipHtml: ownerChipHtml, title: t(lang, "owner_fix"),
         action: `/item/${w.id}/owner`, field: "owner", current: w.owner || "",
         options: ownerOpts.map(ownerOption),
       })
@@ -558,10 +558,16 @@ app.get("/item/:id", async (req, res) => {
   const pickable = knownAddrs.filter((e) => e.source !== "typed");
   const typedEntry = knownAddrs.find((e) => e.source === "typed");
   const checkedAddr = pickable.some((e) => e.addr === sendTo) ? sendTo : (pickable[0] || {}).addr;
+  // M-28 / M-29: phone-only recipient line inside the caret summary (the summary stays the tap target)
+  const recipNeed = !sendTo || fwdNeedsRecipient;
+  const curSrc = (knownAddrs.find((e) => e.addr === sendTo) || {}).source || (typedTo ? "typed" : (kind === "reply" && !w.recipient ? "sender" : "onfile"));
+  const recipLine = recipNeed
+    ? `<span class="m-only recip-line need"><b class="to-addr">${esc(t(lang, "recip_confirm_btn"))}</b> <span class="src">${esc(t(lang, "recip_none_yet"))}</span></span>`
+    : `<span class="m-only recip-line"><span class="to-label">${esc(t(lang, "to_label"))}</span> <b class="to-addr">${esc(sendTo)}</b> <span class="src">${esc(srcLabel[curSrc] || curSrc)}</span>${redirected ? `<span class="chg">${esc(t(lang, "recip_changed_pill"))}</span>` : ""}</span>`;
 
   const recipPop = (editable && !w.injection_flag) ? `
     <details class="menu recip-pop">
-      <summary class="btn send-caret" title="${esc(t(lang, "recip_change"))}" aria-label="${esc(t(lang, "recip_change"))}">&#9662;</summary>
+      <summary class="btn send-caret" title="${esc(t(lang, "recip_change"))}" aria-label="${esc(t(lang, "recip_change"))}">${recipLine}&#9662;</summary>
       <div class="menu-list">
         ${typedEntry ? `<p class="recip-current muted">${esc(t(lang, "recip_current"))}: <b>${esc(typedEntry.addr)}</b> &mdash; ${esc(srcLabel.typed)}</p>` : ""}
         <form method="post" action="/item/${w.id}/recipient" class="recip-known">
@@ -578,6 +584,8 @@ app.get("/item/:id", async (req, res) => {
             <button class="mini primary" name="use" value="1">${esc(t(lang, "recip_use"))}</button>
           </form>
         </details>
+        <div class="sheet-title m-only">${esc(t(lang, "send_to"))}</div>
+        <button type="button" class="m-only" data-close>${esc(t(lang, "cancel"))}</button>
       </div>
     </details>` : "";
 
@@ -594,7 +602,7 @@ app.get("/item/:id", async (req, res) => {
        </span>${changedPill}`
     : w.injection_flag ? `<span class="note">${esc(t(lang, "send_disabled_inj"))}</span>`
     : needsRecipient && recipPop
-      ? `<span class="send-split"><span class="btn send-stack recip-needed"><span class="send-now">${esc(t(lang, "recip_confirm_btn"))}</span><span class="send-to">${esc(t(lang, "recip_none_yet"))}</span></span>${recipPop}</span>`
+      ? `<span class="send-split"><span class="btn send-stack recip-needed"><span class="send-now">${esc(t(lang, "recip_confirm_btn"))}</span><span class="send-to">${esc(t(lang, "recip_none_yet"))}</span></span><button type="button" class="m-only send send-ph" disabled>${esc(t(lang, "send_now"))}</button>${recipPop}</span>`
     : isContactForm ? `<span class="note">${esc(t(lang, w.recipient ? "cf_send_not_enabled" : "cf_confirm_first"))}</span>`
     : isRN ? `<span class="note">${esc(t(lang, w.recipient ? "cf_send_not_enabled" : "cf_confirm_first"))}</span>`
     : isCompose ? `<span class="note">${esc(t(lang, "compose_draft_only"))}</span>` : "";
@@ -602,15 +610,27 @@ app.get("/item/:id", async (req, res) => {
   // (grouped on the right alongside the overflow, which keeps the rarer closes). Posts to the
   // same /status route as the old menu item — no route or safety change.
   const markDoneBtn = `<form method="post" action="/item/${w.id}/status"><button name="to" value="done" title="${esc(t(lang, "done_tip"))}">${esc(t(lang, "mark_done"))}</button></form>`;
+  // M-31 / M-32: phone-only mirror rows lead the overflow sheet; same forms, routes and confirm text
   const closeMenu = `<details class="menu"><summary class="btn" title="${esc(t(lang, "more_actions"))}">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary><div class="menu-list">
+      <button class="m-only" form="workform" name="action" value="redraft"><b>${esc(t(lang, "save_redraft"))}</b><span>${esc(t(lang, "redraft_hint"))}</span></button>
+      <form class="m-only" method="post" action="/item/${w.id}/status"><button name="to" value="done"><b>${esc(t(lang, "mark_done"))}</b><span>${esc(t(lang, "done_tip"))}</span></button></form>
+      ${editable ? ownerOpts.map(ownerOption).filter((x) => x.confirm).map((x) => `<form class="m-only" method="post" action="/item/${w.id}/owner">
+        <button name="owner" value="${esc(x.value)}" data-confirm="${esc(x.confirm)}"><b>${esc(t(lang, "owner"))}: ${esc(x.value)}</b><span>${esc(t(lang, "owner_handover_hint"))}</span></button></form>`).join("") : ""}
+      <button class="m-only" form="workform" name="action" value="save"><b>${esc(t(lang, "save"))}</b><span>${esc(t(lang, "save_now"))}</span></button>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="phone"><b>${esc(t(lang, "mark_phone"))}</b><span>${esc(t(lang, "phone_tip"))}</span></button></form>
       <form method="post" action="/item/${w.id}/status"><button name="to" value="archived"><b>${esc(t(lang, "archive"))}</b><span>${esc(t(lang, "archive_tip"))}</span></button></form>
       ${!isCompose ? `<form method="get" action="/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, require("../outlook-block.js").active() ? "block_tip_outlook" : "block_tip"))}</span></button></form>` : ""}
+      <div class="sheet-title m-only">${esc(t(lang, "more_actions"))}</div>
+      <button type="button" class="m-only" data-close>${esc(t(lang, "cancel"))}</button>
     </div></details>`;
+  // M-55 / SKBAR: the disabled phone-only bar placeholder, same DOM shape as the ready bar (mirrored in ui.js)
+  function skBar(lang) {
+    return `<div class="actionbar sk-bar m-only" aria-hidden="true"><span class="send-split"><button class="send send-stack" type="button" disabled><span class="send-now">${esc(t(lang, "send_now"))}</span><span class="send-to"></span></button><details class="menu recip-pop"><summary class="btn send-caret"><span class="m-only recip-line"><span class="sk" style="width:70%"></span></span>&#9662;</summary></details></span><details class="menu"><summary class="btn">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary></details></div>`;
+  }
   // Bar: left cluster works the reply (Send / Save / Save & redraft — the redraft note is now the
   // button's tooltip, so the bar no longer wraps on it); right cluster closes the item.
-  const actionBar = busy ? "" : ["done", "archived"].includes(w.status)
-    ? `<div class="actionbar"><form method="post" action="/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
+  const actionBar = busy ? skBar(lang) : ["done", "archived"].includes(w.status)
+    ? `<div class="actionbar closed"><form method="post" action="/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
     : `<div class="actionbar">
         ${sendBtn}
         <button form="workform" name="action" value="save">${esc(t(lang, "save"))}</button>
@@ -724,21 +744,23 @@ app.get("/item/:id", async (req, res) => {
   // the SAP-documents card + the investigation brief — the right pane's contents
   // until Step 3 builds the full context panel (F10). Markup inside each block is
   // unchanged from Step 1; only the placement moved.
+  // M-22/M-36: phone-only "Customer & docs" link; div.m-mail wraps header and email
   const center = `
     <p class="backrow"><a href="&#47;">${esc(t(lang, "back_inbox"))}</a></p>
     <h2>#${w.id} ${esc(w.subject || t(lang, "no_subject"))}</h2>
     <div class="chips-row">${chips}</div>
+    <a class="m-only ctxlink" href="#ctx" data-ctx-open>${esc(t(lang, "customer_docs"))} <span aria-hidden="true">&rsaquo;</span></a>
     ${isCompose
       ? `<p class="muted">${esc(t(lang, "compose_from"))}: ${esc(w.mailbox)}@ &middot; ${esc(fmtDateTime(w.created_at, lang))}</p>`
       : `<p class="muted">${esc(t(lang, "from"))} ${esc(w.sender_name || w.sender_email)}${w.sender_name ? ` (${esc(w.sender_email)})` : ""} &middot; ${esc(fmtDateTime(w.email_received, lang))} &middot; ${esc(w.mailbox)}@</p>`}
     ${w.caller_info ? `<p class="muted">&#128222; ${esc(w.caller_info)}</p>` : ""}
     ${busy ? `<div class="banner busy">${esc(t(lang, "investigating_banner"))}</div>` : ""}
 
-    ${isCompose ? composeHeader : (isContactForm ? contactFormHeader : isRN ? returnHeader : "") + `<div class="box">
+    <div class="m-mail">${isCompose ? composeHeader : (isContactForm ? contactFormHeader : isRN ? returnHeader : "") + `<div class="box">
       <div class="boxhead"><h3>${esc(t(lang, "customer_email"))}</h3>
         <span><input id="mq" type="search" placeholder="${esc(t(lang, "search_in_email"))}" autocomplete="off"><span class="qcount" id="mqcount"></span></span></div>
       <div id="mailwrap">${renderTimeline(w, lang, emailTr, emailTrPending)}${renderAttachments(w)}</div>
-    </div>`}
+    </div>`}</div>
     <script>
     (function () {
       var mq = document.getElementById("mq"), c = document.getElementById("mqcount"),
@@ -782,6 +804,14 @@ app.get("/item/:id", async (req, res) => {
         wrap.querySelectorAll("details").forEach(function (d) {
           if (d.querySelector("mark.hit")) d.open = true;
         });
+        // M-23: a hit inside the clamped message unfolds it
+        wrap.querySelectorAll(".msg").forEach(function (m) {
+          var p = m.querySelector(":scope > pre.mail");
+          if (!p || !p.querySelector("mark.hit")) return;
+          m.classList.add("open");
+          var b = m.querySelector("[data-msg-toggle]");
+          if (b) { b.setAttribute("aria-expanded", "true"); var s = b.querySelector("span"); if (s) s.textContent = b.getAttribute("data-less"); }
+        });
         c.textContent = n + " " + (n === 1 ? "${t(lang, "match")}" : "${t(lang, "matches")}");
         var first = wrap.querySelector("mark.hit");
         if (first) first.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -789,7 +819,7 @@ app.get("/item/:id", async (req, res) => {
     })();
     </script>
 
-    ${busy && !full && !interim ? `<div class="box"><span class="muted">${esc(t(lang, "no_draft_busy"))}</span></div>` : ""}
+    ${busy && !full && !interim ? `<div class="box"><span class="muted">${esc(t(lang, "no_draft_busy"))}</span><div class="sk-lines m-only" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div></div>` : ""}
     ${workSection}
     ${supersededCard}
     ${actionBar}
@@ -855,7 +885,10 @@ app.get("/item/:id", async (req, res) => {
         if (alist && !document.getElementById("attbusy")) {
           var bz = document.createElement("div");
           bz.id = "attbusy"; bz.className = "attbusy";
-          bz.innerHTML = '<span class="spin"></span> ' + ${JSON.stringify(t(lang, "uploading"))};
+          // M-53: phone gets skeleton lines, desktop keeps the spinner
+          bz.innerHTML = (window.__axPhone && window.__axPhone.matches)
+            ? '<span class="sk-lines" aria-hidden="true"><span class="sk"></span><span class="sk"></span></span><span class="muted">' + ${JSON.stringify(esc(t(lang, "uploading")))} + '</span>'
+            : '<span class="spin"></span> ' + ${JSON.stringify(t(lang, "uploading"))};
           alist.parentNode.insertBefore(bz, alist.nextSibling);
         }
         document.body.classList.add("ax-nav");
@@ -965,7 +998,7 @@ app.get("/item/:id", async (req, res) => {
     ${custHtml}
     ${sapDocsCard}
     <div class="box"><details><summary>${esc(t(lang, "what_checked"))}</summary><pre class="mail">${esc(w.brief_md || t(lang, "none_paren"))}</pre></details></div>`;
-  const panes = workPanes(center, context, { back: t(lang, "back_inbox") });
+  const panes = workPanes(center, context, { back: t(lang, "back_inbox"), title: "#" + w.id + " " + (w.subject || t(lang, "no_subject")), lang });   // M-19
 
   // htmx queue-card click: swap only the work panes (the queue stays put). While
   // the item is busy, a small self-poller re-swaps the panes every 10s — a
@@ -978,13 +1011,13 @@ app.get("/item/:id", async (req, res) => {
   const busyPoll = busy ? `<div hx-get="/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-trigger="load delay:10s"></div>` : "";
   if (req.get("HX-Request")) {
     return res.send(panes
-      + `<script>document.title = ${JSON.stringify(`Item ${w.id} - Axle`)};</script>`
+      + `<script>document.title = ${JSON.stringify(`Item ${w.id} - Axle`)}; document.body.classList.add("ax-detail");</script>`
       + busyPoll);
   }
   // Plain navigation (deep link / old link): the full shell. The queue pane is
   // lazy-loaded from /queue, so this route keeps exactly its old side effects —
   // and without JS the item still renders standalone, back-link included.
-  res.send(page(`Item ${w.id}`, req.user, shell(lazyQueue(lang, "sel=" + w.id), panes + busyPoll), 0, { shell: true }));
+  res.send(page(`Item ${w.id}`, req.user, shell(lazyQueue(lang, "sel=" + w.id), panes + busyPoll) + (req.app.locals.composeUi ? req.app.locals.composeUi(req) : ""), 0, { shell: true, bodyClass: "ax-detail" }));
 });
 
 // Open an attachment: fetched from Graph on demand, streamed to the browser.

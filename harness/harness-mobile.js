@@ -1,0 +1,543 @@
+#!/usr/bin/env node
+// harness-mobile.js - repo-only test harness for the Axle mobile redesign (mobile plan
+// section 4.4, K5). Boots the real box-code routes on the Step-0 stub kit against a temp
+// fixture DB (harness/step0), drives Chromium from AXLE_PPTR_DIR with puppeteer, and
+// writes screenshots + JSON reports to design-reference/mobile-audit/. Never touches
+// box-code, never a project dependency, never deployed.
+//
+// Usage: node harness/harness-mobile.js <command> [options]
+//   hash                          print the data-confirm capture handler's sha256 (K7 item 4)
+//   walk    [--widths] [--out] [--tree] [--lang] [--only] [--keep] [--phase N] [--append]
+//   baseline[--widths] [--out] [--tree] [--lang] [--only] [--keep]
+//   compare --baseline <dir> [--widths] [--out] [--tree] [--lang] [--only] [--mask] [--keep]
+//   phase   --n <N> [--out] [--widths] [--tree] [--lang] [--keep] [--reuse-walk]
+//           n=3 only: [--part earlier|3|2] run one part per call (see the n === "3" branch),
+//           [--skip-earlier] same as --part 3, [--only a,b] just those phase-3 assertion groups
+//           (see phase-3.js GROUPS; an --only run never rebuilds phase-3.json)
+//           n=4 only: [--part earlier|3|4|2] one part per call (see the n === "4" branch),
+//           [--only a,b] just those phase-4 assertion groups (phase-4.js GROUPS)
+"use strict";
+const fs = require("fs");
+const path = require("path");
+
+const ENV = require("./mobile/env.js");
+const { bootServer } = require("./mobile/boot.js");
+const { launchBrowser, newPage } = require("./mobile/pptr.js");
+const { SCENES, findScene, openScene } = require("./mobile/scenes.js");
+const AUDITS = require("./mobile/audits.js");
+const LAYOUT = require("./mobile/layout.js");
+
+// ---- arg parsing -------------------------------------------------------------------
+function parseArgs(argv) {
+  const args = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith("--")) {
+      const key = a.slice(2);
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("--")) { args[key] = next; i++; }
+      else args[key] = true;
+    } else {
+      args._.push(a);
+    }
+  }
+  return args;
+}
+
+function resolveTree(opts) {
+  return opts.tree ? path.resolve(process.cwd(), opts.tree) : ENV.DEFAULT_TREE;
+}
+
+function isPhoneWidth(w) {
+  return w.width <= 700;
+}
+
+function onlyFilter(opts) {
+  return opts.only ? String(opts.only).split(",").map((s) => s.trim()).filter(Boolean) : null;
+}
+
+// ---- hash: K7 item 4 fingerprint -----------------------------------------------------
+function cmdHash(opts) {
+  const tree = resolveTree(opts);
+  const file = path.join(tree, "views", "ui.js");
+  const text = fs.readFileSync(file, "utf8");
+  const lines = text.split("\n");
+  const startMarker = "// Confirmation prompts. The text lives in the button's data-confirm attribute";
+  const startIdx = lines.findIndex((l) => l.startsWith(startMarker));
+  if (startIdx === -1) throw new Error("could not find the data-confirm block start (looking for a line starting with: " + startMarker + ") in " + file);
+  let endIdx = -1;
+  for (let i = startIdx; i < lines.length; i++) {
+    if (lines[i].trim() === "})();") { endIdx = i; break; }
+  }
+  if (endIdx === -1) throw new Error("could not find the closing })(); for the data-confirm block");
+  const block = lines.slice(startIdx, endIdx + 1).join("\n");
+  const hash = ENV.sha256Hex(block);
+  console.log("data-confirm capture handler (K7 item 4 fingerprint)");
+  console.log("file:      " + file);
+  console.log("lines:     " + (startIdx + 1) + "-" + (endIdx + 1) + " (1-based, inclusive)");
+  console.log("sha256:    " + hash);
+  return 0;
+}
+
+// ---- shared: the K5 headless walk ----------------------------------------------------
+async function runWalk({ tree, outDir, widths, lang, only, browser, baseUrl, append }) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const scenesToRun = only ? SCENES.filter((s) => only.includes(s.id)) : SCENES;
+  const entries = [];
+  for (const width of widths) {
+    const phone = isPhoneWidth(width);
+    for (const scene of scenesToRun) {
+      const entry = { width: width.label, scene: scene.id };
+      let page, consoleErrors;
+      try {
+        ({ page, consoleErrors } = await newPage(browser, {
+          width: width.width, height: width.height,
+          deviceScaleFactor: phone ? 3 : 1, isMobile: phone, hasTouch: phone,
+          lang, baseUrl,
+        }));
+        const { menu } = await openScene(page, baseUrl, scene);
+        await new Promise((r) => setTimeout(r, 50));
+
+        const scrollInfo = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          scrollHeight: document.documentElement.scrollHeight,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+        }));
+        const tapAudit = await AUDITS.tapAudit(page);
+        const overflow = await AUDITS.overflowAudit(page);
+        const fontSize = await AUDITS.fontSizeAudit(page);
+        const fixedSticky = await AUDITS.fixedStickyAudit(page);
+        const sprocket = await AUDITS.sprocketRect(page);
+        const phantomScroll = scene.id === "queue-open" ? await AUDITS.phantomScrollProbe(page) : null;
+        const extra = {
+          viewportMeta: await AUDITS.viewportMetaProbe(page),
+          // From Phase 1B the attach-by-number form lives inside the context sheet (item-context scene).
+          attachByNumber: (scene.id === "item-ready" || scene.id === "item-context") ? await AUDITS.attachByNumberProbe(page) : null,
+          cusdialog: (scene.id === "item-customer" || scene.id === "item-customer-page") ? await AUDITS.cusdialogProbe(page) : null,
+          actionbarRect: scene.id === "item-ready" ? await AUDITS.rectOf(page, ".actionbar") : null,
+          modalFootRect: scene.id === "compose" ? await AUDITS.rectOf(page, ".modal-foot") : null,
+        };
+        const pngFull = await page.screenshot({ fullPage: true });
+        const pngViewport = await page.screenshot({ fullPage: false });
+        fs.writeFileSync(path.join(outDir, width.label + "-" + scene.id + ".png"), pngFull);
+        fs.writeFileSync(path.join(outDir, width.label + "-" + scene.id + "-viewport.png"), pngViewport);
+
+        // Phase 3: a scene that deliberately triggers a failing request (item-error: the forced
+        // 500) declares the console messages that failure is expected to log; those are kept
+        // apart in expectedConsoleErrors so the all-scenes console check still sees every
+        // other message.
+        let cErr = consoleErrors.slice(), expectedConsoleErrors;
+        if (scene.expectedConsole) {
+          const re = new RegExp(scene.expectedConsole);
+          expectedConsoleErrors = cErr.filter((m) => re.test(m));
+          cErr = cErr.filter((m) => !re.test(m));
+        }
+        Object.assign(entry, scrollInfo, { tapAudit, overflow, fontSize, fixedSticky, sprocket, phantomScroll, extra, consoleErrors: cErr, expectedConsoleErrors, menu });
+      } catch (err) {
+        entry.error = String((err && err.stack) || err);
+      } finally {
+        if (page) await page.close().catch(() => {});
+      }
+      entries.push(entry);
+    }
+  }
+  let walk = { generatedAt: new Date().toISOString(), tree, widths: widths.map((w) => w.label), scenes: scenesToRun.map((s) => s.id), entries };
+  // --append (Phase 3): the sandbox's per-call time cap means one width per walk call, and
+  // walk.json would otherwise hold only the last call's width. With --append, an existing
+  // walk.json is merged: its entries for other width/scene pairs are kept, pairs walked in
+  // this call replace their old entry.
+  const walkFile = path.join(outDir, "walk.json");
+  if (append && fs.existsSync(walkFile)) {
+    const prev = JSON.parse(fs.readFileSync(walkFile, "utf8"));
+    const key = (e) => e.width + "|" + e.scene;
+    const fresh = new Set(entries.map(key));
+    const merged = (prev.entries || []).filter((e) => !fresh.has(key(e))).concat(entries);
+    const uniq = (list) => Array.from(new Set(list));
+    walk = { generatedAt: walk.generatedAt, tree, widths: uniq((prev.widths || []).concat(walk.widths)), scenes: uniq((prev.scenes || []).concat(walk.scenes)), entries: merged };
+  }
+  fs.writeFileSync(walkFile, JSON.stringify(walk, null, 1));
+  return walk;
+}
+
+function printWalkSummary(walk) {
+  console.log("\nWalk summary (" + walk.entries.length + " width x scene captures)");
+  console.log("width       scene                    tap-viol  overflow  font-viol  console-err  menu");
+  for (const e of walk.entries) {
+    if (e.error) {
+      console.log(pad(e.width, 11) + pad(e.scene, 25) + "ERROR: " + e.error.split("\n")[0]);
+      continue;
+    }
+    const tapV = e.tapAudit ? e.tapAudit.violations.length : "-";
+    const ovf = e.overflow ? (e.overflow.ok ? "ok" : "OVERFLOW") : "-";
+    const fontV = e.fontSize ? e.fontSize.length : "-";
+    const cerr = e.consoleErrors ? e.consoleErrors.length : "-";
+    const menu = e.menu ? e.menu.method : "-";
+    console.log(pad(e.width, 11) + pad(e.scene, 25) + pad(String(tapV), 10) + pad(String(ovf), 10) + pad(String(fontV), 11) + pad(String(cerr), 13) + menu);
+  }
+}
+
+function pad(s, n) { s = String(s); return s + " ".repeat(Math.max(1, n - s.length)); }
+
+async function cmdWalk(opts) {
+  const tree = resolveTree(opts);
+  const outDir = ENV.outDir(opts.out || "design-reference/mobile-audit/phase-pre");
+  const widths = ENV.parseWidths(opts.widths || "393x852,375x812,430x932");
+  const lang = opts.lang || "en";
+  const only = onlyFilter(opts);
+  // --phase N: boot with that phase's fixture seed (Phase 3: the 120 done rows the paged Done
+  // tab screenshots need, and the forced-500 item 300; Phase 4: those plus the busy item 301),
+  // the same seed "phase --n N" uses.
+  const server = await bootServer({ tree, keep: !!opts.keep, phase: opts.phase !== undefined ? String(opts.phase) : undefined });
+  const browser = await launchBrowser();
+  try {
+    const walk = await runWalk({ tree, outDir, widths, lang, only, browser, baseUrl: server.baseUrl, append: !!opts.append });
+    printWalkSummary(walk);
+    console.log("\nwritten to " + outDir);
+    return 0;
+  } finally {
+    await browser.close();
+    await server.stop();
+  }
+}
+
+// ---- baseline: desktop capture for 4.2 -----------------------------------------------
+async function cmdBaseline(opts) {
+  const tree = resolveTree(opts);
+  const outDir = ENV.outDir(opts.out || "design-reference/mobile-audit/baseline-desktop");
+  const widths = ENV.parseWidths(opts.widths || "1440x900,1101x900");
+  const lang = opts.lang || "en";
+  const only = onlyFilter(opts);
+  const scenesToRun = only ? SCENES.filter((s) => only.includes(s.id)) : SCENES;
+  const server = await bootServer({ tree, keep: !!opts.keep });
+  const browser = await launchBrowser();
+  try {
+    fs.mkdirSync(outDir, { recursive: true });
+    for (const width of widths) {
+      for (const scene of scenesToRun) {
+        const { page } = await newPage(browser, {
+          width: width.width, height: width.height, deviceScaleFactor: 1, isMobile: false, hasTouch: false,
+          freezeClock: true, lang, baseUrl: server.baseUrl,
+        });
+        try {
+          await openScene(page, server.baseUrl, scene);
+          // Extra settle beyond the walk's 100ms menu wait: baseline/compare are pixel-
+          // critical (4.2/K6), so give any late layout/paint (e.g. a JS menu positioner)
+          // time to finish before the screenshot.
+          await new Promise((r) => setTimeout(r, 300));
+          const png = await page.screenshot({ fullPage: true });
+          const layout = await LAYOUT.layoutSnapshot(page);
+          const dom = await LAYOUT.domSnapshot(page);
+          fs.writeFileSync(path.join(outDir, width.label + "-" + scene.id + ".png"), png);
+          fs.writeFileSync(path.join(outDir, width.label + "-" + scene.id + ".layout.json"), JSON.stringify(layout, null, 1));
+          fs.writeFileSync(path.join(outDir, width.label + "-" + scene.id + ".dom.html"), dom);
+          console.log("captured " + width.label + " " + scene.id);
+        } finally {
+          await page.close().catch(() => {});
+        }
+      }
+    }
+    const manifest = { generatedAt: new Date().toISOString(), tree, widths: widths.map((w) => w.label), scenes: scenesToRun.map((s) => s.id) };
+    fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify(manifest, null, 1));
+    console.log("\nbaseline written to " + outDir);
+    return 0;
+  } finally {
+    await browser.close();
+    await server.stop();
+  }
+}
+
+// ---- compare: re-capture + diff against a baseline ------------------------------------
+async function cmdCompare(opts) {
+  if (!opts.baseline) throw new Error("compare requires --baseline <dir>");
+  const tree = resolveTree(opts);
+  const baselineDir = ENV.outDir(opts.baseline);
+  const outDir = ENV.outDir(opts.out || "design-reference/mobile-audit/compare");
+  const manifest = JSON.parse(fs.readFileSync(path.join(baselineDir, "manifest.json"), "utf8"));
+  const widths = ENV.parseWidths(opts.widths || manifest.widths.join(","));
+  const lang = opts.lang || "en";
+  const maskSelectors = opts.mask ? String(opts.mask).split(",").map((s) => s.trim()).filter(Boolean) : [".qlive"];
+  const only = onlyFilter(opts);
+  const scenesToRun = only ? manifest.scenes.filter((id) => only.includes(id)) : manifest.scenes;
+
+  const server = await bootServer({ tree, keep: !!opts.keep });
+  const browser = await launchBrowser();
+  try {
+    fs.mkdirSync(outDir, { recursive: true });
+    const report = { generatedAt: new Date().toISOString(), tree, baselineDir, results: [] };
+    let anyDiff = false;
+
+    for (const width of widths) {
+      for (const sceneId of scenesToRun) {
+        const scene = findScene(sceneId);
+        const basePngPath = path.join(baselineDir, width.label + "-" + sceneId + ".png");
+        const baseLayoutPath = path.join(baselineDir, width.label + "-" + sceneId + ".layout.json");
+        const baseDomPath = path.join(baselineDir, width.label + "-" + sceneId + ".dom.html");
+        if (!fs.existsSync(basePngPath)) {
+          report.results.push({ width: width.label, scene: sceneId, error: "no baseline capture at this width/scene" });
+          anyDiff = true;
+          continue;
+        }
+
+        const { page } = await newPage(browser, {
+          width: width.width, height: width.height, deviceScaleFactor: 1, isMobile: false, hasTouch: false,
+          freezeClock: true, lang, baseUrl: server.baseUrl,
+        });
+        let curPng, curLayout, curDom, maskRects;
+        try {
+          await openScene(page, server.baseUrl, scene);
+          await new Promise((r) => setTimeout(r, 300));
+          curPng = await page.screenshot({ fullPage: true });
+          curLayout = await LAYOUT.layoutSnapshot(page);
+          curDom = await LAYOUT.domSnapshot(page);
+          maskRects = await LAYOUT.maskRectsFor(page, maskSelectors);
+        } finally {
+          await page.close().catch(() => {});
+        }
+
+        const baseBuf = fs.readFileSync(basePngPath);
+        const baseLayout = JSON.parse(fs.readFileSync(baseLayoutPath, "utf8"));
+        // K6: a baseline captured by the pre-fix code has no normalisation marker - bring it
+        // up to date in Chromium (real stylesheets, capture width) rather than recapturing it.
+        const baseDomRaw = fs.readFileSync(baseDomPath, "utf8");
+        const baseDom = await LAYOUT.renormaliseBaselineDom(browser, server.baseUrl, width, baseDomRaw);
+
+        let pixelDiffCount = 0;
+        if (!baseBuf.equals(curPng)) {
+          const pixel = await LAYOUT.pixelDiff(browser, baseBuf, curPng, maskRects);
+          pixelDiffCount = pixel.diffCount;
+          if (pixel.diffCount > 0) {
+            fs.writeFileSync(path.join(outDir, "diff-" + width.label + "-" + sceneId + ".png"), pixel.pngBuffer);
+          }
+        }
+        const layoutDiffs = LAYOUT.diffLayout(baseLayout, curLayout);
+        const domDiffs = LAYOUT.diffDom(baseDom, curDom);
+        const hasDiff = pixelDiffCount > 0 || layoutDiffs.length > 0 || domDiffs.length > 0;
+        if (hasDiff) anyDiff = true;
+        report.results.push({ width: width.label, scene: sceneId, pixelDiffCount, layoutDiffCount: layoutDiffs.length, domDiffCount: domDiffs.length, layoutDiffs: layoutDiffs.slice(0, 30), domDiffs: domDiffs.slice(0, 30) });
+        console.log((hasDiff ? "DIFF " : "ok   ") + width.label + " " + sceneId + " pixel=" + pixelDiffCount + " layout=" + layoutDiffs.length + " dom=" + domDiffs.length);
+      }
+    }
+    fs.writeFileSync(path.join(outDir, "compare.json"), JSON.stringify(report, null, 1));
+    console.log("\n" + (anyDiff ? "RESULT: DIFFERENCES FOUND" : "RESULT: identical") + " - report written to " + path.join(outDir, "compare.json"));
+    return anyDiff ? 1 : 0;
+  } finally {
+    await browser.close();
+    await server.stop();
+  }
+}
+
+// ---- phase: walk + phase-N acceptance assertions ---------------------------------------
+async function cmdPhase(opts) {
+  const tree = resolveTree(opts);
+  const n = opts.n !== undefined ? String(opts.n) : "0";
+  const outDir = ENV.outDir(opts.out || ("design-reference/mobile-audit/phase-" + n));
+  const widths = ENV.parseWidths(opts.widths || "393x852,375x812,430x932");
+  const lang = opts.lang || "en";
+
+  let phaseModule;
+  try {
+    // eslint-disable-next-line global-require
+    phaseModule = require("./mobile/phase-" + n + ".js");
+  } catch (e) {
+    throw new Error("no assertion module harness/mobile/phase-" + n + ".js for phase " + n + " (" + e.message + ")");
+  }
+
+  const server = await bootServer({ tree, keep: !!opts.keep, phase: n });
+  const browser = await launchBrowser();
+  try {
+    // --reuse-walk: take <out>/walk.json from an earlier "walk" run instead of walking again
+    // (the sandbox caps a shell call at about three minutes; walk and assert can then run apart).
+    let walk;
+    const walkFile = path.join(outDir, "walk.json");
+    if (opts["reuse-walk"] && fs.existsSync(walkFile)) {
+      walk = JSON.parse(fs.readFileSync(walkFile, "utf8"));
+      console.log("reusing " + walkFile + " (" + (walk.entries || []).length + " entries)");
+      // A width walked into its own subdirectory (the phase layout keeps 430 screenshots in
+      // <out>/430/) is merged in when --widths asks for it and the main walk.json lacks it,
+      // so the per-width walk assertions (phase-0 and later) see every requested width.
+      for (const w of widths) {
+        if ((walk.entries || []).some((e) => e.width === w.label)) continue;
+        const sub = path.join(outDir, String(w.width), "walk.json");
+        if (!fs.existsSync(sub)) continue;
+        const extra = JSON.parse(fs.readFileSync(sub, "utf8"));
+        const add = (extra.entries || []).filter((e) => e.width === w.label);
+        walk.entries = (walk.entries || []).concat(add);
+        walk.widths = Array.from(new Set((walk.widths || []).concat([w.label])));
+        console.log("merged " + add.length + " " + w.label + " entries from " + sub);
+      }
+    } else {
+      walk = await runWalk({ tree, outDir, widths, lang, only: null, browser, baseUrl: server.baseUrl });
+      printWalkSummary(walk);
+    }
+
+    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths, dbPath: server.dbPath, only: onlyFilter(opts), outDir, lang };
+    // Phase 2's own assertions persist real changes to the shared temp fixture DB (the
+    // recipient-confirm form, Save / Save & redraft submits), so its module runs AFTER the
+    // earlier, read-mostly phases below rather than first - see the "n === '2'" branch.
+    let result = (n === "2" || n === "3" || n === "4") ? null : await phaseModule.assert(ctx);
+    // Phase 1A: "phase --n 1a" runs the walk plus BOTH phase-0 and phase-1a assertions -
+    // phase 0 must still pass on top of the new phase-1a work.
+    if (n === "1a") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      const r0 = await phase0.assert(ctx);
+      result = { phase: n, pass: r0.pass && result.pass, assertions: r0.assertions.concat(result.assertions) };
+    }
+    // Phase 1B: "phase --n 1b" runs the walk plus phase-0, phase-1a AND phase-1b assertions -
+    // every earlier phase must still pass on top of the new phase-1b work.
+    if (n === "1b") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      // eslint-disable-next-line global-require
+      const phase1a = require("./mobile/phase-1a.js");
+      const r0 = await phase0.assert(ctx);
+      const r1a = await phase1a.assert(ctx);
+      result = {
+        phase: n,
+        pass: r0.pass && r1a.pass && result.pass,
+        assertions: r0.assertions.concat(r1a.assertions).concat(result.assertions),
+      };
+    }
+    // Phase 2: "phase --n 2" runs the walk plus phase-0, phase-1a, phase-1b AND phase-2
+    // assertions - every earlier phase must still pass on top of the new phase-2 work.
+    // Order matters here: phase-2's own assertions (autosave, the recipient-confirm form,
+    // the Save/Save&redraft submits) persist real changes to the shared temp fixture DB
+    // (e.g. item 4's recipient gets confirmed), so the earlier, read-mostly phases run
+    // FIRST against the pristine fixtures and phase-2's own module runs last.
+    if (n === "2") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      // eslint-disable-next-line global-require
+      const phase1a = require("./mobile/phase-1a.js");
+      // eslint-disable-next-line global-require
+      const phase1b = require("./mobile/phase-1b.js");
+      const r0 = await phase0.assert(ctx);
+      const r1a = await phase1a.assert(ctx);
+      const r1b = await phase1b.assert(ctx);
+      const r2 = await phaseModule.assert(ctx);
+      result = {
+        phase: n,
+        pass: r0.pass && r1a.pass && r1b.pass && r2.pass,
+        assertions: r0.assertions.concat(r1a.assertions).concat(r1b.assertions).concat(r2.assertions),
+      };
+    }
+    // Phase 3: "phase --n 3" runs phase-0, phase-1a, phase-1b, then phase-3, then phase-2
+    // LAST. Same ordering rule as the Phase 2 branch above: phase-2's own assertions persist
+    // real changes to the shared temp fixture DB, so everything read-mostly runs before it.
+    // phase-3 only toggles sync_state.running (and clears it again when it is done), so it
+    // runs before phase-2 against the pristine fixtures.
+    if (n === "3") {
+      // eslint-disable-next-line global-require
+      const phase0 = require("./mobile/phase-0.js");
+      // eslint-disable-next-line global-require
+      const phase1a = require("./mobile/phase-1a.js");
+      // eslint-disable-next-line global-require
+      const phase1b = require("./mobile/phase-1b.js");
+      // eslint-disable-next-line global-require
+      const phase2 = require("./mobile/phase-2.js");
+      // --part earlier|3|2 (the sandbox caps one shell call at about three minutes, and the
+      // five modules together run longer): each part runs in its own call against its own
+      // fresh server and fixture DB, writes phase-3.part-<p>.json, and once all three part
+      // files exist phase-3.json is rebuilt from them in the order earlier, 3, 2. Because each
+      // part boots a fresh DB, phase-2's DB writes still never reach the other parts.
+      const part = opts.part ? String(opts.part) : (opts["skip-earlier"] ? "3" : "all");
+      if (!["all", "earlier", "3", "2"].includes(part)) throw new Error("--part must be earlier, 3 or 2");
+      const parts = [];
+      if (part === "all" || part === "earlier") {
+        parts.push(await phase0.assert(ctx));
+        parts.push(await phase1a.assert(ctx));
+        parts.push(await phase1b.assert(ctx));
+      }
+      if (part === "all" || part === "3") parts.push(await phaseModule.assert(ctx));
+      if (part === "all" || part === "2") parts.push(await phase2.assert(ctx));
+      result = {
+        phase: n,
+        part,
+        pass: parts.every((r) => r.pass),
+        assertions: parts.reduce((acc, r) => acc.concat(r.assertions), []),
+      };
+      if (part !== "all") {
+        fs.writeFileSync(path.join(outDir, "phase-3.part-" + part + ".json"), JSON.stringify(result, null, 1));
+        const files = ["earlier", "3", "2"].map((p) => path.join(outDir, "phase-3.part-" + p + ".json"));
+        if (!ctx.only && files.every((f) => fs.existsSync(f))) {
+          const all = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")));
+          const combined = { phase: n, part: "all (from part files)", pass: all.every((r) => r.pass), assertions: all.reduce((acc, r) => acc.concat(r.assertions), []) };
+          fs.writeFileSync(path.join(outDir, "phase-3.json"), JSON.stringify(combined, null, 1));
+          console.log("combined phase-3.json rebuilt from the three part files: " + (combined.pass ? "PASS" : "FAIL"));
+        }
+      }
+    }
+    // Phase 4: same part layout as Phase 3, one more part. Order earlier (phase-0, 1a, 1b),
+    // 3, 4, 2: phase-2 persists real changes to the fixture DB, so it runs last; phase-4
+    // flips item 301 to ready (and back to investigating when done) and boots its own
+    // short-lived delay server for the M-52 and desktop skeleton checks, so it runs after 3.
+    // Each part is its own call against its own fresh server and DB; phase-4.json is rebuilt
+    // from the four part files once all exist.
+    if (n === "4") {
+      /* eslint-disable global-require */
+      const phase0 = require("./mobile/phase-0.js");
+      const phase1a = require("./mobile/phase-1a.js");
+      const phase1b = require("./mobile/phase-1b.js");
+      const phase2 = require("./mobile/phase-2.js");
+      const phase3 = require("./mobile/phase-3.js");
+      /* eslint-enable global-require */
+      const part = opts.part ? String(opts.part) : "all";
+      const ORDER = ["earlier", "3", "4", "2"];
+      if (!["all"].concat(ORDER).includes(part)) throw new Error("--part must be earlier, 3, 4 or 2");
+      const parts = [];
+      if (part === "all" || part === "earlier") {
+        parts.push(await phase0.assert(ctx));
+        parts.push(await phase1a.assert(ctx));
+        parts.push(await phase1b.assert(ctx));
+      }
+      if (part === "all" || part === "3") parts.push(await phase3.assert(ctx));
+      if (part === "all" || part === "4") parts.push(await phaseModule.assert(ctx));
+      if (part === "all" || part === "2") parts.push(await phase2.assert(ctx));
+      result = { phase: n, part, pass: parts.every((r) => r.pass), assertions: parts.reduce((acc, r) => acc.concat(r.assertions), []) };
+      if (part !== "all") {
+        fs.writeFileSync(path.join(outDir, "phase-4.part-" + part + ".json"), JSON.stringify(result, null, 1));
+        const files = ORDER.map((p) => path.join(outDir, "phase-4.part-" + p + ".json"));
+        if (!ctx.only && files.every((f) => fs.existsSync(f))) {
+          const all = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")));
+          const combined = { phase: n, part: "all (from part files)", pass: all.every((r) => r.pass), assertions: all.reduce((acc, r) => acc.concat(r.assertions), []) };
+          fs.writeFileSync(path.join(outDir, "phase-4.json"), JSON.stringify(combined, null, 1));
+          console.log("combined phase-4.json rebuilt from the four part files: " + (combined.pass ? "PASS" : "FAIL"));
+        }
+      }
+    }
+    const partRun = (n === "3" || n === "4") && result.part && result.part !== "all";
+    if (!partRun) fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));
+
+    console.log("\nPhase " + n + " acceptance assertions:");
+    for (const a of result.assertions) console.log((a.pass ? "PASS " : "FAIL ") + a.id);
+    const reportName = partRun ? "phase-" + n + ".part-" + result.part + ".json" : "phase-" + n + ".json";
+    console.log("\nRESULT: " + (result.pass ? "PASS" : "FAIL") + " - report written to " + path.join(outDir, reportName));
+    return result.pass ? 0 : 1;
+  } finally {
+    await browser.close();
+    await server.stop();
+  }
+}
+
+// ---- main -----------------------------------------------------------------------------
+async function main() {
+  const argv = process.argv.slice(2);
+  const opts = parseArgs(argv);
+  const command = opts._[0];
+  const commands = { hash: cmdHash, walk: cmdWalk, baseline: cmdBaseline, compare: cmdCompare, phase: cmdPhase };
+  if (!command || !commands[command]) {
+    console.error("usage: node harness/harness-mobile.js <hash|walk|baseline|compare|phase> [options]");
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    const code = await commands[command](opts);
+    process.exitCode = code || 0;
+  } catch (err) {
+    console.error("HARNESS ERROR:", (err && err.stack) || err);
+    process.exitCode = 2;
+  }
+}
+
+main();

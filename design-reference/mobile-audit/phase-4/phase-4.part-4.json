@@ -1,0 +1,448 @@
+{
+ "phase": "4",
+ "part": "4",
+ "pass": true,
+ "assertions": [
+  {
+   "id": "P4-M52-skeleton-within-frame-393",
+   "pass": true,
+   "detail": {
+    "frame": {
+     "sk": true,
+     "skVisible": true,
+     "real": false,
+     "axDetail": true,
+     "wpLoading": false,
+     "qpDisplay": "none",
+     "skBar": {
+      "x": 0,
+      "y": 739,
+      "w": 393,
+      "h": 113
+     },
+     "title": "#1 Order 224665 status",
+     "dt": 13.900000005960464
+    },
+    "samplesBeforeLand": 56,
+    "gapSamples": [],
+    "landedAtMs": 3057.4000000059605,
+    "elapsedMs": 3071,
+    "skeletonLeftAfterLand": false
+   }
+  },
+  {
+   "id": "P4-M52-bar-rect-equal-393",
+   "pass": true,
+   "detail": {
+    "skeletonBar": {
+     "x": 0,
+     "y": 739,
+     "w": 393,
+     "h": 113
+    },
+    "loadedBar": {
+     "x": 0,
+     "y": 739,
+     "w": 393,
+     "h": 113
+    },
+    "skeletonBarStableDuringWait": true,
+    "samples": 56
+   }
+  },
+  {
+   "id": "P4-M52-skeleton-within-frame-375",
+   "pass": true,
+   "detail": {
+    "frame": {
+     "sk": true,
+     "skVisible": true,
+     "real": false,
+     "axDetail": true,
+     "wpLoading": false,
+     "qpDisplay": "none",
+     "skBar": {
+      "x": 0,
+      "y": 699,
+      "w": 375,
+      "h": 113
+     },
+     "title": "#1 Order 224665 status",
+     "dt": 14.699999988079071
+    },
+    "samplesBeforeLand": 60,
+    "gapSamples": [],
+    "landedAtMs": 3055.399999976158,
+    "elapsedMs": 3049,
+    "skeletonLeftAfterLand": false
+   }
+  },
+  {
+   "id": "P4-M52-bar-rect-equal-375",
+   "pass": true,
+   "detail": {
+    "skeletonBar": {
+     "x": 0,
+     "y": 699,
+     "w": 375,
+     "h": 113
+    },
+    "loadedBar": {
+     "x": 0,
+     "y": 699,
+     "w": 375,
+     "h": 113
+    },
+    "skeletonBarStableDuringWait": true,
+    "samples": 60
+   }
+  },
+  {
+   "id": "P4-desktop-no-skeleton-1440",
+   "pass": true,
+   "detail": {
+    "frame": {
+     "sk": false,
+     "skVisible": false,
+     "real": false,
+     "axDetail": false,
+     "wpLoading": true,
+     "qpDisplay": "flex",
+     "skBar": null,
+     "title": null,
+     "dt": 2.0999999940395355
+    },
+    "everSkeleton": false,
+    "overlayHeldDuringWait": true,
+    "samplesBeforeLand": 56,
+    "landedAtMs": 3050.5,
+    "afterLand": {
+     "skeleton": false,
+     "wpLoading": false,
+     "axDetail": true
+    }
+   }
+  },
+  {
+   "id": "P4-M53-customer-skeleton",
+   "pass": true,
+   "detail": {
+    "heldRequests": 1,
+    "dialogOpen": true,
+    "skVisible": true,
+    "skRect": {
+     "x": 16,
+     "y": 61,
+     "w": 361,
+     "h": 48
+    },
+    "skLines": 3,
+    "spinExists": true,
+    "spinVisible": false,
+    "dialogRect": {
+     "x": 0,
+     "y": 0,
+     "w": 393,
+     "h": 852
+    }
+   }
+  },
+  {
+   "id": "P4-M53-translation-skeleton",
+   "pass": true,
+   "detail": {
+    "fixture": "/item/1 (de, viewer en)",
+    "heldRequests": [
+     "POST /item/1/translations"
+    ],
+    "toggle": "click",
+    "pending": true,
+    "boxShown": true,
+    "skVisible": true,
+    "skRect": {
+     "x": 65,
+     "y": 794.859375,
+     "w": 266,
+     "h": 48
+    },
+    "skDisplay": "block",
+    "spinExists": true,
+    "spinVisible": false,
+    "preRect": {
+     "x": 65,
+     "y": 794.859375,
+     "w": 266,
+     "h": 48
+    },
+    "serverMarkup": {
+     "pendingAttr": true,
+     "spinMHide": true,
+     "skLines": true
+    }
+   }
+  },
+  {
+   "id": "P4-M53-upload-skeleton",
+   "pass": true,
+   "detail": {
+    "method": "DataTransfer File on #att_file + change event (the page's own addFiles path)",
+    "trigger": {
+     "input": true,
+     "files": 0
+    },
+    "heldRequests": 1,
+    "attbusy": true,
+    "skVisible": true,
+    "skRect": {
+     "x": 33,
+     "y": 401.921875,
+     "w": 327,
+     "h": 30
+    },
+    "skLines": 2,
+    "spinExists": false,
+    "spinVisible": false,
+    "text": "Uploading…",
+    "html": "<span class=\"sk-lines\" aria-hidden=\"true\"><span class=\"sk\"></span><span class=\"sk\"></span></span><span class=\"muted\">Uploading…</span>"
+   }
+  },
+  {
+   "id": "P4-M55-investigating-banner-skeleton-bar",
+   "pass": true,
+   "detail": {
+    "bannerVisible": true,
+    "skVisible": true,
+    "skRect": {
+     "x": 33,
+     "y": 410.09375,
+     "w": 327,
+     "h": 48
+    },
+    "bar": {
+     "x": 0,
+     "y": 739,
+     "w": 393,
+     "h": 113
+    },
+    "barVisible": true,
+    "sendDisabled": true,
+    "realBar": false,
+    "readyBarOnItem1": {
+     "x": 0,
+     "y": 739,
+     "w": 393,
+     "h": 113
+    }
+   }
+  },
+  {
+   "id": "P4-M55-busy-poll-scroll-kept",
+   "pass": true,
+   "detail": {
+    "shortcut": "htmx.ajax from the poller div (source = div)",
+    "before": 300,
+    "after": 300,
+    "pollRequests": [
+     "GET"
+    ],
+    "stillBusy": true,
+    "scrollHeight": 1372
+   }
+  },
+  {
+   "id": "P4-M55-flip-to-ready-keeps-positions",
+   "pass": true,
+   "detail": {
+    "shortcut": "status + ai draft written to the DB, then htmx.ajax from the poller div",
+    "slotTopBefore": 371.078125,
+    "replyAfter": {
+     "top": 394.4375,
+     "h": 138
+    },
+    "aboveSlot": [
+     {
+      "sig": "a.m-back",
+      "before": 0,
+      "after": 0,
+      "beforeH": 48,
+      "afterH": 48,
+      "ok": true
+     },
+     {
+      "sig": "div.chips-row",
+      "before": 60,
+      "after": 60,
+      "beforeH": 48,
+      "afterH": 48,
+      "ok": true
+     },
+     {
+      "sig": "a.ctxlink.m-only",
+      "before": 120,
+      "after": 120,
+      "beforeH": 44,
+      "afterH": 44,
+      "ok": true
+     },
+     {
+      "sig": "p.muted",
+      "before": 189,
+      "after": 189,
+      "beforeH": 40.03125,
+      "afterH": 40.03125,
+      "ok": true
+     }
+    ],
+    "bannerBefore": {
+     "sig": "div.banner.busy",
+     "top": 266.03125,
+     "h": 81.046875,
+     "order": "0"
+    }
+   }
+  },
+  {
+   "id": "P4-ESC-closes-sheet-393",
+   "pass": true,
+   "detail": {
+    "opened": {
+     "open": true,
+     "activeInside": true,
+     "active": "div.sheet-title.m-only",
+     "activeText": "More actions"
+    },
+    "closed": {
+     "open": false,
+     "activeIsTrigger": true,
+     "active": "summary.btn"
+    }
+   }
+  },
+  {
+   "id": "P4-focus-in-sheet-on-open-393",
+   "pass": true,
+   "detail": {
+    "open": true,
+    "activeInside": true,
+    "active": "div.sheet-title.m-only",
+    "activeText": "More actions"
+   }
+  },
+  {
+   "id": "P4-focus-back-to-trigger-on-close-393",
+   "pass": true,
+   "detail": {
+    "open": false,
+    "activeIsTrigger": true,
+    "active": "summary.btn"
+   }
+  },
+  {
+   "id": "P4-ESC-closes-sheet-1440",
+   "pass": true,
+   "detail": {
+    "opened": {
+     "open": true,
+     "activeInside": false,
+     "active": "summary.btn",
+     "activeText": "⋯ More actions"
+    },
+    "closed": {
+     "open": false,
+     "activeIsTrigger": true,
+     "active": "summary.btn"
+    }
+   }
+  },
+  {
+   "id": "P4-ESC-closes-context-393",
+   "pass": true,
+   "detail": {
+    "before": true,
+    "after": {
+     "axCtx": false,
+     "ctxDisplay": "none"
+    }
+   }
+  },
+  {
+   "id": "P4-ESC-closes-customer-page-393",
+   "pass": true,
+   "detail": {
+    "before": true,
+    "after": {
+     "open": false,
+     "axCtx": true
+    }
+   }
+  },
+  {
+   "id": "P4-NL-key-counts",
+   "pass": true,
+   "detail": {
+    "en": 362,
+    "nl": 362,
+    "missingNl": [],
+    "missingEn": []
+   }
+  },
+  {
+   "id": "P4-NL-no-horizontal-scroll-375",
+   "pass": true,
+   "detail": {
+    "source": "/sessions/jolly-epic-hypatia/mnt/Axle/design-reference/mobile-audit/phase-4/nl/walk.json",
+    "scenes": 36,
+    "offenders": []
+   }
+  },
+  {
+   "id": "P4-NL-no-clipped-buttons-375",
+   "pass": true,
+   "detail": {
+    "checkedPerScene": {
+     "item-ready": 4,
+     "item-overflow": 11,
+     "item-recipient": 6,
+     "queue-filter": 7
+    },
+    "offenders": []
+   }
+  },
+  {
+   "id": "P4-NL-tab-counts-visible-375",
+   "pass": true,
+   "detail": {
+    "tabs": [
+     {
+      "label": "Open8",
+      "n": "8",
+      "visible": true,
+      "inside": true,
+      "clipped": false
+     },
+     {
+      "label": "Afgehandeld121",
+      "n": "121",
+      "visible": true,
+      "inside": true,
+      "clipped": false
+     },
+     {
+      "label": "Archief1",
+      "n": "1",
+      "visible": true,
+      "inside": true,
+      "clipped": false
+     },
+     {
+      "label": "Alle130",
+      "n": "130",
+      "visible": true,
+      "inside": true,
+      "clipped": false
+     }
+    ]
+   }
+  }
+ ]
+}

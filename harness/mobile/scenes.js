@@ -49,12 +49,34 @@ const SCENES = [
   // Error Code 500" (htmx) in the console by design.
   { id: "item-error", path: "/", forceErrorItem: 300, expectedConsole: "status of 500|Response Status Error Code 500" },
   { id: "compose-full", path: "/", compose: true },
+  // Phase 4 scenes (phase-4.js assertions). They need the phase-4 seed (walk --phase 4):
+  // item 301 is the busy ("investigating") fixture. item-skeleton and item-customer-loading
+  // hold one request forever (request interception, never answered) so the screenshot shows
+  // the loading state: the card-tap skeleton detail (M-52) and the customer page skeleton (M-53).
+  { id: "item-skeleton", path: "/", holdPath: "/item/1", tapCard: "/item/1" },
+  { id: "item-investigating", path: "/item/301" },
+  { id: "item-customer-loading", path: "/item/1", ctxOpen: true, holdPath: "/item/1/customer-modal", customerModalHeld: true },
 ];
 
 function findScene(id) {
   const s = SCENES.find((x) => x.id === id);
   if (!s) throw new Error("unknown scene: " + id);
   return s;
+}
+
+// Phase 4: from now on every request to `pathname` is intercepted and never answered (the
+// loading state stays on screen); everything else continues untouched.
+async function holdRequests(page, pathname) {
+  await page.setRequestInterception(true);
+  const held = [];
+  page.on("request", (r) => {
+    if (r.isInterceptResolutionHandled && r.isInterceptResolutionHandled()) return;
+    let p = "";
+    try { p = new URL(r.url()).pathname; } catch (e) { /* data: urls */ }
+    if (p === pathname) { held.push(r); return; }
+    r.continue().catch(() => {});
+  });
+  return held;
 }
 
 async function waitHtmxIdle(page) {
@@ -202,6 +224,26 @@ async function openScene(page, baseUrl, scene) {
     menu = { selector: sel, method: clicked ? "click" : "htmx.ajax" };
   }
 
+  // Phase 4: hold one request forever (see holdRequests); the scene steps below trigger it.
+  if (scene.holdPath) await holdRequests(page, scene.holdPath);
+
+  // Phase 4 (M-52): tap a queue card whose GET is held, so the skeleton detail stays.
+  if (scene.tapCard) {
+    const sel = 'a.qcard[href="' + scene.tapCard + '"]';
+    await page.evaluate((s) => { const a = document.querySelector(s); if (a) a.scrollIntoView({ block: "center" }); }, sel);
+    await page.click(sel).catch(() => {});
+    try { await page.waitForSelector("#workpane .sk-detail", { timeout: 3000 }); } catch (e) { /* recorded via the screenshot */ }
+    await new Promise((r) => setTimeout(r, 150));
+    menu = { selector: sel, method: "click (GET held)" };
+  }
+
+  // Phase 4 (M-53): open the customer page with its /customer-modal GET held.
+  if (scene.customerModalHeld) {
+    await page.click("button.cusbtn").catch(() => {});
+    await new Promise((r) => setTimeout(r, 300));
+    menu = { selector: "#cusModal", method: "click (GET held)" };
+  }
+
   if (scene.customerModal) {
     await page.click("button.cusbtn");
     try {
@@ -217,4 +259,4 @@ async function openScene(page, baseUrl, scene) {
   return { menu };
 }
 
-module.exports = { SCENES, findScene, openScene, openDetails, waitHtmxIdle };
+module.exports = { SCENES, findScene, openScene, openDetails, waitHtmxIdle, holdRequests };

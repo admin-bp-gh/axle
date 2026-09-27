@@ -48,7 +48,7 @@ function startChild(entry, env) {
 // step0/fixtures.js just built (e.g. Phase 3's "120 done items, an investigating item,
 // the sync lock, a forced 500"), using the real schema directly via node:sqlite. Phase 0
 // needs no extra seeding beyond the 9 Step-0 fixture items.
-const PHASES_WITH_LONG_EMAIL = new Set(["1b", "2", "3"]);   // M-23: the clamp needs a long message to clamp
+const PHASES_WITH_LONG_EMAIL = new Set(["1b", "2", "3", "4"]);   // M-23: the clamp needs a long message to clamp
 
 function seed(dbPath, phase) {
   const d = new DatabaseSync(dbPath);
@@ -69,7 +69,8 @@ function seed(dbPath, phase) {
         d.prepare("UPDATE work_items SET email_text = ? WHERE id = 1").run(longText);
       }
     }
-    if (String(phase) === "3") seedPhase3(d);
+    if (String(phase) === "3" || String(phase) === "4") seedPhase3(d);
+    if (String(phase) === "4") seedPhase4(d);
   } finally {
     d.close();
   }
@@ -114,9 +115,48 @@ function seedPhase3(d) {
   insFail.run();
 }
 
+// Phase 4 (mobile plan 3.8, M-55): everything Phase 3 seeds (above) plus item 301
+// "Investigating fixture", a copy of item 2 (the NL needs-answer fixture) with draft_edit
+// cleared, seeded as 'awaiting_input' and set to 'investigating' by postBootSeed() below
+// once the server is up (see there why), its own conversation_key and message id. It has no
+// drafts rows (drafts are keyed by work_item_id), so it renders the busy branch: the banner,
+// the no_draft_busy box with its phone skeleton lines, the sk-bar placeholder and the 10 s
+// busy poller. Its email is item 2's text with 40 numbered lines prepended and item 2's two
+// questions are copied onto it, so the phone page is tall enough to scroll to 300px (the
+// busy-poll scroll assertion). phase-4.js flips it to ready with a draft in the running
+// server's DB (ctx.dbPath) for the flip assertion; the walk sees it busy.
+function seedPhase4(d) {
+  const cols = d.prepare("PRAGMA table_info(work_items)").all().map((c) => c.name);
+  const OVERRIDE = new Set(["id", "status", "subject", "conversation_key", "latest_message_id", "email_text"].concat(cols.includes("draft_edit") ? ["draft_edit"] : []));
+  const copy = cols.filter((c) => !OVERRIDE.has(c));
+  const row = d.prepare("SELECT email_text FROM work_items WHERE id = 2").get();
+  const extra = [];
+  for (let i = 1; i <= 40; i++) extra.push("Regel " + i + " van de fixture voor het busy-item.");
+  const text = extra.join("\n") + "\n" + ((row && row.email_text) || "");
+  const extraCols = cols.includes("draft_edit") ? ", draft_edit" : "";
+  const extraVals = cols.includes("draft_edit") ? ", NULL" : "";
+  d.prepare(
+    "INSERT INTO work_items (id, status, subject, conversation_key, latest_message_id, email_text" + extraCols + ", " + copy.join(", ") + ") " +
+    "SELECT 301, 'awaiting_input', 'Investigating fixture', 'investigating|301', 'MSG301', ?" + extraVals + ", " + copy.join(", ") + " FROM work_items WHERE id = 2"
+  ).run(text);
+  d.prepare("INSERT INTO questions (work_item_id, kind, question, answer, answered_by, answered_at) SELECT 301, kind, question, answer, answered_by, answered_at FROM questions WHERE work_item_id = 2 ORDER BY id").run();
+}
+
+// Runs after the child is listening. server.js recovers every 'investigating' row to
+// 'awaiting_input' at startup (server.js:63-64, the stuck-redraft recovery), so a busy item
+// cannot be seeded before the boot; the plan's wording is "Item set to investigating in the
+// harness DB after boot". Phase 4: item 301 (seeded above as awaiting_input) goes busy here.
+function postBootSeed(dbPath, phase) {
+  if (String(phase) !== "4") return;
+  const d = new DatabaseSync(dbPath);
+  try { d.prepare("UPDATE work_items SET status = 'investigating' WHERE id = 301").run(); }
+  finally { d.close(); }
+}
+
 // Boots fixtures.js + child.js (with the mobile harness's extra module stubs layered on
 // top via NODE_OPTIONS, see extra-stubs.js) against a fresh temp DB.
-// opts: { tree, keep, phase }
+// opts: { tree, keep, phase, env } - env: extra variables for the child only (Phase 4: the
+// AXLE_HARNESS_DELAY_ITEM / AXLE_HARNESS_DELAY_MS switch in extra-stubs.js).
 async function bootServer(opts) {
   const tree = opts.tree;
   const runId = crypto.randomBytes(4).toString("hex");
@@ -134,8 +174,10 @@ async function bootServer(opts) {
   const priorNodeOptions = process.env.NODE_OPTIONS || "";
   const childEnv = { ...env, NODE_OPTIONS: ("--require " + extraStubs + " " + priorNodeOptions).trim() };
   // Phase 3 (C4): GET /item/300 throws in the child (extra-stubs.js); other phases never set it.
-  if (String(opts.phase) === "3") childEnv.AXLE_HARNESS_FAIL_ITEM = "300";
+  if (String(opts.phase) === "3" || String(opts.phase) === "4") childEnv.AXLE_HARNESS_FAIL_ITEM = "300";
+  if (opts.env) Object.assign(childEnv, opts.env);
   const { proc, port } = await startChild(path.join(tree, "server.js"), childEnv);
+  postBootSeed(dbPath, opts.phase);
 
   let stopped = false;
   async function stop() {
@@ -151,4 +193,4 @@ async function bootServer(opts) {
   return { proc, port, baseUrl: "http://127.0.0.1:" + port, dbPath, tmpDir, stop };
 }
 
-module.exports = { bootServer, seed, BASE_ENV };
+module.exports = { bootServer, seed, postBootSeed, BASE_ENV };

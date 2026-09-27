@@ -751,6 +751,34 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .modal-foot > span.muted { flex: 1 1 100%; font-size: var(--fs-xs); text-align: center; }   /* the draft-only note takes its own line; the buttons share the next */
   .chips { gap: var(--gap-tap); }
   .schip { min-height: var(--tap); }
+
+  /* ---------- mobile Phase 4 ---------- */
+  /* M-55: the busy item has no chip menus, so its chip row is held at the ready row height (44 + 2 x 2 padding = 48) and nothing moves when the draft lands */
+  .pane-inner > .chips-row { min-height: calc(var(--tap) + 4px); }
+  /* S2: skeleton primitive. Shimmer copies .qskel span (same gradient and animation). */
+  .sk { display: block; height: 12px; border-radius: var(--r-chip); margin: 6px 0;
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%; animation: ax-shimmer 1.2s linear infinite; }
+  .sk.sk-t { height: 16px; }
+  .sk.sk-box { height: 72px; border-radius: var(--r-ctl); }
+  .sk.sk-tall { height: 200px; border-radius: var(--r-ctl); }
+  .sk.sk-chip { display: inline-block; width: 96px; height: 32px; border-radius: 16px; margin: 0 8px 0 0; }
+  .sk-lines, span.sk-lines { display: block; }
+  .sk-lines .sk:nth-child(1) { width: 45%; }
+  .sk-lines .sk:nth-child(2) { width: 85%; }
+  .sk-lines .sk:nth-child(3) { width: 65%; }
+  .sk-chips { display: flex; gap: var(--gap-tap); overflow: hidden; margin: var(--s2) 0; }
+  .skbox .sk { margin: 8px 0; }
+  /* .sk-detail .pane-inner keeps the padding already set above for .pane-center .pane-inner */
+
+  /* S2: the disabled SKBAR placeholder, same DOM shape as the ready bar */
+  .sk-bar { pointer-events: none; }
+  .sk-bar details > summary { list-style: none; }
+  .sk-bar details > summary::-webkit-details-marker { display: none; }
+  .sk-bar .send:disabled { opacity: .5; }
+  .sk-bar .recip-line .sk { display: inline-block; width: 70%; margin: 0; vertical-align: middle; }
+
+  @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------

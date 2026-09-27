@@ -1,5 +1,76 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE PHASE 4 BUILT, 26 Sep 2026: skeleton detail on a card tap, skeletons for the busy
+> item, the customer page, translations and uploads, busy-poll scroll kept, ESC and focus, NL
+> parity, handover script. Committed on `axle/mobile`, not deployed; the branch is complete and
+> waits for Brad's Phase 4 gate and the single final deploy (plan 4.6). No safety path touched;
+> the send confirm handler is byte-identical.**
+>
+> **What happened.** Phase 3 passed Brad's gate. Phase 4 (plan 3.8) closes M-52, M-53, M-55 and
+> the non-register items (ESC and focus, NL parity, handover script). `ASSET_V` `polaris20`, the
+> value that ships. Contract changes: none (no route, form, field or value change).
+>
+> **The fix.** `ui.js`: the loading singleton paints a skeleton detail into `#workpane` in the
+> same frame as a phone card tap (app bar with the card's `#id subject`, three chip
+> placeholders, two skeleton boxes and a disabled bar of the ready bar's exact shape, `has-item`
+> and `ax-detail` set, scrolled to the top), while the desktop keeps its overlay and spinner;
+> `window.__axS` carries the three labels; Back during the skeleton aborts the in-flight
+> request (`htmx:abort` on the card) so a late response cannot reopen the item; a busy-poll
+> swap (the `load delay:10s` poller) restores `scrollY` on the phone; ESC closes the last open
+> menu or chip sheet, else the context sheet, at every width (the compose modal and the native
+> dialog keep their own ESC); on the phone an opening sheet focuses its `.sheet-title` (or first
+> row) and a closing one returns focus to its summary unless focus already moved; the pending
+> translation placeholder shows skeleton lines on the phone and the spinner on the desktop
+> (`m-hide` / `m-only`). `item.js`: `skBar(lang)` renders the phone-only disabled bar
+> placeholder for a busy item (same DOM shape as the ready bar: `send-split`, `send-stack`,
+> `recip-pop` summary, More summary, so the phone grid sizes it identically); the busy box
+> gains skeleton lines under "Being drafted now"; `#cusModalBody` shows skeleton lines on the
+> phone; the upload row shows skeleton lines on the phone. `components.css`, phone block only:
+> the `.sk` primitive (the `.qskel` shimmer generalised: `sk-t`, `sk-box`, `sk-tall`, `sk-chip`,
+> `sk-lines`, `sk-chips`, `skbox`), `.sk-bar` inert, reduced-motion off, and the chip row held at
+> the ready row's 48px on the item screen so nothing above the reply slot moves when a busy item
+> flips to ready. Root: `Axle - Mobile Handover Test Script - 2026-09.md` (77 steps, one row per
+> task, every closed register ID, English; never deployed). No new strings (362 keys each).
+>
+> **Deviations, recorded.** Focus moves are phone-only, not every width: a programmatic focus on
+> a desktop menu row could draw a focus ring and break pixel equivalence; ESC itself runs at
+> every width as planned. One harness-found defect fixed before the rerun: the busy chip row was
+> 44px against the ready row's 48px (no chip menus on a busy item), so the "Customer & docs"
+> row moved 4px when the draft landed; now held at 48px.
+>
+> **Proof.** K1 clean (two `node --check`, CSS braces 564/564). K4: 120 responses, transport
+> fields and DB dumps byte-identical; body differences are the asset version, the page script,
+> `__axS` and the phone-only placeholders. K5: 182 assertions pass (phases 0, 1A, 1B, 2, 3 and
+> 4) at 393, 375 and 430, plus the NL walk at 375: `design-reference/mobile-audit/phase-4/`
+> (`430/`, `nl/`). Measured at 393: the skeleton is on screen within one animation frame (11 ms)
+> of the tap and stays for the full 3 s delay; the skeleton bar and the loaded bar are both
+> 0, 739, 393, 113; the busy item shows banner, skeleton reply and a 113px disabled bar; scroll
+> kept across a busy-poll swap (300 to 300); after the flip to ready the reply appears and every
+> element above the slot keeps its position; ESC closes the More actions sheet at 393 and 1440,
+> the context sheet and the customer page; NL: key counts equal, no horizontal scroll on 36
+> scenes, no clipped button, tab counts visible; desktop card tap never writes a skeleton. K6:
+> zero pixel, layout and DOM differences at 1440 and 1101 (40 scenes). K7: three box-code
+> files changed, no new box-code file, safety files identical, safety grep empty, `audit(`
+> counts unchanged, handler hash `8bc9738b…48c2` unchanged. K2 and K3 run on the box.
+>
+> **Harness notes.** The 3 s delay is an HTTP-level hold on `GET /item/<id>` in
+> `harness/mobile/extra-stubs.js` (`AXLE_HARNESS_DELAY_ITEM`, `AXLE_HARNESS_DELAY_MS`) on a
+> short-lived server booted by phase-4.js. Item 301 is seeded `awaiting_input` and flipped to
+> `investigating` after boot (server.js resets investigating items at startup). The 10 s busy
+> poll is fired through `htmx.ajax` from the poller div. `phase --n 4 --part earlier|3|4|2`.
+>
+> **Known edges, recorded.** The NL "Afgehandeld" tab label wraps to two lines at 375 (counts
+> stay visible). Real-device findings arrive after the deploy (plan 3.8) and become a follow-up
+> fix with its own deploy.
+>
+> **Files:** `box-code/views/ui.js`, `box-code/routes/item.js`, `box-code/assets/components.css`;
+> repo-only `harness/harness-mobile.js`, `harness/mobile/{phase-4,boot,extra-stubs,scenes}.js`,
+> `design-reference/mobile-audit/phase-4/`, `Axle - Mobile Handover Test Script - 2026-09.md`.
+> **Deploy notes:** committed on `axle/mobile`, not deployed. **Next up:** Brad's Phase 4 gate,
+> then the single final deploy in the plan's order (4.6): merge to `main`, `-WhatIf`, deploy,
+> runbook checks, `polaris20` in the page source, the 1440 eye check, the iPhone checks, the
+> live proof on a compose draft to admin@budget-parts.nl, then the closing entry.
+
 > **★ MOBILE PHASE 3 BUILT, 26 Sep 2026: paginated Done and All, fragment tabs, compose out of
 > the polled pane and full screen, a detail-shaped error with Retry, the server-set `ax-detail`
 > class, an in-app Back and poll pause rules. Committed on `axle/mobile`, not deployed; ships with

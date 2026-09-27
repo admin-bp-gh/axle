@@ -14,6 +14,8 @@
 //           n=3 only: [--part earlier|3|2] run one part per call (see the n === "3" branch),
 //           [--skip-earlier] same as --part 3, [--only a,b] just those phase-3 assertion groups
 //           (see phase-3.js GROUPS; an --only run never rebuilds phase-3.json)
+//           n=4 only: [--part earlier|3|4|2] one part per call (see the n === "4" branch),
+//           [--only a,b] just those phase-4 assertion groups (phase-4.js GROUPS)
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -184,7 +186,8 @@ async function cmdWalk(opts) {
   const lang = opts.lang || "en";
   const only = onlyFilter(opts);
   // --phase N: boot with that phase's fixture seed (Phase 3: the 120 done rows the paged Done
-  // tab screenshots need, and the forced-500 item 300), the same seed "phase --n N" uses.
+  // tab screenshots need, and the forced-500 item 300; Phase 4: those plus the busy item 301),
+  // the same seed "phase --n N" uses.
   const server = await bootServer({ tree, keep: !!opts.keep, phase: opts.phase !== undefined ? String(opts.phase) : undefined });
   const browser = await launchBrowser();
   try {
@@ -368,11 +371,11 @@ async function cmdPhase(opts) {
       printWalkSummary(walk);
     }
 
-    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths, dbPath: server.dbPath, only: onlyFilter(opts) };
+    const ctx = { tree, baseUrl: server.baseUrl, browser, walk, widths, dbPath: server.dbPath, only: onlyFilter(opts), outDir, lang };
     // Phase 2's own assertions persist real changes to the shared temp fixture DB (the
     // recipient-confirm form, Save / Save & redraft submits), so its module runs AFTER the
     // earlier, read-mostly phases below rather than first - see the "n === '2'" branch.
-    let result = (n === "2" || n === "3") ? null : await phaseModule.assert(ctx);
+    let result = (n === "2" || n === "3" || n === "4") ? null : await phaseModule.assert(ctx);
     // Phase 1A: "phase --n 1a" runs the walk plus BOTH phase-0 and phase-1a assertions -
     // phase 0 must still pass on top of the new phase-1a work.
     if (n === "1a") {
@@ -465,11 +468,50 @@ async function cmdPhase(opts) {
         }
       }
     }
-    if (!(n === "3" && result.part !== "all")) fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));
+    // Phase 4: same part layout as Phase 3, one more part. Order earlier (phase-0, 1a, 1b),
+    // 3, 4, 2: phase-2 persists real changes to the fixture DB, so it runs last; phase-4
+    // flips item 301 to ready (and back to investigating when done) and boots its own
+    // short-lived delay server for the M-52 and desktop skeleton checks, so it runs after 3.
+    // Each part is its own call against its own fresh server and DB; phase-4.json is rebuilt
+    // from the four part files once all exist.
+    if (n === "4") {
+      /* eslint-disable global-require */
+      const phase0 = require("./mobile/phase-0.js");
+      const phase1a = require("./mobile/phase-1a.js");
+      const phase1b = require("./mobile/phase-1b.js");
+      const phase2 = require("./mobile/phase-2.js");
+      const phase3 = require("./mobile/phase-3.js");
+      /* eslint-enable global-require */
+      const part = opts.part ? String(opts.part) : "all";
+      const ORDER = ["earlier", "3", "4", "2"];
+      if (!["all"].concat(ORDER).includes(part)) throw new Error("--part must be earlier, 3, 4 or 2");
+      const parts = [];
+      if (part === "all" || part === "earlier") {
+        parts.push(await phase0.assert(ctx));
+        parts.push(await phase1a.assert(ctx));
+        parts.push(await phase1b.assert(ctx));
+      }
+      if (part === "all" || part === "3") parts.push(await phase3.assert(ctx));
+      if (part === "all" || part === "4") parts.push(await phaseModule.assert(ctx));
+      if (part === "all" || part === "2") parts.push(await phase2.assert(ctx));
+      result = { phase: n, part, pass: parts.every((r) => r.pass), assertions: parts.reduce((acc, r) => acc.concat(r.assertions), []) };
+      if (part !== "all") {
+        fs.writeFileSync(path.join(outDir, "phase-4.part-" + part + ".json"), JSON.stringify(result, null, 1));
+        const files = ORDER.map((p) => path.join(outDir, "phase-4.part-" + p + ".json"));
+        if (!ctx.only && files.every((f) => fs.existsSync(f))) {
+          const all = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")));
+          const combined = { phase: n, part: "all (from part files)", pass: all.every((r) => r.pass), assertions: all.reduce((acc, r) => acc.concat(r.assertions), []) };
+          fs.writeFileSync(path.join(outDir, "phase-4.json"), JSON.stringify(combined, null, 1));
+          console.log("combined phase-4.json rebuilt from the four part files: " + (combined.pass ? "PASS" : "FAIL"));
+        }
+      }
+    }
+    const partRun = (n === "3" || n === "4") && result.part && result.part !== "all";
+    if (!partRun) fs.writeFileSync(path.join(outDir, "phase-" + n + ".json"), JSON.stringify(result, null, 1));
 
     console.log("\nPhase " + n + " acceptance assertions:");
     for (const a of result.assertions) console.log((a.pass ? "PASS " : "FAIL ") + a.id);
-    const reportName = (n === "3" && result.part && result.part !== "all") ? "phase-3.part-" + result.part + ".json" : "phase-" + n + ".json";
+    const reportName = partRun ? "phase-" + n + ".part-" + result.part + ".json" : "phase-" + n + ".json";
     console.log("\nRESULT: " + (result.pass ? "PASS" : "FAIL") + " - report written to " + path.join(outDir, reportName));
     return result.pass ? 0 : 1;
   } finally {

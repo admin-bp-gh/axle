@@ -657,7 +657,7 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
     <pre class="mail">${linkify(clean(main))}</pre>
     <button type="button" class="m-only foldrow msgmore" data-msg-toggle aria-expanded="false" data-more="${esc(t(lang, "show_full"))}" data-less="${esc(t(lang, "show_less"))}"><span>${esc(t(lang, "show_full"))}</span><span class="chev" aria-hidden="true">&#9662;</span></button>
     ${footer ? `<details class="fold"><summary>${esc(t(lang, "footer_fold"))}</summary><pre class="mail muted">${linkify(clean(footer))}</pre></details>` : ""}
-    ${emailTr || emailTrPending ? `<div class="trbox msgtr" id="emailtr" style="display:none"><p class="muted trnote">${esc(t(lang, "translation_note").replace("{lang}", langDisplay(lang, (w.language || "").toLowerCase())))}</p><pre class="mail" id="emailtrpre"${emailTrPending ? ' data-pending="1"' : ""}>${emailTr ? linkify(String(emailTr)) : `<span class="spin"></span> ${esc(t(lang, "translating"))}`}</pre></div>` : ""}
+    ${emailTr || emailTrPending ? `<div class="trbox msgtr" id="emailtr" style="display:none"><p class="muted trnote">${esc(t(lang, "translation_note").replace("{lang}", langDisplay(lang, (w.language || "").toLowerCase())))}</p><pre class="mail" id="emailtrpre"${emailTrPending ? ' data-pending="1"' : ""}>${emailTr ? linkify(String(emailTr)) : `<span class="spin m-hide"></span><span class="m-hide"> ${esc(t(lang, "translating"))}</span><span class="m-only sk-lines" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span></span>`}</pre></div>` : ""}
   </div>`;
   if (quoted) {
     const segs = segmentQuoted(quoted);
@@ -734,7 +734,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris19";   // 2026-09-26: mobile Phase 3 (pagination, fragment tabs, compose relocation, error screen, ax-detail)
+const ASSET_V = "polaris20";   // 2026-09-26: mobile Phase 4 (skeletons, busy-poll scroll, ESC and focus)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -778,6 +778,8 @@ ${sprocketWidget(lang)}
 window.__axPhone = window.matchMedia("(max-width: 1100px)");
 ${isShell ? `// C2: the empty work panes (Back and tab swaps restore them)
 window.__axEmptyPanes = ${JSON.stringify(emptyPanes)};
+// M-52: labels for the client-built skeleton detail
+window.__axS = ${JSON.stringify({ back_inbox: t(lang, "back_inbox"), send_now: t(lang, "send_now"), more_actions: t(lang, "more_actions") })};
 ` : ""}// M-08: a [data-close] row closes its sheet
 document.addEventListener("click", function (e) {
   var b = e.target.closest ? e.target.closest("[data-close]") : null;
@@ -1107,6 +1109,7 @@ document.addEventListener("click", function (e) {
   // card tap: remember the list scroll and URL
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     if (!phone() || !isCard(srcElt(e))) return;
+    window.__axCardElt = srcElt(e);   // M-52: Back during the skeleton aborts this request
     if (location.pathname.indexOf("/item/") === 0) return;
     window.__axList = { y: window.scrollY, url: location.pathname + location.search };
   });
@@ -1123,6 +1126,7 @@ document.addEventListener("click", function (e) {
     if (!a) return;
     var L = window.__axList;
     if (window.__axFlush) window.__axFlush();   // M-58: the last keystrokes reach localStorage before the pane empties
+    if (window.__axCardElt && window.htmx) { try { htmx.trigger(window.__axCardElt, "htmx:abort"); } catch (x) {} window.__axCardElt = null; }
     if (!resetWork()) return;
     e.preventDefault();
     window.scrollTo(0, (L && L.y) || 0);
@@ -1150,11 +1154,78 @@ document.addEventListener("click", function (e) {
     clearLoad();
     card.classList.add("ax-loading");
     var wp = document.getElementById("workpane");
-    if (wp) wp.classList.add("ax-loading");
+    if (!wp) return;
+    // M-52: the phone paints a skeleton detail instead of the dimmed overlay
+    if (window.__axPhone.matches && window.__axS) { skDetail(wp, card); return; }
+    wp.classList.add("ax-loading");
   });
+  function h(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
+  function skDetail(wp, card) {
+    var S = window.__axS;
+    // SKBAR: mirrors skBar(lang) in routes/item.js
+    var bar = '<div class="actionbar sk-bar m-only" aria-hidden="true"><span class="send-split"><button class="send send-stack" type="button" disabled><span class="send-now">' + h(S.send_now) + '</span><span class="send-to"></span></button><details class="menu recip-pop"><summary class="btn send-caret"><span class="m-only recip-line"><span class="sk" style="width:70%"></span></span>&#9662;</summary></details></span><details class="menu"><summary class="btn">&#8943;&nbsp;' + h(S.more_actions) + '</summary></details></div>';
+    wp.innerHTML = '<section class="pane-center has-item sk-detail"><a class="m-back" href="/"><span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">' + h(S.back_inbox) + '</span><span class="m-back-title"></span></a>'
+      + '<div class="pane-inner" aria-hidden="true"><div class="sk-chips"><span class="sk sk-chip"></span><span class="sk sk-chip"></span><span class="sk sk-chip"></span></div>'
+      + '<div class="box skbox"><span class="sk sk-t" style="width:45%"></span><span class="sk" style="width:95%"></span><span class="sk" style="width:88%"></span><span class="sk" style="width:60%"></span><span class="sk sk-box"></span></div>'
+      + '<div class="box skbox"><span class="sk sk-t" style="width:35%"></span><span class="sk sk-box" style="height:44px"></span><span class="sk sk-tall"></span></div>'
+      + bar + '</div></section><aside class="pane-context"></aside>';
+    // the title "#id subject" from the card, set as text
+    var m = new RegExp("^/item/([0-9]+)").exec(card.getAttribute("href") || ""), sj = card.querySelector(".q-subj");
+    var subj = sj ? sj.textContent.trim() : "";
+    if (subj.charCodeAt(0) === 9998) subj = subj.slice(1).trim();   // the compose pencil
+    var tt = wp.querySelector(".m-back-title"); if (tt) tt.textContent = (m ? "#" + m[1] + " " : "") + subj;
+    document.body.classList.add("ax-detail");
+    window.scrollTo(0, 0);
+  }
   ["htmx:afterRequest", "htmx:sendError", "htmx:timeout"].forEach(function (ev) {
     document.body.addEventListener(ev, clearLoad);
   });
+})();
+// M-55: a busy-item poll swap keeps the phone reader's scroll position
+(function () {
+  var pollEl = null, y = 0;
+  function srcElt(e) { var d = e.detail || {}; return (d.requestConfig && d.requestConfig.elt) || d.elt || null; }
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var el = srcElt(e);
+    if (!el || !el.getAttribute || (el.getAttribute("hx-trigger") || "").indexOf("load delay:10s") < 0) return;
+    if (!window.__axPhone.matches) { pollEl = null; return; }
+    pollEl = el; y = window.scrollY;
+  });
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var tg = e.detail && e.detail.target;
+    if (!pollEl || !tg || tg.id !== "workpane" || srcElt(e) !== pollEl) return;
+    pollEl = null;
+    if (window.__axPhone.matches) window.scrollTo(0, y);
+  });
+})();
+// ESC (every width): the last open menu, else the context sheet; focus moves (phone only)
+(function () {
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape" && e.key !== "Esc") return;
+    var cm = document.getElementById("composeModal");
+    if (cm && cm.style.display !== "none") return;   // the compose modal has its own ESC
+    if (document.querySelector("dialog[open]")) return;   // native dialogs (#cusModal) close themselves
+    var open = document.querySelectorAll("details.menu[open], details.chipmenu[open]");
+    if (open.length) { open[open.length - 1].removeAttribute("open"); return; }
+    if (document.body.classList.contains("ax-ctx")) {
+      var bk = document.querySelector("#workpane .m-ctxback") || document.querySelector(".m-ctxback");
+      if (bk) bk.click();   // the [data-ctx-close] path, scroll and focus restored
+    }
+  });
+  document.addEventListener("toggle", function (e) {
+    var d = e.target;
+    if (!window.__axPhone.matches || !d || !d.matches || !d.matches("details.menu, details.chipmenu")) return;
+    if (d.open) {
+      var tl = d.querySelector(".sheet-title");
+      if (!tl) { var l = d.querySelector(".menu-list, .chipmenu-list"); tl = l && l.querySelector("button, a[href]"); }
+      else tl.setAttribute("tabindex", "-1");
+      if (tl && tl.focus) tl.focus({ preventScroll: true });
+    } else {
+      // back to the summary, unless the focus already moved elsewhere (an outside tap)
+      var a = document.activeElement, s = d.querySelector("summary");
+      if (s && s.focus && (!a || a === document.body || d.contains(a))) s.focus({ preventScroll: true });
+    }
+  }, true);
 })();
 // (2) Any form submit: lock the pressed button with a spinner and start the top
 // progress bar. The setTimeout(0) runs AFTER the form has serialised, so disabling

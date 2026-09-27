@@ -186,7 +186,7 @@ function customerCard(s, lang, itemId) {
         onclick="var d=document.getElementById('cusModal'); if(d&&d.showModal) d.showModal();">${esc(t(lang, "cust_view_full"))}</button>
       <dialog id="cusModal" class="cusdialog" aria-label="${esc(t(lang, "cust_detail_title"))}">
         <form method="dialog" class="cusx"><button class="cusxbtn" aria-label="${esc(t(lang, "cust_close"))}">&times;<span class="m-only cusback-label">${esc(t(lang, "back_to_ctx"))}</span></button></form>
-        <div id="cusModalBody"><p class="muted"><span class="spin"></span> ${esc(t(lang, "cust_loading"))}</p></div>
+        <div id="cusModalBody"><p class="muted m-hide"><span class="spin"></span> ${esc(t(lang, "cust_loading"))}</p><div class="m-only sk-lines" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div></div>
         <script>(function(){var d=document.getElementById('cusModal');if(d&&!d._wired){d._wired=1;d.addEventListener('click',function(e){if(e.target===d)d.close();});}})();</script>
       </dialog>
     </div>`;
@@ -623,9 +623,13 @@ app.get("/item/:id", async (req, res) => {
       <div class="sheet-title m-only">${esc(t(lang, "more_actions"))}</div>
       <button type="button" class="m-only" data-close>${esc(t(lang, "cancel"))}</button>
     </div></details>`;
+  // M-55 / SKBAR: the disabled phone-only bar placeholder, same DOM shape as the ready bar (mirrored in ui.js)
+  function skBar(lang) {
+    return `<div class="actionbar sk-bar m-only" aria-hidden="true"><span class="send-split"><button class="send send-stack" type="button" disabled><span class="send-now">${esc(t(lang, "send_now"))}</span><span class="send-to"></span></button><details class="menu recip-pop"><summary class="btn send-caret"><span class="m-only recip-line"><span class="sk" style="width:70%"></span></span>&#9662;</summary></details></span><details class="menu"><summary class="btn">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary></details></div>`;
+  }
   // Bar: left cluster works the reply (Send / Save / Save & redraft — the redraft note is now the
   // button's tooltip, so the bar no longer wraps on it); right cluster closes the item.
-  const actionBar = busy ? "" : ["done", "archived"].includes(w.status)
+  const actionBar = busy ? skBar(lang) : ["done", "archived"].includes(w.status)
     ? `<div class="actionbar closed"><form method="post" action="/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
     : `<div class="actionbar">
         ${sendBtn}
@@ -815,7 +819,7 @@ app.get("/item/:id", async (req, res) => {
     })();
     </script>
 
-    ${busy && !full && !interim ? `<div class="box"><span class="muted">${esc(t(lang, "no_draft_busy"))}</span></div>` : ""}
+    ${busy && !full && !interim ? `<div class="box"><span class="muted">${esc(t(lang, "no_draft_busy"))}</span><div class="sk-lines m-only" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div></div>` : ""}
     ${workSection}
     ${supersededCard}
     ${actionBar}
@@ -881,7 +885,10 @@ app.get("/item/:id", async (req, res) => {
         if (alist && !document.getElementById("attbusy")) {
           var bz = document.createElement("div");
           bz.id = "attbusy"; bz.className = "attbusy";
-          bz.innerHTML = '<span class="spin"></span> ' + ${JSON.stringify(t(lang, "uploading"))};
+          // M-53: phone gets skeleton lines, desktop keeps the spinner
+          bz.innerHTML = (window.__axPhone && window.__axPhone.matches)
+            ? '<span class="sk-lines" aria-hidden="true"><span class="sk"></span><span class="sk"></span></span><span class="muted">' + ${JSON.stringify(esc(t(lang, "uploading")))} + '</span>'
+            : '<span class="spin"></span> ' + ${JSON.stringify(t(lang, "uploading"))};
           alist.parentNode.insertBefore(bz, alist.nextSibling);
         }
         document.body.classList.add("ax-nav");

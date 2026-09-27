@@ -108,6 +108,28 @@ function maybePatchUi(request, mod) {
   return mod;
 }
 
+// Phase 4 (M-52): a controllable delay on GET /item/:id. When AXLE_HARNESS_DELAY_ITEM (an
+// item id) and AXLE_HARNESS_DELAY_MS are set, every GET request whose path is exactly
+// /item/<id> is held for that many milliseconds before the server sees it. The hold sits
+// in front of the app (http.Server "request" event), so the route, its awaits and its
+// response are untouched; only the time to first byte grows. Item-specific, unlike the
+// customer-summary stub (its summarise() is keyed by CardCode, not by item). Only the
+// short-lived server harness/mobile/phase-4.js boots for the delay assertions sets it.
+const DELAY_ITEM = process.env.AXLE_HARNESS_DELAY_ITEM ? String(process.env.AXLE_HARNESS_DELAY_ITEM) : "";
+const DELAY_MS = parseInt(process.env.AXLE_HARNESS_DELAY_MS || "0", 10) || 0;
+if (DELAY_ITEM && DELAY_MS > 0) {
+  const http = require("http");
+  const realEmit = http.Server.prototype.emit;
+  http.Server.prototype.emit = function (ev, req) {
+    if (ev === "request" && req && req.method === "GET" && String(req.url || "").split("?")[0] === "/item/" + DELAY_ITEM) {
+      const self = this, args = arguments;
+      setTimeout(() => realEmit.apply(self, args), DELAY_MS);
+      return true;
+    }
+    return realEmit.apply(this, arguments);
+  };
+}
+
 const prevLoad = Module._load;
 Module._load = function (request, parent, isMain) {
   if (request.startsWith(".")) {

@@ -797,6 +797,21 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
      white, so a card taller than the screen never shows the scrim or the queue below it */
   .modal { align-items: flex-start; background: var(--surface); }
   .modal-card { height: auto; }
+
+  /* ---------- mobile fix 2 ---------- */
+  /* F8: pull to refresh. The row (created by ui.js on the phone only) sits right after .queue-head;
+     margin-top -40px parks it behind the sticky head (z-index 10), so it adds no height, and the drag
+     only translates it down over the first card. */
+  .qpull { position: relative; z-index: 5; flex: none; height: 40px; margin-top: -40px; display: flex; align-items: center; justify-content: center; gap: var(--s2); background: var(--surface); border-bottom: 1px solid var(--border); color: var(--muted); font-size: var(--fs-sm); pointer-events: none; }
+  .qpull[hidden] { display: none; }
+  .qpull.snap { transition: transform .2s ease; }
+  .qpull .spin { animation: none; }
+  .qpull.ready { color: var(--ink); }
+  .qpull.on .spin { animation: ax-spin .7s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .qpull.snap { transition: none; } }
+  /* the list state owns the pull gesture, so the browser's own pull-to-reload stays out of it; the
+     sheets keep their own overscroll-behavior: contain (fix 1 F2), this sets only the root scroller */
+  html:has(> body.appshell:not(.ax-detail)) { overscroll-behavior-y: contain; }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------

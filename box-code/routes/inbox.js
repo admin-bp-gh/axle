@@ -340,7 +340,8 @@ async function buildQueuePane(req, opts) {
       // seconds. This swaps ONLY the queue pane; the centre/context panes — and any
       // half-typed reply — are never touched. Singleton timer: each freshly rendered
       // queue fragment updates the config; sec=0 (idle) makes the timer a no-op, so
-      // it extinguishes itself when the sync finishes. Same cadence and audit side
+      // it extinguishes itself when the sync finishes (desktop; F8 gives the phone a
+      // 45 s idle floor inside the tick, the config stays as rendered). Same cadence and audit side
       // effects as the old refresh (/queue = the old inbox data path).
       window.__axQPoll = { sec: ${sync.running ? 8 : investigating ? 15 : 0}, qs: ${JSON.stringify(`mailbox=${mb}&show=${show}&scope=${scope}`)}, last: Date.now() };
       // The refresh itself, shared by the tick and the #qupd chip.
@@ -364,8 +365,12 @@ async function buildQueuePane(req, opts) {
       if (!window.__axQPollTimer) {
         window.__axQPollTimer = setInterval(function () {
           var c = window.__axQPoll;
-          if (!c || !c.sec || !window.htmx) return;
-          if (Date.now() - c.last < c.sec * 1000) return;
+          var phone = !!(window.__axPhone && window.__axPhone.matches);
+          // F8: on the phone an idle config (sec 0) still refreshes every 45 s, because the in-place
+          // Back never reloads the page; the config object itself (what the desktop reads) is unchanged.
+          var sec = c ? (c.sec || (phone ? 45 : 0)) : 0;
+          if (!c || !sec || !window.htmx) return;
+          if (Date.now() - c.last < sec * 1000) return;
           var qp = document.getElementById("queuepane");
           // Never yank the queue out from under the user: skip while they're in it
           // (typing in search, an open menu); retry on the next tick.
@@ -376,13 +381,18 @@ async function buildQueuePane(req, opts) {
           if (document.hidden) return;
           var ql = document.getElementById("qlist");
           if (ql && +ql.getAttribute("data-page") > 1) return;
-          if (window.__axPhone && window.__axPhone.matches) {
+          if (phone) {
             var shown = getComputedStyle(qp).display !== "none";
-            if (!shown || window.scrollY > 0 || Date.now() - (window.__axQTouch || 0) < 10000) {
+            if (!shown) return;
+            // Touched in the last 10 s: never swap under the finger; the chip offers the refresh.
+            if (Date.now() - (window.__axQTouch || 0) < 10000) {
               var up = document.getElementById("qupd");
-              if (up && shown) up.hidden = false;
+              if (up) up.hidden = false;
               return;
             }
+            // F8: only scrolled: refresh anyway and put the scroll back after the swap (ui.js, the
+            // htmx:afterSwap listener for #queuepane reads __axQKeepY), so the list never goes stale.
+            if (window.scrollY > 0) window.__axQKeepY = window.scrollY;
           }
           window.__axQFetch();
         }, 2000);

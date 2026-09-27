@@ -1,5 +1,86 @@
 # Axle — Status & Roadmap
 
+> **★ MOBILE REDESIGN DEPLOYED, 27 Sep 2026: phases 0 to 4 merged to `main` and live as
+> `polaris20` (merge `2cba9a5`, 09:43), then the first device-driven follow-up, mobile fix 1,
+> merged and live as `polaris21` (merge `27622eb`, 14:07). Live proof done on test item #2264,
+> nothing sent. Handover script ready; the test item for Rob or Huub is still to be named. No
+> safety path touched in either deploy; the send confirm handler is byte-identical.**
+>
+> **What happened.** Brad approved Phase 4 and the plan's 4.6 sequence ran in order. `main` had
+> not moved past `f1bdc71`; the merge was clean; `-WhatIf` listed exactly the eight expected files
+> (server.js, components.css, tokens.css, admin.js, inbox.js, item.js, sprocket.js, ui.js), zero
+> NEW; the real run placed all eight, ran the 14 suites green against the live tree and restarted
+> (PID 11748 to 17996); `VERSION.txt` `3c1e8ec` (the kickoff-prompt commit on top of the merge,
+> `deploy.ps1` stamps HEAD); clean boot 09:43:47; `?v=polaris20` on tokens.css, components.css
+> and htmx.min.js. Step 6, the read-only 1440 drive on #2227, matched the baseline (chips as
+> desktop dropdowns, ESC and outside click close, recipient popover, More actions, customer
+> dialog, centred compose, overlay and spinner on a card tap, phone placeholders at
+> `display: none`, console clean). Step 7, Brad's iPhone: safe areas, keyboard, focus zoom,
+> rotation, tab switch, background and resume, tab discard, autosave restore and Back all ok;
+> findings below. Step 8, the live proof (4.7), on compose draft #2264 to admin@budget-parts.nl:
+> full-screen compose, Draft, Drafting with the skeleton reply and disabled skeleton bar, draft
+> landed, edit survived a tab switch and a reload with "Unsaved edits restored", Use address kept
+> the text, Language and Owner sheets closed without choosing, More actions closed, Send now
+> raised the confirm with the full address and took the Cancel path. Screenshots and a README in
+> `design-reference/mobile-audit/final-live/` (commit `1ccd371`). Brad closed #2264 afterwards.
+>
+> **Deviations, recorded.** The live proof was driven from Chrome on the box at the phone layout
+> (inner width 500 to 549, Chrome's window minimum), not the iPhone, and the native Send confirm
+> was intercepted in the page (`window.confirm` recorded the text and returned false). Brad's
+> device pass covered the iPhone-only behaviour. The checklist's "no reload on desktop Back"
+> expectation was wrong: the desktop Back is the plain `href="/"` it always was (the in-place
+> Back is gated on the phone media query); not a finding.
+>
+> **Findings and mobile fix 1 (branch `axle/mobile-fix-1`, `polaris21`).** F1 the two-row bar
+> ate the space above the keyboard: while a `#workform` text field has focus the phone shows one
+> slim row (`body.ax-typing`, recipient line hidden, secondary Send, "..." kept, 250 ms grace on
+> blur). F2 every bottom sheet (`details.menu`, `details.chipmenu`: chips, Filters, More actions,
+> recipient, app-bar menu) also closes on a 60 px downward swipe, through the same `open` removal
+> as Cancel so the Phase 4 focus return runs. F3 a phone-only Save & redraft button directly under
+> the "Your answer & feedback" box (`type=button` proxy that clicks the bar's own redraft button,
+> so the post is identical and the form's default button is unchanged). F5 the full-screen
+> compose card was `min-height: 100dvh; overflow: visible`, so a form taller than the screen
+> painted over the scrim and the queue showed through (seen live, `final-live/02`): the modal is
+> white on the phone and the card is `height: auto`. F6 after Send now or an owner handover the
+> phone lands on the Open list: `ui.js` appends `ret=list` at submit time only (no markup at
+> rest); `server.js` `sendWorkItem`'s final success redirect (after the `email_sent` audit) and
+> the owner-forward route's success redirect honour it; the status route already returned "/".
+> F7 the customer email now leads on the phone in every state (`.m-mail` order 1, `#workform` 2,
+> loose boxes 2, previous draft 3, bar 9), reversing the Phase 1B state-driven order at Brad's
+> request; handover script step 30 rewritten. No new strings (362 keys each), no schema, no
+> dependency. Parked decisions for Brad, not built: D1 drop the send confirmation; D2 use the
+> customer's address without a confirm. Both are safety gates (`data-confirm`, `pickRecipient`);
+> a middle road is an inline one-tap confirm in the bar and the customer address pre-selected but
+> still confirmed once on a first send.
+>
+> **Proof, fix 1.** K1 clean (`node --check` x3, CSS braces 573/573). K6 identical: 40 scenes at
+> 1440 and 1101, zero pixel, layout and DOM differences. K5 walk at 393: email first, keyboard
+> state one slim row, compose white to the bottom, busy skeleton intact. K7: safety files
+> untouched, `audit(` counts 5 / 33 / 23 / 4 / 8 unchanged, the `data-confirm` handler block
+> byte-identical modulo line endings. Line-ending note: the checkout is LF everywhere
+> (`.gitattributes` `* text=auto eol=lf`) and so is the live tree; the recorded handler hash
+> `8bc9738b…48c2` was taken on a CRLF rendering, the LF rendering of the same block is
+> `117660afd4a69c296188501331f06222b2d06cfc0a5ce7849c216aefe884406d`, which is the value to check
+> from now on. Deploy: `-WhatIf` four diffs (server.js, components.css, item.js, ui.js), real run
+> green, PID 17996 to 16784, `VERSION.txt` `27622eb`, clean boot 14:07:30, `?v=polaris21` on all
+> three assets, console clean on the queue and an item.
+>
+> **Known edges, recorded.** The desktop bar wraps More actions to a second row below about
+> 1430 px (pre-existing, not part of this change). The Drafting skeleton screenshot was not
+> saved (DOM-verified only). Handover script step 31 still says "scroll down to the customer's
+> email"; now a short scroll or none. The compose language chip read NL on an English draft.
+>
+> **Files:** `box-code/views/ui.js`, `box-code/routes/item.js`, `box-code/server.js` (one redirect
+> line), `box-code/assets/components.css`; `Axle - Mobile Handover Test Script - 2026-09.md`
+> (step 30); `design-reference/mobile-audit/final-live/`. **Deploy notes:** deployed 27 Sep 2026,
+> merge `2cba9a5`, polaris20; then deployed 27 Sep 2026, merge `27622eb`, polaris21. Rollback
+> (4.8) if ever needed: `git revert -m 1 27622eb` (and `2cba9a5`) on `main`, `ASSET_V`
+> `polaris22`, never a shipped value. **Still open:** Brad's iPhone look at F1 to F7; name the
+> open test item for Rob or Huub (reopen #2264 or a fresh compose draft) and fill it into the
+> script; D1 and D2; the Phase 3 residuals (iOS edge-swipe Back reloads the list, the "Updates
+> waiting" chip wraps the live line at 375). **Next up:** hand the script to Rob or Huub, collect
+> their findings, then mobile fix 2 on a new branch if anything comes back.
+
 > **★ MOBILE PHASE 4 BUILT, 26 Sep 2026: skeleton detail on a card tap, skeletons for the busy
 > item, the customer page, translations and uploads, busy-poll scroll kept, ESC and focus, NL
 > parity, handover script. Committed on `axle/mobile`, not deployed; the branch is complete and

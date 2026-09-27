@@ -515,7 +515,8 @@ async function sendWorkItem(req, res, w) {
     audit(login, "email_sent", w.id,
       `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
     if (!isComposeItem) await markReadSafe(login, w);
-    res.redirect("/item/" + w.id);
+    // F6 (mobile fix 1): the phone adds ret=list at submit time and lands on the Open list
+    res.redirect(req.body.ret === "list" ? "/" : "/item/" + w.id);
   } catch (e) {
     // Same scoping as the success path: roll back only the row this request reserved.
     db.prepare("DELETE FROM sends WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ? AND status = 'pending'").run(w.id, payload.to, payload.sha256);

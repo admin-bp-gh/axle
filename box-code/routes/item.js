@@ -424,6 +424,10 @@ app.get("/item/:id", async (req, res) => {
 
   const feedbackInner = editable
     ? `<textarea class="ans" name="feedback" placeholder="${esc(t(lang, "feedback_ph"))}">${esc(w.feedback || "")}</textarea>`
+      // F3 (mobile fix 1): phone-only Save & redraft beside the instructions. type=button, and ui.js
+      // clicks the bar's own redraft button: a submit button here would become #workform's default
+      // button and change what Enter in a subject field does on the desktop too.
+      + `<button type="button" class="m-only fb-redraft" data-redraft-proxy>${esc(t(lang, "save_redraft"))}</button>`
     : (w.feedback ? `<pre class="mail">${esc(w.feedback)}</pre>` : `<span class="muted">${esc(t(lang, "feedback_none"))}</span>`);
   const questionsInner = questions.length ? `<ul class="qs">${qItems}</ul>` : `<span class="muted">${esc(t(lang, "no_questions"))}</span>`;
 
@@ -1159,7 +1163,8 @@ app.post("/item/:id/owner", async (req, res) => {
   audit(login, "email_forwarded", w.id,
     `${to} <${fwd.to}> from ${w.mailbox} msg=${String(fwd.messageId).slice(0, 24)}${info.changes ? "" : " (item already closed by someone else)"}`);
   await markReadSafe(login, w);
-  res.redirect("/item/" + w.id);
+  // F6 (mobile fix 1): the phone adds ret=list at submit time and lands on the Open list
+  res.redirect(req.body.ret === "list" ? "/" : "/item/" + w.id);
 });
 
 // On-demand: translate the salesperson's CURRENT (possibly edited) reply into their own

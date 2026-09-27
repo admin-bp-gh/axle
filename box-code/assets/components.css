@@ -601,8 +601,10 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .pane-center .pane-inner { display: flex; flex-direction: column; gap: var(--s3); }
   .pane-inner > .box, .pane-inner > form#workform > .box, .m-mail > .box { margin: 0; }
   .pane-inner > form#workform { display: flex; flex-direction: column; gap: var(--s3); }
-  #workform { order: 1; }
-  .m-mail { order: 2; display: flex; flex-direction: column; gap: var(--s3); }
+  /* F7 (mobile fix 1): the customer email leads, then the work form (questions and reply), in every state */
+  .m-mail { order: 1; display: flex; flex-direction: column; gap: var(--s3); }
+  #workform { order: 2; }
+  .pane-inner > .box { order: 2; }   /* F7: loose boxes (busy skeleton reply, closed item's sent reply) sit below the email too; the previous draft keeps order 3 below */
   .pane-inner > .box:has(> details.prevdraft) { order: 3; }
   .actionbar { order: 9; }
 
@@ -779,6 +781,22 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
   .sk-bar .recip-line .sk { display: inline-block; width: 70%; margin: 0; vertical-align: middle; }
 
   @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+
+  /* ---------- mobile fix 1 ---------- */
+  /* F1: while a field in #workform has focus (body.ax-typing, ui.js) the bar is one slim row:
+     no recipient line, a compact secondary Send, the "..." stays. row-gap 0 so the empty row 1 adds nothing. */
+  body.ax-typing .actionbar { row-gap: 0; }
+  body.ax-typing .actionbar details.recip-pop { display: none; }
+  body.ax-typing .actionbar > .note { margin-bottom: var(--gap-tap); }
+  body.ax-typing .actionbar button.send:not(:disabled) { background: var(--surface); border-color: var(--border-2); color: var(--ink); font-size: var(--fs-base); }
+  /* F2: a drag on a sheet never scrolls the page behind it */
+  details.menu > .menu-list, details.chipmenu > .chipmenu-list { overscroll-behavior: contain; }
+  /* F3: Save & redraft directly under the feedback box, full width, 44px, secondary */
+  .fb-redraft { display: block; width: 100%; min-height: var(--tap); margin-top: var(--gap-tap); font-size: var(--fs-md); }
+  /* F5: the compose card grows with its content (no stretch to the viewport) and the modal behind it is
+     white, so a card taller than the screen never shows the scrim or the queue below it */
+  .modal { align-items: flex-start; background: var(--surface); }
+  .modal-card { height: auto; }
 }
 
 /* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------

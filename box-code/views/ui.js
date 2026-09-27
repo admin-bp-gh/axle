@@ -734,7 +734,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris20";   // 2026-09-26: mobile Phase 4 (skeletons, busy-poll scroll, ESC and focus)
+const ASSET_V = "polaris21";   // 2026-09-27: mobile fix 1 (F1 F2 F3 F5 F6 F7)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -1226,6 +1226,99 @@ document.addEventListener("click", function (e) {
       if (s && s.focus && (!a || a === document.body || d.contains(a))) s.focus({ preventScroll: true });
     }
   }, true);
+})();
+// Mobile fix 1, phone only: F1 slim bar while typing, F2 swipe-down closes a sheet,
+// F3 the in-form Save & redraft, F6 back to the Open list after Send or a handover.
+(function () {
+  function phone() { return !!(window.__axPhone && window.__axPhone.matches); }
+  function ss(fn) { try { return fn(window.sessionStorage); } catch (e) { return null; } }
+  // F1: body.ax-typing while a text field in #workform has focus. The removal waits 250ms so a
+  // tap on Send or "..." lands before the bar grows back to two rows (the focusout comes on
+  // mousedown, the click after it at the same point).
+  var TSEL = "#workform textarea, #workform input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=hidden])";
+  var tTimer = null;
+  function typing(el) { return !!(el && el.matches && el.matches(TSEL)); }
+  function setTyping(on) { document.body.classList.toggle("ax-typing", !!on && phone()); }
+  document.addEventListener("focusin", function (e) {
+    if (!phone() || !typing(e.target)) return;
+    clearTimeout(tTimer); setTyping(true);
+  });
+  document.addEventListener("focusout", function () {
+    if (!document.body.classList.contains("ax-typing")) return;
+    clearTimeout(tTimer);
+    tTimer = setTimeout(function () { if (!typing(document.activeElement)) setTyping(false); }, 250);
+  });
+  // a swap can remove the focused field without a focusout
+  document.body.addEventListener("htmx:afterSwap", function () { if (!typing(document.activeElement)) setTyping(false); });
+  var mq = window.__axPhone, onMq = function () { if (!mq.matches) setTyping(false); };
+  if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
+  // F2: a downward drag of 60px on an open bottom sheet closes it. Only a mostly vertical drag
+  // that starts with the sheet scrolled to its top counts; the panel follows the finger. Closing
+  // removes [open], so the toggle handlers above (focus return, positioner clear) run as for Cancel.
+  var SHEET = "details.menu[open] > .menu-list, details.chipmenu[open] > .chipmenu-list", sw = null;
+  document.addEventListener("touchstart", function (e) {
+    sw = null;
+    if (!phone() || e.touches.length !== 1) return;
+    var t = e.target, l = t && t.closest ? t.closest(SHEET) : null;
+    if (!l || t.closest("input, textarea, select")) return;
+    sw = { l: l, x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, on: false };
+  }, { passive: true });
+  document.addEventListener("touchmove", function (e) {
+    if (!sw || !e.touches.length) return;
+    var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (!sw.on) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (dy <= 0 || Math.abs(dx) > dy || sw.l.scrollTop > 0) { sw = null; return; }
+      sw.on = true;
+    }
+    sw.dy = Math.max(0, dy);
+    sw.l.style.transform = "translateY(" + sw.dy + "px)";
+  }, { passive: true });
+  function endSwipe() {
+    var s = sw; sw = null;
+    if (!s || !s.on) return;
+    s.l.style.transform = ""; if (!s.l.getAttribute("style")) s.l.removeAttribute("style");
+    if (s.dy >= 60) { var d = s.l.closest("details"); if (d) d.removeAttribute("open"); }
+  }
+  document.addEventListener("touchend", endSwipe);
+  document.addEventListener("touchcancel", endSwipe);
+  // F3: the phone-only Save & redraft under the feedback box clicks the bar's own redraft button,
+  // so the post is identical. It is type=button on purpose: a submit button inside the form would
+  // become the form's default button and change what Enter in a subject field does at every width.
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-redraft-proxy]") : null;
+    if (!b) return;
+    var real = document.querySelector('button[form="workform"][name="action"][value="redraft"]');
+    if (!real) return;
+    e.preventDefault();
+    real.click();
+    setTimeout(function () { b.classList.add("ax-busy"); b.disabled = true; }, 0);
+  });
+  // F6: after Send now or an owner handover the phone lands on the Open list. The hidden ret=list
+  // is added only at submit time (no markup at rest); the server honours it on success only.
+  var RET = "axle.retlist";
+  document.addEventListener("submit", function (e) {
+    var f = e.target; if (!f || !f.querySelector) return;
+    var old = f.querySelector("input[name=ret]"); if (old) old.remove();
+    if (!phone()) return;
+    var b = e.submitter || null, act = f.getAttribute("action") || "", fa = (b && b.getAttribute("formaction")) || "";
+    // RegExp from strings: this script sits in a template literal, where a backslash escape would be eaten
+    var send = f.id === "workform" && new RegExp("^/item/[0-9]+/send$").test(fa);
+    var fwd = new RegExp("^/item/[0-9]+/owner$").test(act) && !!b && b.hasAttribute("data-confirm");   // only handover options carry a confirm
+    if (!send && !fwd) return;
+    var i = document.createElement("input"); i.type = "hidden"; i.name = "ret"; i.value = "list"; f.appendChild(i);
+    var m = new RegExp("^/item/([0-9]+)/").exec(send ? fa : act);
+    if (m) ss(function (s) { s.setItem(RET, JSON.stringify({ id: m[1], t: Date.now() })); });
+  });
+  window.addEventListener("pageshow", function () { document.querySelectorAll("form input[name=ret]").forEach(function (i) { i.remove(); }); });
+  // Landing on "/" within 2 minutes means the send or handover succeeded (a refusal or failure
+  // renders its own page, which drops the marker), so the item's local draft is done with.
+  var rm = null;
+  try { rm = JSON.parse(ss(function (s) { var v = s.getItem(RET); s.removeItem(RET); return v; }) || "null"); } catch (x) { rm = null; }
+  if (rm && rm.id && location.pathname === "/" && Date.now() - rm.t < 120000) {
+    try { window.localStorage.removeItem("axle.draft." + rm.id); } catch (x) {}
+    ss(function (s) { s.removeItem("axle.pending." + rm.id); });
+  }
 })();
 // (2) Any form submit: lock the pressed button with a spinner and start the top
 // progress bar. The setTimeout(0) runs AFTER the form has serialised, so disabling

@@ -75,7 +75,7 @@ Go through the sections in order. For each row, do the tap, look at the result, 
 | 27 | On the test item, tap the card in the list. | The screen changes fully to that email. It does not stay stuck on the list. | M-07 | |
 | 28 | Look at the top of the item screen. | One thin bar with a back arrow and the item title (up to two lines). The old wide header from the list screen is gone. | M-19 | |
 | 29 | Look at the row of chips under the title (mailbox, language, owner, and so on). | The chips sit on one line that you can scroll sideways. Each chip is easy to tap and has a small arrow showing it opens something. | M-21 | |
-| 30 | If the test item needs an answer, look at what is at the top of the screen. | The open question is near the top, within the first screen or so, not many scrolls down. | M-22 | |
+| 30 | If the test item needs an answer, look at the order from the top of the screen down. | The customer's email comes first (under the chips and "Customer & docs"). The open question sits directly below the email, and the reply box comes after the question. | M-22 | |
 | 31 | Scroll down to the customer's email text. | If the message is long, it is cut short with a "Show full message" link. | M-23 | |
 | 32 | Tap "Show full message". | The rest of the message appears. Tapping again (or "Show less") folds it back. | M-23 | |
 | 33 | Look at any fold row, such as "Earlier in this conversation" or "What Axle checked". | Each fold row is a full-width bar with an arrow, easy to tap. | M-24 | |

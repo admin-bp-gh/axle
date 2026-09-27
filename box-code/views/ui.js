@@ -217,6 +217,8 @@ const STRINGS = {
     searching_loaded: "Searched the {n} loaded emails",
     retry: "Retry",
     load_failed_title: "Couldn't load this email",
+    pull_refresh: "Pull to refresh",
+    refreshing: "Refreshing",
   },
   nl: {
     inbox: "Postvak", audit: "Audit",
@@ -416,6 +418,8 @@ const STRINGS = {
     searching_loaded: "Gezocht in de {n} geladen e-mails",
     retry: "Opnieuw proberen",
     load_failed_title: "Deze e-mail kon niet worden geladen",
+    pull_refresh: "Trek om te verversen",
+    refreshing: "Verversen",
   },
 };
 const t = (lang, k) => (STRINGS[lang] && STRINGS[lang][k] != null) ? STRINGS[lang][k]
@@ -734,7 +738,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris21";   // 2026-09-27: mobile fix 1 (F1 F2 F3 F5 F6 F7)
+const ASSET_V = "polaris22";   // 2026-09-27: mobile fix 2 (F8 list refresh: idle floor, refresh on return, pull to refresh)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -778,8 +782,8 @@ ${sprocketWidget(lang)}
 window.__axPhone = window.matchMedia("(max-width: 1100px)");
 ${isShell ? `// C2: the empty work panes (Back and tab swaps restore them)
 window.__axEmptyPanes = ${JSON.stringify(emptyPanes)};
-// M-52: labels for the client-built skeleton detail
-window.__axS = ${JSON.stringify({ back_inbox: t(lang, "back_inbox"), send_now: t(lang, "send_now"), more_actions: t(lang, "more_actions") })};
+// M-52: labels for the client-built skeleton detail (F8: plus the pull-to-refresh row)
+window.__axS = ${JSON.stringify({ back_inbox: t(lang, "back_inbox"), send_now: t(lang, "send_now"), more_actions: t(lang, "more_actions"), pull_refresh: t(lang, "pull_refresh"), refreshing: t(lang, "refreshing") })};
 ` : ""}// M-08: a [data-close] row closes its sheet
 document.addEventListener("click", function (e) {
   var b = e.target.closest ? e.target.closest("[data-close]") : null;
@@ -1132,6 +1136,8 @@ document.addEventListener("click", function (e) {
     window.scrollTo(0, (L && L.y) || 0);
     history.pushState({ htmx: true }, "", (L && L.url) || "/");
     if (window.__axMarkCards) window.__axMarkCards();
+    // F8: the in-place Back never reloads, so the list refreshes itself here (scroll kept, 5 s debounce)
+    if (window.__axQReturn) window.__axQReturn();
   });
   // a tab swap empties the work panes at every width
   document.body.addEventListener("htmx:afterSwap", function (e) {
@@ -1319,6 +1325,114 @@ document.addEventListener("click", function (e) {
     try { window.localStorage.removeItem("axle.draft." + rm.id); } catch (x) {}
     ss(function (s) { s.removeItem("axle.pending." + rm.id); });
   }
+})();
+// Mobile fix 2 (F8), phone only: the list keeps itself fresh. The queue poll (routes/inbox.js)
+// runs at a 45 s floor when idle and refreshes a scrolled list with its scroll kept; this block
+// adds the refresh on return (tab visible again, bfcache restore, the in-place Back) and a
+// pull-to-refresh gesture. Every entry point is gated on __axPhone at the time of the call.
+(function () {
+  function phone() { return !!(window.__axPhone && window.__axPhone.matches); }
+  function listUp() {
+    var qp = document.getElementById("queuepane");
+    if (!qp || document.body.classList.contains("ax-detail") || getComputedStyle(qp).display === "none") return null;
+    return qp;
+  }
+  // Scroll keep: a background refresh sets __axQKeepY; the next #queuepane swap puts the list back
+  // where the reader left it (the M-55 pattern for the busy item, here for the queue).
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var tg = e.detail && e.detail.target;
+    if (!tg || tg.id !== "queuepane") return;
+    var y = window.__axQKeepY; window.__axQKeepY = null;
+    pullReset();
+    if (y != null && phone()) window.scrollTo(0, y);
+  });
+  // a failed queue request swaps nothing: drop the saved scroll and the pull row
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    var d = e.detail || {}, tg = d.target;
+    if (!tg || tg.id !== "queuepane" || d.successful) return;
+    window.__axQKeepY = null;
+    pullReset();
+  });
+  // Refresh on return. Skipped while a field in the list has focus (typing a search) or the list
+  // is paged past page 1 (a refresh would collapse the Load more cards, as the poll rule M-12 says).
+  var lastRet = 0;
+  window.__axQReturn = function () {
+    if (!phone() || typeof window.__axQFetch !== "function") return;
+    var qp = listUp(); if (!qp) return;
+    var a = document.activeElement; if (a && a !== document.body && qp.contains(a)) return;
+    var ql = document.getElementById("qlist"); if (ql && +ql.getAttribute("data-page") > 1) return;
+    if (Date.now() - lastRet < 5000) return;
+    lastRet = Date.now();
+    window.__axQKeepY = window.scrollY;
+    window.__axQFetch();
+  };
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") window.__axQReturn(); });
+  window.addEventListener("pageshow", function (e) { if (e.persisted) window.__axQReturn(); });
+  // Pull to refresh: a mostly vertical downward drag that starts in #queuepane with the page at the
+  // top. Only the indicator row moves (a transform, passive listeners, no preventDefault); it is
+  // created here on the phone only, so the desktop DOM never has it. Release past 70px refreshes.
+  var PULL = 70, pl = null, busy = null;
+  function pullEl(qp) {
+    var el = qp.querySelector(".qpull"); if (el) return el;
+    var head = qp.querySelector(".queue-head"); if (!head) return null;
+    el = document.createElement("div"); el.className = "qpull"; el.setAttribute("role", "status"); el.hidden = true;
+    el.innerHTML = '<span class="spin" aria-hidden="true"></span><span class="qpull-t"></span>';
+    head.parentNode.insertBefore(el, head.nextSibling);
+    return el;
+  }
+  function pullText(el, k) { var s = el.querySelector(".qpull-t"), S = window.__axS || {}; if (s) s.textContent = S[k] || ""; }
+  function pullHide(el) {
+    if (!el) return;
+    el.classList.remove("on", "ready"); el.classList.add("snap"); el.style.transform = "";
+    clearTimeout(el.__axH);
+    el.__axH = setTimeout(function () { if (!el.classList.contains("on")) { el.hidden = true; el.classList.remove("snap"); } }, 200);
+  }
+  function pullReset() {
+    pl = null;
+    if (busy) { clearTimeout(busy.t); pullHide(busy.el); busy = null; }
+    document.querySelectorAll(".qpull:not([hidden])").forEach(pullHide);
+  }
+  document.addEventListener("touchstart", function (e) {
+    pl = null;
+    if (busy || !phone() || e.touches.length !== 1 || window.scrollY > 0) return;
+    var t = e.target, qp = listUp();
+    if (!qp || !t || !t.closest || !qp.contains(t) || t.closest("input, textarea, select")) return;
+    if (document.querySelector("details.menu[open], details.chipmenu[open], dialog[open]")) return;
+    pl = { qp: qp, x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, on: false, el: null };
+  }, { passive: true });
+  document.addEventListener("touchmove", function (e) {
+    if (!pl || !e.touches.length) return;
+    var dx = e.touches[0].clientX - pl.x, dy = e.touches[0].clientY - pl.y;
+    if (!pl.on) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (dy <= 0 || Math.abs(dx) > dy || window.scrollY > 0) { pl = null; return; }
+      pl.el = pullEl(pl.qp); if (!pl.el) { pl = null; return; }
+      pl.on = true;
+      clearTimeout(pl.el.__axH);   // a new drag inside the 200ms snap-back keeps the row
+      pl.el.classList.remove("snap", "on"); pullText(pl.el, "pull_refresh"); pl.el.hidden = false;
+    }
+    pl.dy = Math.max(0, dy);
+    pl.el.style.transform = "translateY(" + Math.round(Math.min(pl.dy * 0.6, 48)) + "px)";
+    pl.el.classList.toggle("ready", pl.dy >= PULL);
+    var sp = pl.el.querySelector(".spin"); if (sp) sp.style.transform = "rotate(" + Math.round(pl.dy * 4) + "deg)";
+  }, { passive: true });
+  function endPull() {
+    var s = pl; pl = null;
+    if (!s || !s.on) return;
+    var sp = s.el.querySelector(".spin"); if (sp) sp.style.transform = "";
+    if (s.dy < PULL || !document.contains(s.el) || typeof window.__axQFetch !== "function") { pullHide(s.el); return; }
+    s.el.classList.remove("ready"); s.el.classList.add("on", "snap"); pullText(s.el, "refreshing");
+    s.el.style.transform = "translateY(40px)";
+    // the swap (or a failed request) ends it; the timer is only a backstop
+    busy = { el: s.el, t: setTimeout(pullReset, 20000) };
+    window.__axQKeepY = null;
+    window.scrollTo(0, 0);
+    window.__axQFetch();
+  }
+  document.addEventListener("touchend", endPull);
+  document.addEventListener("touchcancel", function () { var s = pl; pl = null; if (s && s.on) pullHide(s.el); });
+  var mq = window.__axPhone, onMq = function () { if (!mq.matches) { pl = null; document.querySelectorAll(".qpull").forEach(function (el) { el.remove(); }); } };
+  if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
 })();
 // (2) Any form submit: lock the pressed button with a spinner and start the top
 // progress bar. The setTimeout(0) runs AFTER the form has serialised, so disabling

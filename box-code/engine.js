@@ -17,7 +17,7 @@ const fs = require("fs");
 const C = require("./connectors.js");
 const T = require("./agent-tools.js");
 
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "claude-sonnet-5-5";   // upgraded from claude-sonnet-4-6 on 2026-09-30; watch draft quality
 const CLASSIFY_MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOOL_TURNS = 8;
 

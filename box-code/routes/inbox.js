@@ -419,7 +419,7 @@ function composeUi(req) {
     finding: t(lang, "compose_finding"), need_instr: t(lang, "compose_need_who_instr"), need_pick: t(lang, "compose_need_pick"),
     no_att: t(lang, "no_attachments"), remove: t(lang, "remove"), file_big: t(lang, "file_too_big"),
     att_total: t(lang, "attach_total"), creating: t(lang, "compose_creating"), sending: t(lang, "compose_sending"),
-    need_subject: t(lang, "compose_need_subject"), send_confirm: t(lang, "compose_send_confirm"),
+    need_subject: t(lang, "compose_need_subject"),
   });
   return `
     <div id="composeModal" class="modal" style="display:none" role="dialog" aria-modal="true">
@@ -663,15 +663,15 @@ function composeUi(req) {
       var sendNowBtn = $("composeSendBtn");
       if (sendNowBtn) sendNowBtn.addEventListener("click", function () { submitMode = "send"; $("composeMode").value = "send"; });
 
-      // Submit: always need a body and a confirmed recipient; "Send now" also needs a subject and
-      // an explicit confirm (the customer receives it exactly as written). Inject staged attachments.
+      // Submit: always need a body and a picked recipient; "Send now" also needs a subject. No
+      // confirm dialog: the picked address sits in the form the person is looking at, and the
+      // button locks to "Sending…" on the first click. Inject staged attachments.
       $("composeForm").addEventListener("submit", function (e) {
         syncInstr();
         if (!$("instruction").value.trim()) { e.preventDefault(); alert(L.need_instr); return; }
         if (!$("pick_addr").value) { e.preventDefault(); alert(L.need_pick); return; }
         if (submitMode === "send") {
           if (!$("csubject").value.trim()) { e.preventDefault(); $("csubject").focus(); alert(L.need_subject); return; }
-          if (!confirm(L.send_confirm.replace("{to}", $("pick_addr").value))) { e.preventDefault(); return; }
         }
         var hid = $("cmpAttHidden"); hid.innerHTML = "";
         staged.forEach(function (f) {

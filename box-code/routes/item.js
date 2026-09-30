@@ -293,8 +293,9 @@ app.get("/item/:id", async (req, res) => {
   // Send is allowed any time the item isn't flagged (questions need not be answered first);
   // an injection-flagged item can NEVER send. The body is re-validated by send-guard on submit.
   // compose: action #3 OFF -> never a Send button. contact-form (action #4): the sender is
-  // Shopify's mailer, not the customer, so a send is a NEW outbound to the code-held, confirmed
-  // recipient - allowed only when action #4 is enabled AND a recipient has been confirmed.
+  // Shopify's mailer, not the customer, so a send is a NEW outbound to the code-held recipient
+  // (the form address, applied at ingest) - allowed only when action #4 is enabled AND an address
+  // is held. No human confirmation step: the address is on the Send button, editable there.
   const cfCanSend = isContactForm && ACTION_CONTACTFORM_SEND && !!w.recipient;
   const composeCanSend = isCompose && ACTION_COMPOSE_SEND && !!w.recipient;
   const rnCanSend = isRN && ACTION_RETURN_SEND && !!w.recipient;
@@ -541,12 +542,14 @@ app.get("/item/:id", async (req, res) => {
   const redirected = RSET.isRedirected(w, kind);
   const typedTo = RSET.norm(w.recipient_source) === "typed";
 
-  // A typed address gets a stronger confirm that names the customer it is NOT on file for. The
-  // customer name comes from the trusted SAP summary, never from the email.
-  const sendConfirm = (typedTo
-      ? t(lang, "recip_typed_confirm").replace("{to}", sendTo).replace("{customer}", custName || t(lang, "recip_this_customer"))
-      : t(lang, "send_confirm").replace("{to}", sendTo))
-    + (atts.length ? " (" + t(lang, "with_atts").replace("{n}", atts.length) + ")" : "");
+  // Send is ONE click (2026-09-30): the button itself carries the recipient, so a "Send to X?"
+  // dialog only repeated what the salesperson was already looking at. The risk that dialog used
+  // to carry for a hand-typed address is kept, but inline: an amber pill next to the button names
+  // the customer the address is NOT on file for. The customer name comes from the trusted SAP
+  // summary, never from the email.
+  const typedWarn = typedTo
+    ? `<span class="recip-pill" title="${esc(t(lang, "recip_typed_warn").replace("{to}", sendTo).replace("{customer}", custName || t(lang, "recip_this_customer")))}">${esc(t(lang, "recip_typed_pill"))}</span>`
+    : "";
 
   const srcLabel = { sender: t(lang, "recip_from_sender"), onfile: t(lang, "recip_on_file"),
                      form: t(lang, "recip_from_form"), typed: t(lang, "recip_typed") };
@@ -595,15 +598,16 @@ app.get("/item/:id", async (req, res) => {
 
   const changedPill = redirected ? `<span class="recip-pill" title="${esc(t(lang, "recip_changed_title"))}">${esc(t(lang, "recip_changed_pill"))}</span>` : "";
 
-  // No confirmed recipient yet on a new-outbound item: the button becomes "Confirm recipient" and
-  // opens the same popover. One place recipients are decided, in every state.
+  // No recipient at all on a new-outbound item (a Shopify form/return that yielded no address, or
+  // an internal forward): the button becomes "Choose recipient" and opens the same popover. Items
+  // whose address came with the Shopify data never land here; they open ready to send.
   const needsRecipient = ((isContactForm || isCompose || isRN) && !w.recipient) || fwdNeedsRecipient;
 
   const sendBtn = canSend
     ? `<span class="send-split">
-         <button class="send send-stack" form="workform" formaction="/item/${w.id}/send" formnovalidate data-confirm="${esc(sendConfirm)}" title="${esc(t(lang, "send_reply_to"))} ${esc(sendTo)}"><span class="send-now">${esc(t(lang, "send_now"))}</span><span class="send-to">${esc(sendTo)}</span></button>
+         <button class="send send-stack" form="workform" formaction="/item/${w.id}/send" formnovalidate data-once="${esc(t(lang, "sending"))}" title="${esc(t(lang, "send_reply_to"))} ${esc(sendTo)}"><span class="send-now">${esc(t(lang, "send_now"))}</span><span class="send-to">${esc(sendTo)}</span></button>
          ${recipPop}
-       </span>${changedPill}`
+       </span>${typedWarn || changedPill}`
     : w.injection_flag ? `<span class="note">${esc(t(lang, "send_disabled_inj"))}</span>`
     : needsRecipient && recipPop
       ? `<span class="send-split"><span class="btn send-stack recip-needed"><span class="send-now">${esc(t(lang, "recip_confirm_btn"))}</span><span class="send-to">${esc(t(lang, "recip_none_yet"))}</span></span><button type="button" class="m-only send send-ph" disabled>${esc(t(lang, "send_now"))}</button>${recipPop}</span>`
@@ -697,10 +701,12 @@ app.get("/item/:id", async (req, res) => {
     const phoneLine = p.phone ? `<p class="muted">&#128222; ${esc(p.phone)}</p>` : "";
     // The radio picker that used to live here moved into the Send button's recipient popover
     // (2026-07-10) — one recipient control, in the one place guaranteed to be on screen when the
-    // salesperson sends. This card keeps the customer identity and match lines; the To line is now
-    // a read-only display of the code-held recipient.
+    // salesperson sends. This card keeps the customer identity and match lines; the To line is a
+    // read-only display of the code-held recipient with its provenance. It does NOT say
+    // "confirmed": the form address is applied at ingest without a human step, and claiming a
+    // confirmation nobody made would teach the team to trust the chip instead of the address.
     const toState = w.recipient
-      ? `<p><b>${esc(t(lang, "compose_to"))}:</b> ${esc(w.recipient)} <span class="chip s-ready">&#10003; ${esc(t(lang, "cf_to_confirmed"))}</span></p>`
+      ? `<p><b>${esc(t(lang, "compose_to"))}:</b> ${esc(w.recipient)} <span class="muted">&mdash; ${esc(srcLabel[RSET.norm(w.recipient_source)] || srcLabel.onfile)} &middot; ${esc(t(lang, "recip_change_hint"))}</span></p>`
       : (cands.length ? `<p class="muted">${esc(t(lang, "recip_confirm_hint"))}</p>` : `<p class="muted">${esc(t(lang, "cf_no_address"))}</p>`);
     contactFormHeader = `
       <div class="box">
@@ -732,7 +738,7 @@ app.get("/item/:id", async (req, res) => {
     const orderLine = p.orderRef ? `<p class="muted">${esc(t(lang, "cf_order"))}: ${esc(p.orderRef)}</p>` : "";
     // Radio picker moved into the Send button's recipient popover (2026-07-10), as above.
     const toState = w.recipient
-      ? `<p><b>${esc(t(lang, "compose_to"))}:</b> ${esc(w.recipient)} <span class="chip s-ready">&#10003; ${esc(t(lang, "cf_to_confirmed"))}</span></p>`
+      ? `<p><b>${esc(t(lang, "compose_to"))}:</b> ${esc(w.recipient)} <span class="muted">&mdash; ${esc(srcLabel[RSET.norm(w.recipient_source)] || srcLabel.onfile)} &middot; ${esc(t(lang, "recip_change_hint"))}</span></p>`
       : (cands.length ? `<p class="muted">${esc(t(lang, "recip_confirm_hint"))}</p>` : `<p class="muted">${esc(t(lang, "cf_no_address"))}</p>`);
     returnHeader = `
       <div class="box">

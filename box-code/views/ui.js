@@ -151,20 +151,21 @@ const STRINGS = {
     contactform_send_blocked: "In-thread Send is disabled for contact-form messages (the sender is Shopify's mailer, not the customer). Use Compose or Outlook.",
     cf_customer_label: "Contact-form customer", cf_pick: "Choose the address to reply to:",
     cf_from_form: "from the form", cf_on_file: "on file in SAP",
-    cf_confirm_to: "Confirm recipient", cf_to_confirmed: "Recipient confirmed", cf_change: "Change recipient",
+    cf_confirm_to: "Confirm recipient", cf_to_confirmed: "Recipient set", cf_change: "Change recipient",
     cf_no_address: "No usable customer address was found in this message — it can't be answered here yet.",
     cf_matched: "Matched in SAP", cf_not_matched: "No SAP match — replying to the address from the form.",
     cf_order: "Order", cf_recipient_rejected: "That address is not one of the resolved options — pick one of the listed addresses.",
     recip_bad_address: "That isn't a single valid email address. Enter one address, with no commas, semicolons or angle brackets.",
     recip_change: "Change recipient", recip_other: "Other address…", recip_use: "Use address",
     recip_from_sender: "sender", recip_on_file: "on file", recip_from_form: "from form", recip_typed: "typed",
-    recip_typed_confirm: "{to} is not one of {customer}'s known addresses. Send there anyway?",
+    recip_typed_pill: "not on file", recip_typed_warn: "{to} is not one of {customer}'s known addresses. Check it before you send.",
+    recip_change_hint: "change it in the Send button", sending: "Sending…",
     recip_changed_pill: "changed", recip_changed_title: "This reply is going somewhere other than the default address.",
-    recip_current: "Currently sending to", recip_confirm_btn: "Confirm recipient", recip_none_yet: "no recipient yet",
+    recip_current: "Currently sending to", recip_confirm_btn: "Choose recipient", recip_none_yet: "no recipient yet",
     recip_confirm_hint: "Choose the recipient in the Send button below before this can be sent.",
     recip_this_customer: "this customer",
-    cf_send_not_enabled: "Recipient confirmed. Sending contact-form replies isn't enabled yet (action #4 off).",
-    cf_confirm_first: "Confirm the recipient above before this can be sent.",
+    cf_send_not_enabled: "Recipient set. Sending contact-form replies isn't enabled yet (action #4 off).",
+    cf_confirm_first: "No address found for this customer. Choose the recipient in the Send button before this can be sent.",
     cf_subject: "Subject", cf_subject_hint: "This is a new email to the customer — set the subject they'll see.",
     // UI rework Step 1 (2026-06-10)
     reset_ai: "Reset to AI draft", reset_ai_confirm: "Replace your current text with the original AI draft?",
@@ -352,20 +353,21 @@ const STRINGS = {
     contactform_send_blocked: "Verzenden in thread is uitgeschakeld voor contactformulier-berichten (de afzender is de mailer van Shopify, niet de klant). Gebruik Opstellen of Outlook.",
     cf_customer_label: "Contactformulier-klant", cf_pick: "Kies het adres om op te antwoorden:",
     cf_from_form: "uit het formulier", cf_on_file: "bekend in SAP",
-    cf_confirm_to: "Ontvanger bevestigen", cf_to_confirmed: "Ontvanger bevestigd", cf_change: "Ontvanger wijzigen",
+    cf_confirm_to: "Ontvanger bevestigen", cf_to_confirmed: "Ontvanger ingesteld", cf_change: "Ontvanger wijzigen",
     cf_no_address: "Geen bruikbaar klantadres gevonden in dit bericht — kan hier nog niet beantwoord worden.",
     cf_matched: "Gekoppeld in SAP", cf_not_matched: "Geen SAP-koppeling — antwoord naar het adres uit het formulier.",
     cf_order: "Order", cf_recipient_rejected: "Dat adres is geen van de gevonden opties — kies een van de getoonde adressen.",
     recip_bad_address: "Dat is geen geldig e-mailadres. Vul één adres in, zonder komma's, puntkomma's of punthaken.",
     recip_change: "Ontvanger wijzigen", recip_other: "Ander adres…", recip_use: "Adres gebruiken",
     recip_from_sender: "afzender", recip_on_file: "bekend adres", recip_from_form: "uit formulier", recip_typed: "ingetypt",
-    recip_typed_confirm: "{to} is geen bekend adres van {customer}. Toch daarheen versturen?",
+    recip_typed_pill: "niet bekend", recip_typed_warn: "{to} is geen bekend adres van {customer}. Controleer het voor je verstuurt.",
+    recip_change_hint: "wijzig in de Verstuur-knop", sending: "Versturen…",
     recip_changed_pill: "gewijzigd", recip_changed_title: "Dit antwoord gaat naar een ander adres dan het standaardadres.",
-    recip_current: "Wordt nu verstuurd naar", recip_confirm_btn: "Ontvanger bevestigen", recip_none_yet: "nog geen ontvanger",
+    recip_current: "Wordt nu verstuurd naar", recip_confirm_btn: "Ontvanger kiezen", recip_none_yet: "nog geen ontvanger",
     recip_confirm_hint: "Kies hieronder in de Verstuur-knop de ontvanger voordat dit verstuurd kan worden.",
     recip_this_customer: "deze klant",
-    cf_send_not_enabled: "Ontvanger bevestigd. Versturen van contactformulier-antwoorden is nog niet ingeschakeld (actie #4 uit).",
-    cf_confirm_first: "Bevestig eerst de ontvanger hierboven voordat dit verstuurd kan worden.",
+    cf_send_not_enabled: "Ontvanger ingesteld. Versturen van contactformulier-antwoorden is nog niet ingeschakeld (actie #4 uit).",
+    cf_confirm_first: "Geen adres gevonden voor deze klant. Kies de ontvanger in de Verstuur-knop voordat dit verstuurd kan worden.",
     cf_subject: "Onderwerp", cf_subject_hint: "Dit is een nieuwe e-mail aan de klant — stel het onderwerp in dat de klant ziet.",
     // UI rework Step 1 (2026-06-10)
     reset_ai: "Terug naar AI-concept", reset_ai_confirm: "Je huidige tekst vervangen door het originele AI-concept?",
@@ -1491,8 +1493,10 @@ document.addEventListener("click", function (e) {
 })();
 
 // Confirmation prompts. The text lives in the button's data-confirm attribute and is read as
-// DATA, never compiled as JavaScript source. Used by the Send buttons and by any chipMenu option
-// that carries a confirm (the owner handover, which forwards the email when it is picked).
+// DATA, never compiled as JavaScript source. NOT used by Send any more (2026-09-30: sending is
+// one click; the recipient is printed on the button, so a dialog repeating it was pure friction).
+// Still used by any chipMenu option that carries a confirm (the owner handover, which forwards
+// the email when it is picked).
 //
 // It used to be an inline onclick="return confirm('...')". Interpolating a translated string into
 // JS source inside an HTML attribute is a trap: HTML-escaping turns ' into &#39;, the parser
@@ -1508,6 +1512,22 @@ document.addEventListener("click", function (e) {
     if (!btn) return;
     if (!window.confirm(btn.dataset.confirm)) { e.preventDefault(); e.stopPropagation(); }
   }, true);
+})();
+
+// One-click send, guarded against the second click. With no dialog in the way, a nervous double
+// tap would submit twice; the route's duplicate guard would refuse the second, but the person
+// would see an error page for a send that worked. So the first click locks the button and shows
+// "Sending…" while the form goes off. Bubble phase, after the submit has been allowed.
+(function () {
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("button[data-once]") : null;
+    if (!btn || e.defaultPrevented) return;
+    var now = btn.querySelector(".send-now");
+    setTimeout(function () {
+      if (now) now.textContent = btn.dataset.once; else btn.textContent = btn.dataset.once;
+      btn.disabled = true;
+    }, 0);
+  });
 })();
 </script>
 </body></html>`;

@@ -194,9 +194,11 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (callerInfo) db.prepare("UPDATE work_items SET caller_info = ? WHERE id = ?").run(callerInfo, itemId);
 
   // Contact-form enrichment (Step 2): parse the structured body deterministically and resolve
-  // the customer on the trusted side, storing the result for the confirmed-To UI + send path.
-  // READ-ONLY; this never sets w.recipient (that is the human-confirm step) and never sends.
-  // A failure here must never block the item from being created/drafted.
+  // the customer on the trusted side, storing the result for the To line + send path.
+  // The address the customer typed into the Shopify form is code-held as the recipient straight
+  // away (recipient_source='form'): it came from the customer's own structured field, never from
+  // the model, so there is nothing for a human to "confirm" — only to change, via the Send
+  // button's popover, if it is wrong. Never sends. A failure here must never block the item.
   const isContactForm = rule.id === "shopify_form" || (email.from.address || "").toLowerCase() === "mailer@shopify.com";
   if (isContactForm) {
     try {
@@ -206,6 +208,10 @@ async function processThread(anthropic, key, msgs, ctx) {
       // the country map. cf.language is kept inside the JSON for reference only.
       db.prepare("UPDATE work_items SET contact_form_json = ? WHERE id = ?")
         .run(JSON.stringify(cf), itemId);
+      if (cf.defaultRecipient) {
+        db.prepare("UPDATE work_items SET recipient = ?, recipient_source = 'form' WHERE id = ? AND (recipient IS NULL OR recipient = '')")
+          .run(cf.defaultRecipient, itemId);
+      }
       audit("system", "contactform_enriched", itemId,
         `matched=${cf.resolved.matched} via=${cf.resolved.matched_via} cands=${cf.candidateAddresses.length} order=${cf.parsed.orderRef || "-"} src=${cf.source}`);
     } catch (e) {
@@ -223,7 +229,7 @@ async function processThread(anthropic, key, msgs, ctx) {
       const rn = await RN.buildReturnNotification(email, MAILBOX);
       db.prepare("UPDATE work_items SET return_json = ? WHERE id = ?").run(JSON.stringify(rn), itemId);
       if (rn.defaultRecipient) {
-        db.prepare("UPDATE work_items SET recipient = ? WHERE id = ? AND (recipient IS NULL OR recipient = '')")
+        db.prepare("UPDATE work_items SET recipient = ?, recipient_source = 'onfile' WHERE id = ? AND (recipient IS NULL OR recipient = '')")
           .run(rn.defaultRecipient, itemId);
       }
       audit("system", "return_note_enriched", itemId,

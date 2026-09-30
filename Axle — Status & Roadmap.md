@@ -1,5 +1,32 @@
 # Axle — Status & Roadmap
 
+> **★ ONE-CLICK SEND DEPLOYED, 30 Sep 2026: the "Send to X?" dialog is gone on the item page
+> and in the compose modal; Shopify contact-form and return items open with the recipient
+> already set, editable in the Send button's popover. Commit `1dbb125`. Desktop and phone. This
+> is the D1 + D2 item from mobile fix 3, done as one change on Brad's written instruction. No
+> `ASSET_V` bump (no CSS or asset changed).**
+>
+> **What changed and why.** The Send button already prints the recipient on its face, so the
+> confirm dialog only repeated what the salesperson was reading; removed. The risk it carried for
+> a hand-typed address is kept inline: an amber "not on file" pill beside Send, hover names the
+> SAP customer it is not on file for (`recip_typed_pill` / `recip_typed_warn`). A `data-once`
+> handler locks the button to "Sending…" on the first click so a double tap cannot submit twice;
+> the `data-confirm` handler stays for the owner handover. Contact-form items now have the
+> form-typed address applied at ingest (`recipient_source='form'`), as return items already had
+> (now stamped `'onfile'`); "Confirm recipient" only appears when Shopify yielded no address and
+> reads "Choose recipient". The header To line shows address + provenance + "change it in the Send
+> button" instead of a "Recipient confirmed" tick nobody had earned.
+>
+> **Unchanged.** send-guard, the (item, to, body) duplicate guard, `acceptTypedRecipient`, the
+> allow-list switches (#3 compose, #4 contact form, return), the injection block, audit rows.
+>
+> **Proof.** `node --check` on all four files; recipient-set and contact-form suites 25/25;
+> deploy `-WhatIf` four diffs, zero NEW; live: Brad drove it and reported good. Items ingested
+> before the restart keep their old "Choose recipient" state until picked once.
+>
+> **Files:** `box-code/ingest.js`, `box-code/routes/item.js`, `box-code/routes/inbox.js`,
+> `box-code/views/ui.js`. Rollback: `git revert 1dbb125` on `main`, `.\deploy.ps1`.
+
 > **★ MOBILE FIX 2 DEPLOYED, 27 Sep 2026: the phone list refreshes on its own again (idle
 > floor 45 s), refreshes on return and on Back, keeps the scroll while refreshing, and has
 > pull-to-refresh. `polaris22`, merge `55d74f4`. Phone only; desktop unchanged. No safety path

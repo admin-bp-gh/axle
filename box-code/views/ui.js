@@ -38,6 +38,12 @@ const STRINGS = {
     no_draft_busy: "Being drafted now.", no_draft_none: "No draft for this item.",
     reply_to_send: "Reply to send", reply_hint: "This exact text goes to the customer — edit it however you like before sending.",
     ai_draft_ref: "AI draft (reference)", ai_holding_ref: "AI holding reply (reference)",
+    withdrawn_title: "Axle wrote a reply but withdrew it.",
+    withdrawn_vin: "It claimed something was checked against the customer's VIN, which Axle cannot do.",
+    withdrawn_sourcing: "It told the customer how we source the part.",
+    withdrawn_availability: "It promised a part whose availability is still unknown.",
+    withdrawn_next: "Answer the questions or add feedback and redraft, or write the reply yourself below.",
+    withdrawn_show: "Show the withdrawn text (reference only, not sendable)",
     use_this: "Use this as my reply", edited_badge: "edited",
     attachments: "Attachments", no_attachments: "No attachments yet.",
     add_attachment: "Add a file", attach_hint: "Pictures or files to send with this reply (max 3 MB each).",
@@ -242,6 +248,12 @@ const STRINGS = {
     no_draft_busy: "Wordt nu opgesteld.", no_draft_none: "Geen concept voor dit item.",
     reply_to_send: "Antwoord om te versturen", reply_hint: "Deze tekst gaat exact naar de klant — pas hem gerust aan voor je verstuurt.",
     ai_draft_ref: "AI-concept (referentie)", ai_holding_ref: "AI tussentijds antwoord (referentie)",
+    withdrawn_title: "Axle had een antwoord geschreven maar heeft het ingetrokken.",
+    withdrawn_vin: "Het beweerde iets aan het chassisnummer van de klant te hebben gecontroleerd, en dat kan Axle niet.",
+    withdrawn_sourcing: "Het vertelde de klant hoe wij het onderdeel inkopen.",
+    withdrawn_availability: "Het beloofde een onderdeel waarvan de beschikbaarheid nog onbekend is.",
+    withdrawn_next: "Beantwoord de vragen of geef feedback en stel opnieuw op, of schrijf het antwoord hieronder zelf.",
+    withdrawn_show: "Toon de ingetrokken tekst (alleen ter referentie, niet te versturen)",
     use_this: "Gebruik dit als mijn antwoord", edited_badge: "bewerkt",
     attachments: "Bijlagen", no_attachments: "Nog geen bijlagen.",
     add_attachment: "Bestand toevoegen", attach_hint: "Foto's of bestanden om met dit antwoord mee te sturen (max 3 MB per stuk).",
@@ -740,7 +752,7 @@ function sprocketWidget(lang) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris22";   // 2026-09-27: mobile fix 2 (F8 list refresh: idle floor, refresh on return, pull to refresh)
+const ASSET_V = "polaris23";   // 2026-09-30: withdrawn-draft notice above the reply box (item #2368)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is

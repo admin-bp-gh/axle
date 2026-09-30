@@ -13,6 +13,7 @@ const SCEN = require("../scenarios.js");           // Compose: scenario library
 const DOCSUGGEST = require("../doc-suggest.js");   // Auto-attach: read-only resolve + scope filter
 const ACK = require("../acknowledgement.js");      // no_reply courtesy line: when to keep it, and what may be in it
 const TR = require("../thread-read.js");           // which other messages in the thread may be marked read
+const WA = require("../withdrawn-attempt.js");     // a gate-withdrawn draft: feed it back on redraft, explain it on the page
 const CA = require("../claim-attach.js");          // carrier claims: stage the invoice + purchase-value statement
 const CS = require("../claim-statement.js");       // the generated purchase-value statement
 const SAPDOC = require("../sap-doc-pdf.js");       // read-only Boyum print renderer
@@ -79,6 +80,15 @@ function persistResult(itemId, result, toolLog, seed) {
   for (const q of result.questions_for_salesperson || []) addQ("blocking", q);
   for (const q of result.physical_checks || []) addQ("physical", q);
   return { status, ver };
+}
+
+// The newest gate-withdrawn draft row, and the newest AI draft version of any kind, for an item.
+// Shared by the redraft (previous_attempt) and the item page (withdrawn notice).
+function latestWithdrawn(itemId) {
+  return db.prepare("SELECT * FROM drafts WHERE work_item_id = ? AND source = 'withdrawn' ORDER BY version DESC, id DESC LIMIT 1").get(itemId);
+}
+function latestDraftVersion(itemId) {
+  return db.prepare("SELECT MAX(version) AS v FROM drafts WHERE work_item_id = ? AND source IN ('ai', 'withdrawn')").get(itemId).v || 0;
 }
 
 async function runRedraft(itemId, login) {
@@ -162,6 +172,12 @@ async function runRedraft(itemId, login) {
       text: w.feedback,
     };
     if (w.caller_info) seed.caller_match = w.caller_info;
+    // A draft the gates withdrew last run goes back to the model WITH the reason (item #2368,
+    // 2026-09-30): without it the model re-anchored on the VIN every redraft and the salesperson
+    // got the same empty box each time. Pure lookup; null when the last run withdrew nothing.
+    const prev = WA.previousAttempt(w, latestWithdrawn(itemId), latestDraftVersion(itemId),
+      db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL").all(itemId));
+    if (prev) seed.previous_attempt = prev;
     const { result, toolLog } = await E.agenticDraft(anthropic, email, [], seed, MAILBOX_OF[w.mailbox]);
     const { status, ver } = persistResult(itemId, result, toolLog, seed);
     // Refresh suggested documents from the newest body + the model's referenced_documents hint
@@ -366,5 +382,5 @@ module.exports = {
   MAILBOX_OF, anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL,
   persistResult, runRedraft, markReadSafe, defaultMailbox,
   isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
-  claimDeps, runClaim,
+  claimDeps, runClaim, latestWithdrawn, latestDraftVersion,
 };

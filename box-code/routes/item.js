@@ -20,7 +20,9 @@ const { esc, t, page, linkify, splitQuoted, fmtSize, renderAttachments, renderMa
         fmtDateTime, statusWithRes, suggestCloseChip, intentLabel, kindLabel, langDisplay, ownerLabel,
         ownerChoices, chipMenu, renderTimeline, workPanes, shell, lazyQueue } = require("../views/ui.js");
 const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
-        isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment } = require("./shared.js");
+        isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
+        latestWithdrawn, latestDraftVersion } = require("./shared.js");
+const WA = require("../withdrawn-attempt.js");     // why the reply box is empty after a gate withdrew the draft
 
 // Resolver-backed address lookups, built once. Best-effort by contract (see recipient-set.js).
 const RSET_DEPS = RSET.defaultDeps();
@@ -282,11 +284,16 @@ app.get("/item/:id", async (req, res) => {
   // as read-only history, clearly labelled and out of the send path. Held drafts stay hidden (above).
   const supersededRow = fullStale ? fullRow : (interimStale ? interimRow : null);
   // Withdrawn drafts (source='withdrawn') are still recorded for the audit trail, but they are
-  // NOT shown: a red "withdrawn" card next to a perfectly good reply reads as breakage rather
-  // than as care. The reply the salesperson sees is simply the current, safe one.
+  // NOT shown as a draft: a red "withdrawn" card next to a perfectly good reply reads as breakage
+  // rather than as care. The reply the salesperson sees is simply the current, safe one.
+  // What IS shown (item #2368, 2026-09-30): when the CURRENT run withdrew its draft and the box is
+  // therefore empty, a short notice saying so and why, with the withdrawn text folded away as
+  // reference. An empty box with no explanation read as "Save & redraft does nothing".
   const latestVer = full ? full.version : (interim ? interim.version : 0);
   const questions = db.prepare("SELECT * FROM questions WHERE work_item_id = ? ORDER BY id").all(w.id);
   const open = questions.filter((q) => !q.answer);
+  const withdrawn = (w.status === "awaiting_input" && !full && !w.draft_edit)
+    ? WA.withdrawnNotice(w, latestWithdrawn(w.id), latestDraftVersion(w.id), open) : null;
   const busy = w.status === "investigating";
   const editable = !busy && !["done", "archived"].includes(w.status);
   const sentRow = db.prepare("SELECT * FROM sends WHERE work_item_id = ? AND status = 'sent' ORDER BY id DESC LIMIT 1").get(w.id);
@@ -469,6 +476,8 @@ app.get("/item/:id", async (req, res) => {
   const replyCard = `<div class="box">
     <div class="boxhead"><h3>${esc(t(lang, "reply_to_send"))}</h3><span class="tools">${replyTools}</span></div>
     <p class="muted trnote">${esc(t(lang, "reply_hint"))}</p>
+    ${withdrawn ? `<div class="banner hold withdrawn"><b>${esc(t(lang, "withdrawn_title"))}</b> ${esc(withdrawn.reasons.map((r) => t(lang, "withdrawn_" + r)).join(" "))} ${esc(t(lang, "withdrawn_next"))}
+      <details><summary>${esc(t(lang, "withdrawn_show"))}</summary><pre class="mail">${esc(withdrawn.text)}</pre></details></div>` : ""}
     ${subjectField}
     <textarea class="draft" id="replybox" name="reply">${esc(replyText)}</textarea>
     ${aiSeed ? `<textarea id="ai_seed" hidden readonly>${esc(aiSeed.body)}</textarea>` : ""}

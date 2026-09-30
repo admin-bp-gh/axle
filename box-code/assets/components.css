@@ -121,6 +121,11 @@ button.warn:hover { background: var(--warn-bg); }
 .boxhead h3 { margin: 0 0 var(--s2); }
 .boxhead .tools { display: inline-flex; gap: var(--s2); align-items: center; }
 .banner { background: var(--info-bg); color: var(--info-fg); padding: 10px 14px; border-radius: var(--r-ctl); margin: var(--s3) 0; font-weight: 600; }
+/* Withdrawn-draft notice above an empty reply box (item #2368): amber, plain weight, reference text folded. */
+.banner.withdrawn { background: var(--warn-bg); color: var(--warn-fg); font-weight: 400; margin: 0 0 var(--s2); }
+.banner.withdrawn details { margin-top: var(--s2); }
+.banner.withdrawn summary { font-size: var(--fs-sm); color: inherit; }
+.banner.withdrawn pre.mail { margin-top: var(--s2); font-size: var(--fs-sm); opacity: .85; }
 details summary { cursor: pointer; color: var(--ink-2); }
 .trbox { background: #f6f9ff; border-color: var(--border); border-left: 3px solid var(--info-fg); }
 .trbox h3 { color: var(--info-fg); }

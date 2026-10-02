@@ -24,14 +24,13 @@ const COMPOSE = require("./compose.js");            // Compose: compose-mode eng
 const SCEN = require("./scenarios.js");             // Compose: seeded quick-start scenario library
 const crypto = require("crypto");                   // synthetic conversation keys
 const { db, audit } = require("./db.js");
-const SPROCKET_STORE = require("./sprocket-store.js");   // for the admin Requests unread badge
+const BASE = require("./base-path.js");             // AXLE_BASE_PATH: "" or the URL prefix, e.g. "/axle"
 const { esc, t, page, langOK, workPanes } = require("./views/ui.js");
 const { MAILBOX_OF, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, runRedraft, markReadSafe,
         isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, defaultMailbox } = require("./routes/shared.js");
 const mountInbox = require("./routes/inbox.js");
 const mountItem = require("./routes/item.js");
 const mountAdmin = require("./routes/admin.js");
-const mountSprocket = require("./routes/sprocket.js"); // Sprocket: read-only/log-only in-app helper
 
 const PORT = 8484;
 const BIND_IP = "127.0.0.1";
@@ -96,12 +95,7 @@ app.use((req, res, next) => {
   }
   req.user = user;
   req.user.lang = langOK(getCookie(req, "axle_lang")); // per-browser UI language (header toggle)
-  // Unread-requests badge: count un-triaged (status 'new') Sprocket feature requests, for admins
-  // only (only they see the Requests link). Cheap file read; never let it break a page render.
-  if (req.user.role === "admin") {
-    try { req.user.sprocketNew = SPROCKET_STORE.loadRequests().filter((r) => r.status === "new").length; }
-    catch (e) { req.user.sprocketNew = 0; }
-  }
+  req.user.inFrame = req.get("Sec-Fetch-Dest") === "iframe"; // framed by the Workbench shell: page() drops its own header
   next();
 });
 
@@ -111,12 +105,13 @@ app.use((req, res, next) => {
 // that user's identity. When AXLE_ALLOWED_ORIGIN is set (e.g. https://axle.<tailnet>.ts.net), any
 // state-changing request whose Origin/Referer is a DIFFERENT origin is rejected. Left a no-op until
 // the env is set, so it can never lock the team out before the exact Serve origin is confirmed.
-const ALLOWED_ORIGIN = process.env.AXLE_ALLOWED_ORIGIN || "";
+// The env may hold a comma-separated list of origins (e.g. during a host move); each must match exactly.
+const ALLOWED_ORIGINS = String(process.env.AXLE_ALLOWED_ORIGIN || "").split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean);
 app.use((req, res, next) => {
-  if (!ALLOWED_ORIGIN || req.method === "GET" || req.method === "HEAD") return next();
+  if (!ALLOWED_ORIGINS.length || req.method === "GET" || req.method === "HEAD") return next();
   const src = req.headers.origin || req.headers.referer || "";
   let ok = !src;                                      // no Origin/Referer (non-browser tooling) — allowed
-  if (src) { try { ok = new URL(src).origin === ALLOWED_ORIGIN; } catch (e) { ok = false; } }
+  if (src) { try { ok = ALLOWED_ORIGINS.includes(new URL(src).origin); } catch (e) { ok = false; } }
   if (!ok) {
     audit(req.user.tailscale_login, "csrf_blocked", null, `${req.method} ${req.path} origin=${String(src).slice(0, 80)}`);
     return res.status(403).send("<h1>Forbidden</h1><p>Cross-origin request blocked.</p>");
@@ -203,7 +198,7 @@ app.post("/compose", async (req, res) => {
   const composeSubject = String(req.body.subject || "").trim().slice(0, 200);
 
   const fail = (msg) => res.status(400).send(page(t(lang, "compose_failed"), req.user,
-    `<p><b>${esc(t(lang, "compose_failed"))}:</b> ${esc(msg)}</p><p><a href="&#47;">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+    `<p><b>${esc(t(lang, "compose_failed"))}:</b> ${esc(msg)}</p><p><a href="${BASE.path}&#47;">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
 
   if (!who || !instruction) return fail(t(lang, "compose_need_who_instr"));
 
@@ -287,7 +282,7 @@ app.post("/compose", async (req, res) => {
   audit(login, "compose_created", itemId,
     `mode=draft via=${chosen.matched_via} mailbox=${mailbox}@ lang=${language} scenario=${scenarioKey || "-"} atts=${atts} (drafting in background)`);
   setImmediate(() => runRedraft(itemId, login));   // research + draft happen off the request path
-  res.redirect("/item/" + itemId);
+  res.redirect(BASE.url("/item/" + itemId));
 });
 
 mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND, ACTION_OWNER_FORWARD });
@@ -324,7 +319,7 @@ async function setRecipient(req, res) {
   const refuse = (msgKey, auditAction, auditDetail) => {
     audit(login, auditAction, w.id, auditDetail);
     return res.status(400).send(page(t(lang, "send_refused"), req.user,
-      `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, msgKey))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+      `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, msgKey))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   };
 
   // An injection-flagged item can never send; it must not be able to acquire a recipient either.
@@ -353,12 +348,12 @@ async function setRecipient(req, res) {
   if (kind === "reply" && recipient === RSET.defaultRecipient(w, "reply")) {
     db.prepare("UPDATE work_items SET recipient = NULL, recipient_source = NULL, updated_at = datetime('now') WHERE id = ?").run(w.id);
     if (oldTo) audit(login, "recipient_cleared", w.id, `from=${oldTo} to=<thread sender> mode=${mode}`);
-    return res.redirect("/item/" + w.id);
+    return res.redirect(BASE.url("/item/" + w.id));
   }
 
   db.prepare("UPDATE work_items SET recipient = ?, recipient_source = ?, updated_at = datetime('now') WHERE id = ?").run(recipient, source, w.id);
   audit(login, "recipient_set", w.id, `from=${oldTo || "<thread sender>"} to=${recipient} mode=${mode}`);
-  res.redirect("/item/" + w.id);
+  res.redirect(BASE.url("/item/" + w.id));
 }
 
 app.post("/item/:id/recipient", setRecipient);
@@ -395,12 +390,12 @@ async function sendWorkItem(req, res, w) {
     if (!ACTION_COMPOSE_SEND) {
       audit(login, "compose_send_blocked", w.id, "action #3 disabled (draft-only)");
       return res.status(403).send(page(t(lang, "send_refused"), req.user,
-        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "compose_send_blocked"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "compose_send_blocked"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
     if (!w.recipient) {
       audit(login, "compose_send_no_recipient", w.id, "no confirmed recipient");
       return res.status(400).send(page(t(lang, "send_refused"), req.user,
-        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "compose_need_pick"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "compose_need_pick"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
   }
 
@@ -413,12 +408,12 @@ async function sendWorkItem(req, res, w) {
     if (!ACTION_CONTACTFORM_SEND) {
       audit(login, "contactform_send_blocked", w.id, "action #4 disabled (draft-only)");
       return res.status(403).send(page(t(lang, "send_refused"), req.user,
-        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_send_not_enabled"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_send_not_enabled"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
     if (!w.recipient) {
       audit(login, "contactform_send_no_recipient", w.id, "no confirmed recipient");
       return res.status(400).send(page(t(lang, "send_refused"), req.user,
-        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_confirm_first"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_confirm_first"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
   }
 
@@ -430,12 +425,12 @@ async function sendWorkItem(req, res, w) {
     if (!ACTION_RETURN_SEND) {
       audit(login, "return_send_blocked", w.id, "return-send action disabled (draft-only)");
       return res.status(403).send(page(t(lang, "send_refused"), req.user,
-        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_send_not_enabled"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_send_not_enabled"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
     if (!w.recipient) {
       audit(login, "return_send_no_recipient", w.id, "no confirmed recipient");
       return res.status(400).send(page(t(lang, "send_refused"), req.user,
-        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_confirm_first"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+        `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_confirm_first"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
   }
 
@@ -460,14 +455,14 @@ async function sendWorkItem(req, res, w) {
   } catch (e) {
     audit(login, "send_refused", w.id, e.message.slice(0, 200));
     return res.status(400).send(page("Send refused", req.user,
-      `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(e.message)}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+      `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(e.message)}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   }
 
   // De-dup an identical body sent to the SAME address for this item (double-click / refresh).
   // Keyed on to_addr as well as the body hash: re-sending the same text to a DIFFERENT address is
   // a legitimate, deliberate act (the editable-recipient feature), and must not be swallowed here.
   if (db.prepare("SELECT 1 FROM sends WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ?").get(w.id, payload.to, payload.sha256)) {
-    return res.redirect("/item/" + w.id);
+    return res.redirect(BASE.url("/item/" + w.id));
   }
 
   // Bytes for Graph, metadata for the audit record. Attachments whose id the assembler
@@ -492,7 +487,7 @@ async function sendWorkItem(req, res, w) {
       .run(w.id, humanDraftId, aiSrc ? aiSrc.id : null, payload.to, payload.subject, payload.sha256, body, attMeta.length ? JSON.stringify(attMeta) : null, login);
   } catch (e) {
     db.prepare("DELETE FROM drafts WHERE id = ?").run(humanDraftId);
-    return res.redirect("/item/" + w.id);
+    return res.redirect(BASE.url("/item/" + w.id));
   }
 
   try {
@@ -516,14 +511,14 @@ async function sendWorkItem(req, res, w) {
       `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
     if (!isComposeItem) await markReadSafe(login, w);
     // F6 (mobile fix 1): the phone adds ret=list at submit time and lands on the Open list
-    res.redirect(req.body.ret === "list" ? "/" : "/item/" + w.id);
+    res.redirect(req.body.ret === "list" ? BASE.url("/") : BASE.url("/item/" + w.id));
   } catch (e) {
     // Same scoping as the success path: roll back only the row this request reserved.
     db.prepare("DELETE FROM sends WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ? AND status = 'pending'").run(w.id, payload.to, payload.sha256);
     db.prepare("DELETE FROM drafts WHERE id = ?").run(humanDraftId);   // remove the speculative human draft on failure
     audit(login, "send_failed", w.id, e.message.slice(0, 200));
     res.status(502).send(page("Send failed", req.user,
-      `<p><b>${esc(t(lang, "send_failed"))}:</b> ${esc(e.message)}</p><p>${esc(t(lang, "send_failed_note"))}</p><p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+      `<p><b>${esc(t(lang, "send_failed"))}:</b> ${esc(e.message)}</p><p>${esc(t(lang, "send_failed_note"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   }
 }
 
@@ -536,7 +531,6 @@ app.post("/item/:id/send", async (req, res) => {
 });
 
 mountAdmin(app);
-mountSprocket(app);   // Sprocket helper endpoint (POST /sprocket/ask) — read-only/log-only
 
 // Last-resort error handler. Express 5 routes sync throws AND rejected async handlers
 // here; without it they became default 500s that htmx silently ignores — a failed
@@ -558,6 +552,28 @@ app.use((err, req, res, next) => {
   res.status(500).send(page("Error", req.user || { lang, display_name: "-", role: "-" }, msg));
 });
 
-app.listen(PORT, BIND_IP, () => {
-  console.log(`Axle web listening on ${BIND_IP}:${PORT} (loopback; fronted by Tailscale Serve)`);
+// Base path (W3, shell integration, see base-path.js). The whole app above is mounted under
+// AXLE_BASE_PATH (e.g. /axle), and every link it renders carries that prefix. Whether Tailscale
+// Serve strips the prefix before proxying is unverified, so BOTH forms are accepted: a request that
+// arrives without the prefix is rewritten onto it (req.url, and req.originalUrl so a Retry link
+// built from it keeps the prefix). Inside the app req.path is prefix-free exactly as before, so
+// audit text and the error handler's /item/N match are unchanged. With no base path set this is
+// the plain root mount.
+// GET /healthz lives on this outer app, BEFORE the identity and CSRF middleware: the Workbench
+// probe carries no Tailscale identity. No auth, no DB, nothing but the version.
+let VERSION = "unknown";
+try { VERSION = require("./package.json").version || VERSION; } catch (e) { /* never block startup */ }
+const root = express();
+if (BASE.path) root.use((req, res, next) => {
+  if (!BASE.has(req.url)) { req.url = BASE.url(req.url); req.originalUrl = BASE.url(req.originalUrl); }
+  next();
 });
+root.get(BASE.url("/healthz"), (req, res) => res.json({ ok: true, version: VERSION }));
+root.use(BASE.path || "/", app);
+
+if (require.main === module) {
+  root.listen(PORT, BIND_IP, () => {
+    console.log(`Axle web listening on ${BIND_IP}:${PORT}${BASE.path ? ` under ${BASE.path}` : ""} (loopback; fronted by Tailscale Serve)`);
+  });
+}
+module.exports = root;   // for base-path.test.js (healthz and the identity wall over plain http)

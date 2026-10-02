@@ -23,6 +23,7 @@ const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
         isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
         latestWithdrawn, latestDraftVersion } = require("./shared.js");
 const WA = require("../withdrawn-attempt.js");     // why the reply box is empty after a gate withdrew the draft
+const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
 
 // Resolver-backed address lookups, built once. Best-effort by contract (see recipient-set.js).
 const RSET_DEPS = RSET.defaultDeps();
@@ -105,14 +106,14 @@ function suggestionsPanel(w, suggestions, lang) {
   // is in its own set, exactly like attach-doc, so a hand-crafted query can't render an arbitrary doc.
   const previewLink = (d) => {
     const qs = `doctype=${encodeURIComponent(docType(d.objectId))}&docnum=${encodeURIComponent(String(d.docNum))}&docentry=${encodeURIComponent(String(d.docEntry))}`;
-    return `<a class="preview-doc" href="/item/${w.id}/preview-doc?${qs}" target="_blank" rel="noopener" title="${esc(t(lang, "sugg_preview_title"))}">${esc(t(lang, "sugg_preview"))}</a>`;
+    return `<a class="preview-doc" href="${BASE.path}/item/${w.id}/preview-doc?${qs}" target="_blank" rel="noopener" title="${esc(t(lang, "sugg_preview_title"))}">${esc(t(lang, "sugg_preview"))}</a>`;
   };
   // One suggested document on a row: the Attach button (posts the resolved doc to the proven
   // /attach-doc route, keyed by DocNum + DocEntry) plus the Preview link beside it. This panel
   // still renders/stages nothing itself.
   const addForm = (d, label, cls) => `
     <div class="suggdoc">
-      <form method="post" action="/item/${w.id}/attach-doc">
+      <form method="post" action="${BASE.path}/item/${w.id}/attach-doc">
         <input type="hidden" name="doctype" value="${esc(docType(d.objectId))}">
         <input type="hidden" name="docnum" value="${esc(String(d.docNum))}">
         <input type="hidden" name="docentry" value="${esc(String(d.docEntry))}">
@@ -184,7 +185,7 @@ function customerCard(s, lang, itemId) {
         ${chip(t(lang, "cust_open_invoices"), invs)}
       </div>
       <button type="button" class="mini cusbtn" aria-haspopup="dialog"
-        hx-get="/item/${itemId}/customer-modal" hx-target="#cusModalBody" hx-swap="innerHTML"
+        hx-get="${BASE.path}/item/${itemId}/customer-modal" hx-target="#cusModalBody" hx-swap="innerHTML"
         onclick="var d=document.getElementById('cusModal'); if(d&&d.showModal) d.showModal();">${esc(t(lang, "cust_view_full"))}</button>
       <dialog id="cusModal" class="cusdialog" aria-label="${esc(t(lang, "cust_detail_title"))}">
         <form method="dialog" class="cusx"><button class="cusxbtn" aria-label="${esc(t(lang, "cust_close"))}">&times;<span class="m-only cusback-label">${esc(t(lang, "back_to_ctx"))}</span></button></form>
@@ -380,7 +381,7 @@ app.get("/item/:id", async (req, res) => {
   const langChip = editable
     ? chipMenu({
         lang, chipClass: "", chipHtml: langChipHtml, title: t(lang, "lang_fix"),
-        action: `/item/${w.id}/language`, field: "language", current: w.language || "",
+        action: `${BASE.path}/item/${w.id}/language`, field: "language", current: w.language || "",
         options: LANGS.map((l) => ({ value: l, label: `${l.toUpperCase()} — ${langDisplay(lang, l)}` })),
         note: isCompose ? t(lang, "relang_note") : "",
       })
@@ -403,7 +404,7 @@ app.get("/item/:id", async (req, res) => {
   const ownerChip = (editable && ownerOpts.some((o) => o !== (w.owner || "")))
     ? chipMenu({
         lang, chipClass: "", chipHtml: ownerChipHtml, title: t(lang, "owner_fix"),
-        action: `/item/${w.id}/owner`, field: "owner", current: w.owner || "",
+        action: `${BASE.path}/item/${w.id}/owner`, field: "owner", current: w.owner || "",
         options: ownerOpts.map(ownerOption),
       })
     : `<span class="chip">${ownerChipHtml}</span>`;
@@ -502,7 +503,7 @@ app.get("/item/:id", async (req, res) => {
   // card leads; otherwise the reply leads and questions sit collapsed beneath. The
   // buttons live in the sticky action bar below and submit THIS form via form=.
   const workSection = editable
-    ? `<form method="post" action="/item/${w.id}/work" id="workform">
+    ? `<form method="post" action="${BASE.path}/item/${w.id}/work" id="workform">
          ${needsAnswers ? qfCard : ""}
          ${replyCard}
          ${attCard}
@@ -522,7 +523,7 @@ app.get("/item/:id", async (req, res) => {
       ${suggHtml}${suggHtml ? `<div class="subdiv"></div>` : ""}
       <p class="sublabel">${esc(t(lang, "attach_manual"))}</p>
       <p class="muted hint">${esc(t(lang, "attach_doc_hint"))}</p>
-      <form method="post" action="/item/${w.id}/attach-doc" class="attdoc">
+      <form method="post" action="${BASE.path}/item/${w.id}/attach-doc" class="attdoc">
         <label>${esc(t(lang, "attach_doc_type"))}:
           <select name="doctype">
             <option value="order">${esc(t(lang, "doc_order"))}</option>
@@ -586,7 +587,7 @@ app.get("/item/:id", async (req, res) => {
       <summary class="btn send-caret" title="${esc(t(lang, "recip_change"))}" aria-label="${esc(t(lang, "recip_change"))}">${recipLine}&#9662;</summary>
       <div class="menu-list">
         ${typedEntry ? `<p class="recip-current muted">${esc(t(lang, "recip_current"))}: <b>${esc(typedEntry.addr)}</b> &mdash; ${esc(srcLabel.typed)}</p>` : ""}
-        <form method="post" action="/item/${w.id}/recipient" class="recip-known">
+        <form method="post" action="${BASE.path}/item/${w.id}/recipient" class="recip-known">
           <input type="hidden" name="mode" value="known">
           ${pickable.map((e) => `<label class="cfopt"><input type="radio" name="addr" value="${esc(e.addr)}" ${e.addr === checkedAddr ? "checked" : ""}> ${esc(e.addr)} <span class="muted">&mdash; ${esc(srcLabel[e.source] || e.source)}</span></label>`).join("")}
           ${pickable.length ? `<p><button class="mini primary" name="use" value="1">${esc(t(lang, "recip_use"))}</button></p>` : ""}
@@ -594,7 +595,7 @@ app.get("/item/:id", async (req, res) => {
         <div class="subdiv"></div>
         <details class="recip-other">
           <summary class="muted">${esc(t(lang, "recip_other"))}</summary>
-          <form method="post" action="/item/${w.id}/recipient">
+          <form method="post" action="${BASE.path}/item/${w.id}/recipient">
             <input type="hidden" name="mode" value="typed">
             <input name="addr" type="email" autocomplete="off" spellcheck="false" placeholder="name@company.nl" required>
             <button class="mini primary" name="use" value="1">${esc(t(lang, "recip_use"))}</button>
@@ -614,7 +615,7 @@ app.get("/item/:id", async (req, res) => {
 
   const sendBtn = canSend
     ? `<span class="send-split">
-         <button class="send send-stack" form="workform" formaction="/item/${w.id}/send" formnovalidate data-once="${esc(t(lang, "sending"))}" title="${esc(t(lang, "send_reply_to"))} ${esc(sendTo)}"><span class="send-now">${esc(t(lang, "send_now"))}</span><span class="send-to">${esc(sendTo)}</span></button>
+         <button class="send send-stack" form="workform" formaction="${BASE.path}/item/${w.id}/send" formnovalidate data-once="${esc(t(lang, "sending"))}" title="${esc(t(lang, "send_reply_to"))} ${esc(sendTo)}"><span class="send-now">${esc(t(lang, "send_now"))}</span><span class="send-to">${esc(sendTo)}</span></button>
          ${recipPop}
        </span>${typedWarn || changedPill}`
     : w.injection_flag ? `<span class="note">${esc(t(lang, "send_disabled_inj"))}</span>`
@@ -626,17 +627,17 @@ app.get("/item/:id", async (req, res) => {
   // Close the item: "Mark done" is the everyday close, so it's a visible button in the bar
   // (grouped on the right alongside the overflow, which keeps the rarer closes). Posts to the
   // same /status route as the old menu item — no route or safety change.
-  const markDoneBtn = `<form method="post" action="/item/${w.id}/status"><button name="to" value="done" title="${esc(t(lang, "done_tip"))}">${esc(t(lang, "mark_done"))}</button></form>`;
+  const markDoneBtn = `<form method="post" action="${BASE.path}/item/${w.id}/status"><button name="to" value="done" title="${esc(t(lang, "done_tip"))}">${esc(t(lang, "mark_done"))}</button></form>`;
   // M-31 / M-32: phone-only mirror rows lead the overflow sheet; same forms, routes and confirm text
   const closeMenu = `<details class="menu"><summary class="btn" title="${esc(t(lang, "more_actions"))}">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary><div class="menu-list">
       <button class="m-only" form="workform" name="action" value="redraft"><b>${esc(t(lang, "save_redraft"))}</b><span>${esc(t(lang, "redraft_hint"))}</span></button>
-      <form class="m-only" method="post" action="/item/${w.id}/status"><button name="to" value="done"><b>${esc(t(lang, "mark_done"))}</b><span>${esc(t(lang, "done_tip"))}</span></button></form>
-      ${editable ? ownerOpts.map(ownerOption).filter((x) => x.confirm).map((x) => `<form class="m-only" method="post" action="/item/${w.id}/owner">
+      <form class="m-only" method="post" action="${BASE.path}/item/${w.id}/status"><button name="to" value="done"><b>${esc(t(lang, "mark_done"))}</b><span>${esc(t(lang, "done_tip"))}</span></button></form>
+      ${editable ? ownerOpts.map(ownerOption).filter((x) => x.confirm).map((x) => `<form class="m-only" method="post" action="${BASE.path}/item/${w.id}/owner">
         <button name="owner" value="${esc(x.value)}" data-confirm="${esc(x.confirm)}"><b>${esc(t(lang, "owner"))}: ${esc(x.value)}</b><span>${esc(t(lang, "owner_handover_hint"))}</span></button></form>`).join("") : ""}
       <button class="m-only" form="workform" name="action" value="save"><b>${esc(t(lang, "save"))}</b><span>${esc(t(lang, "save_now"))}</span></button>
-      <form method="post" action="/item/${w.id}/status"><button name="to" value="phone"><b>${esc(t(lang, "mark_phone"))}</b><span>${esc(t(lang, "phone_tip"))}</span></button></form>
-      <form method="post" action="/item/${w.id}/status"><button name="to" value="archived"><b>${esc(t(lang, "archive"))}</b><span>${esc(t(lang, "archive_tip"))}</span></button></form>
-      ${!isCompose ? `<form method="get" action="/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, require("../outlook-block.js").active() ? "block_tip_outlook" : "block_tip"))}</span></button></form>` : ""}
+      <form method="post" action="${BASE.path}/item/${w.id}/status"><button name="to" value="phone"><b>${esc(t(lang, "mark_phone"))}</b><span>${esc(t(lang, "phone_tip"))}</span></button></form>
+      <form method="post" action="${BASE.path}/item/${w.id}/status"><button name="to" value="archived"><b>${esc(t(lang, "archive"))}</b><span>${esc(t(lang, "archive_tip"))}</span></button></form>
+      ${!isCompose ? `<form method="get" action="${BASE.path}/item/${w.id}/block"><button><b>${esc(t(lang, "block_sender"))}</b><span>${esc(t(lang, require("../outlook-block.js").active() ? "block_tip_outlook" : "block_tip"))}</span></button></form>` : ""}
       <div class="sheet-title m-only">${esc(t(lang, "more_actions"))}</div>
       <button type="button" class="m-only" data-close>${esc(t(lang, "cancel"))}</button>
     </div></details>`;
@@ -647,7 +648,7 @@ app.get("/item/:id", async (req, res) => {
   // Bar: left cluster works the reply (Send / Save / Save & redraft — the redraft note is now the
   // button's tooltip, so the bar no longer wraps on it); right cluster closes the item.
   const actionBar = busy ? skBar(lang) : ["done", "archived"].includes(w.status)
-    ? `<div class="actionbar closed"><form method="post" action="/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
+    ? `<div class="actionbar closed"><form method="post" action="${BASE.path}/item/${w.id}/status"><button name="to" value="reopen">${esc(t(lang, "reopen"))}</button></form></div>`
     : `<div class="actionbar">
         ${sendBtn}
         <button form="workform" name="action" value="save">${esc(t(lang, "save"))}</button>
@@ -765,7 +766,7 @@ app.get("/item/:id", async (req, res) => {
   // unchanged from Step 1; only the placement moved.
   // M-22/M-36: phone-only "Customer & docs" link; div.m-mail wraps header and email
   const center = `
-    <p class="backrow"><a href="&#47;">${esc(t(lang, "back_inbox"))}</a></p>
+    <p class="backrow"><a href="${BASE.path}&#47;">${esc(t(lang, "back_inbox"))}</a></p>
     <h2>#${w.id} ${esc(w.subject || t(lang, "no_subject"))}</h2>
     <div class="chips-row">${chips}</div>
     <a class="m-only ctxlink" href="#ctx" data-ctx-open>${esc(t(lang, "customer_docs"))} <span aria-hidden="true">&rsaquo;</span></a>
@@ -869,7 +870,7 @@ app.get("/item/:id", async (req, res) => {
       out.style.display = "block";
       if (btn) btn.textContent = ${JSON.stringify(t(lang, "hide_translation"))};
       b.textContent = ${JSON.stringify(t(lang, "translating"))};
-      fetch("/item/${w.id}/translate-reply", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "text=" + encodeURIComponent(r.value) })
+      fetch("${BASE.path}/item/${w.id}/translate-reply", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "text=" + encodeURIComponent(r.value) })
         .then(function (x) { return x.json(); })
         .then(function (d) { b.textContent = d.text || d.error || ""; })
         .catch(function () { b.textContent = "(error)"; });
@@ -917,7 +918,7 @@ app.get("/item/:id", async (req, res) => {
           if (i >= arr.length) {
             if (!tokensAdded) { location.reload(); return; }
             var p2 = new URLSearchParams(new FormData(form));   // now includes the tokens
-            fetch("/item/${w.id}/attach-add", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: p2.toString() })
+            fetch("${BASE.path}/item/${w.id}/attach-add", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: p2.toString() })
               .then(function () { location.reload(); }).catch(function () { location.reload(); });
             return;
           }
@@ -928,7 +929,7 @@ app.get("/item/:id", async (req, res) => {
             var p = new URLSearchParams(base.toString());
             p.set("name", file.name); p.set("ctype", file.type || "application/octet-stream");
             p.set("data", String(rd.result).split(",")[1] || "");
-            fetch("/item/${w.id}/attach-add", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: p.toString() })
+            fetch("${BASE.path}/item/${w.id}/attach-add", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: p.toString() })
               .then(function (x) { return x.json(); })
               .then(function (d) {
                 if (d && d.error) { alert(d.error); }
@@ -990,7 +991,7 @@ app.get("/item/:id", async (req, res) => {
       var emailPending = pre && pre.hasAttribute("data-pending");
       var qPend = document.querySelectorAll("[data-trq]");
       if (!emailPending && !qPend.length) return;
-      fetch("/item/${w.id}/translations", { method: "POST" })
+      fetch("${BASE.path}/item/${w.id}/translations", { method: "POST" })
         .then(function (x) { return x.json(); })
         .then(function (d) {
           if (emailPending) {
@@ -1027,7 +1028,7 @@ app.get("/item/:id", async (req, res) => {
   // <meta> refresh instead — but a declarative refresh navigates to the document's address
   // as parsed, so after an htmx card-click had pushed a different URL it yanked the user
   // away from what they were reading. The htmx poller targets #workpane only.
-  const busyPoll = busy ? `<div hx-get="/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-trigger="load delay:10s"></div>` : "";
+  const busyPoll = busy ? `<div hx-get="${BASE.path}/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-trigger="load delay:10s"></div>` : "";
   if (req.get("HX-Request")) {
     return res.send(panes
       + `<script>document.title = ${JSON.stringify(`Item ${w.id} - Axle`)}; document.body.classList.add("ax-detail");</script>`
@@ -1092,7 +1093,7 @@ app.post("/item/:id/work", (req, res) => {
     audit(req.user.tailscale_login, "redraft_started", w.id, null);
     setImmediate(() => runRedraft(w.id, req.user.tailscale_login));
   }
-  res.redirect("/item/" + w.id);
+  res.redirect(BASE.url("/item/" + w.id));
 });
 
 // Change an item's language.
@@ -1107,7 +1108,7 @@ app.post("/item/:id/language", (req, res) => {
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
   const newLang = ["en", "nl", "de", "fr", "es"].includes(req.body.language) ? req.body.language : null;
-  if (!newLang || newLang === w.language) return res.redirect("/item/" + w.id);
+  if (!newLang || newLang === w.language) return res.redirect(BASE.url("/item/" + w.id));
 
   if (w.origin === "compose") {
     if (w.status !== "investigating") {
@@ -1119,7 +1120,7 @@ app.post("/item/:id/language", (req, res) => {
     db.prepare("UPDATE work_items SET language = ?, updated_at = datetime('now') WHERE id = ?").run(newLang, w.id);
     audit(req.user.tailscale_login, "language_corrected", w.id, `${w.language || "?"} -> ${newLang}`);
   }
-  res.redirect("/item/" + w.id);
+  res.redirect(BASE.url("/item/" + w.id));
 });
 
 // Reassign an item's owner. The new owner must be one of the mailbox's own labels (see
@@ -1150,7 +1151,7 @@ app.post("/item/:id/owner", async (req, res) => {
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(req.user.lang, "not_found"))}</p>`));
   const to = String(req.body.owner || "");
   const allowed = ownerChoices(w.mailbox).includes(to) && to !== (w.owner || "") && !["done", "archived"].includes(w.status);
-  if (!allowed) return res.redirect("/item/" + w.id);
+  if (!allowed) return res.redirect(BASE.url("/item/" + w.id));
 
   const relabel = () => {
     db.prepare("UPDATE work_items SET owner = ?, updated_at = datetime('now') WHERE id = ?").run(to, w.id);
@@ -1158,12 +1159,12 @@ app.post("/item/:id/owner", async (req, res) => {
   };
 
   const target = FG.forwardTargetFor(w.mailbox, to);
-  if (!target) { relabel(); return res.redirect("/item/" + w.id); }
+  if (!target) { relabel(); return res.redirect(BASE.url("/item/" + w.id)); }
 
   if (!ACTION_OWNER_FORWARD) {
     relabel();
     audit(login, "owner_forward_skipped", w.id, `${to} <${target.address}> - AXLE_ACTION_OWNER_FORWARD not enabled`);
-    return res.redirect("/item/" + w.id);
+    return res.redirect(BASE.url("/item/" + w.id));
   }
 
   const fwd = FG.assembleForward(w, { toOwner: to, byName: req.user.display_name, byLogin: login });
@@ -1179,7 +1180,7 @@ app.post("/item/:id/owner", async (req, res) => {
     `${to} <${fwd.to}> from ${w.mailbox} msg=${String(fwd.messageId).slice(0, 24)}${info.changes ? "" : " (item already closed by someone else)"}`);
   await markReadSafe(login, w);
   // F6 (mobile fix 1): the phone adds ret=list at submit time and lands on the Open list
-  res.redirect(req.body.ret === "list" ? "/" : "/item/" + w.id);
+  res.redirect(req.body.ret === "list" ? BASE.url("/") : BASE.url("/item/" + w.id));
 });
 
 // On-demand: translate the salesperson's CURRENT (possibly edited) reply into their own
@@ -1241,7 +1242,7 @@ app.post("/item/:id/attach-doc", async (req, res) => {
   const login = req.user.tailscale_login;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
-  const back = `<p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`;
+  const back = `<p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`;
   const small = (html, code) => res.status(code || 200).send(page(t(lang, "attach_doc_title"), req.user,
     `<div class="box"><h3>${esc(t(lang, "attach_doc_title"))}</h3>${html}${back}</div>`));
 
@@ -1266,7 +1267,7 @@ app.post("/item/:id/attach-doc", async (req, res) => {
     if (!doc) { audit(login, "attach_doc_pick_rejected", w.id, `entry ${pick} not in set`); return small(`<p>${esc(t(lang, "attach_doc_none"))}</p>`, 400); }
   } else {
     const opts = resolved.candidates.map((c) => `
-      <form method="post" action="/item/${w.id}/attach-doc" style="margin:4px 0">
+      <form method="post" action="${BASE.path}/item/${w.id}/attach-doc" style="margin:4px 0">
         <input type="hidden" name="doctype" value="${esc(type)}"><input type="hidden" name="docnum" value="${esc(num)}"><input type="hidden" name="docentry" value="${c.docEntry}">
         <button class="mini">${esc(c.type)} ${esc(String(c.docNum))} &middot; ${esc(c.cardCode || "")} ${esc(c.cardName || "")} &middot; ${esc(String(c.docTotal))} ${esc(c.docCur || "")} &middot; ${esc(c.docDate ? new Date(c.docDate).toISOString().slice(0, 10) : "")}</button>
       </form>`).join("");
@@ -1290,7 +1291,7 @@ app.post("/item/:id/attach-doc", async (req, res) => {
     return small(`<p>${esc(t(lang, "attach_doc_scope_warn"))}</p>
       <p class="muted">${esc(t(lang, "attach_doc_doc_cust"))}: ${esc(doc.cardCode || "")} ${esc(doc.cardName || "")}<br>
       ${esc(t(lang, "attach_doc_email_cust"))}: ${esc(itemCard || "-")} ${esc(itemName)}</p>
-      <form method="post" action="/item/${w.id}/attach-doc">
+      <form method="post" action="${BASE.path}/item/${w.id}/attach-doc">
         <input type="hidden" name="doctype" value="${esc(type)}"><input type="hidden" name="docnum" value="${esc(String(doc.docNum))}"><input type="hidden" name="docentry" value="${doc.docEntry}"><input type="hidden" name="confirm" value="1">
         <button class="primary">${esc(t(lang, "attach_doc_scope_confirm"))}</button>
       </form>`, 200);
@@ -1307,7 +1308,7 @@ app.post("/item/:id/attach-doc", async (req, res) => {
   if (ares.error) return small(`<p>${esc(ares.error)}</p>`, 413);
   const override = !(itemCard && itemCard === doc.cardCode);
   audit(login, "doc_pdf_attached", w.id, `${doc.type} ${doc.docNum} DocEntry ${doc.docEntry} cust ${doc.cardCode || "?"} ${r.bytes}b${override ? " SCOPE-OVERRIDE" : ""}`);
-  res.redirect("/item/" + w.id);
+  res.redirect(BASE.url("/item/" + w.id));
 });
 
 // Preview the Boyum print PDF of a referenced SAP document in a new browser tab (READ-ONLY).
@@ -1322,7 +1323,7 @@ app.get("/item/:id/preview-doc", async (req, res) => {
   const login = req.user.tailscale_login;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
-  const back = `<p><a href="/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`;
+  const back = `<p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`;
   const small = (html, code) => res.status(code || 200).send(page(t(lang, "attach_doc_title"), req.user,
     `<div class="box"><h3>${esc(t(lang, "sugg_preview"))}</h3>${html}${back}</div>`));
 
@@ -1407,7 +1408,7 @@ app.post("/item/:id/status", async (req, res) => {
     audit(req.user.tailscale_login, "status_change", w.id, `${w.status} -> ${to}${resolution && resolution !== "done" ? ` (${resolution})` : ""}`);
     if (to === "done" || to === "archived") await markReadSafe(req.user.tailscale_login, w);
   }
-  res.redirect(req.body.to === "reopen" ? "/item/" + w.id : "/");
+  res.redirect(req.body.to === "reopen" ? BASE.url("/item/" + w.id) : BASE.url("/"));
 });
 
 };

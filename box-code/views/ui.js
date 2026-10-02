@@ -5,6 +5,8 @@
 // helpers only - no routes, no DB access, no network. Server-side rendering stays
 // authoritative; everything is escaped here exactly as before.
 const rulesets = require("../rules.js");
+const BASE = require("../base-path.js");   // AXLE_BASE_PATH URL prefix ("" or e.g. "/axle")
+const B = BASE.path;                        // plain [A-Za-z0-9_/-]: safe in attributes, selectors and RegExp sources
 
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -198,27 +200,6 @@ const STRINGS = {
     filter_btn: "Filter",
     sort_label: "Sort",
     sort_needs: "Needs me first", sort_new: "Newest first", sort_old: "Oldest first", sort_prio: "Priority first",
-    // Sprocket — the in-app helper (floating cog + chat panel)
-    sprocket_tagline: "Axle helper",
-    sprocket_open: "Open Sprocket, the Axle helper",
-    sprocket_close: "Close",
-    sprocket_greeting: "Hi, I'm Sprocket — your Axle helper. Ask me how to do anything in Axle.",
-    sprocket_ph: "How do I…?",
-    sprocket_send: "Send",
-    sprocket_thinking: "Sprocket's looking that up…",
-    sprocket_error: "Sorry — something went wrong. Please try again.",
-    sprocket_dupe_note: "Good news — someone else has asked for this too, so I've added your vote to it.",
-    sprocket_dupe_note_self: "Looks like this matches one you've already logged — I've kept it on the existing request rather than adding a duplicate.",
-    sprocket_requests_nav: "Requests",
-    sprocket_new_badge: "New, un-reviewed requests",
-    sprocket_requests_title: "Feature requests",
-    sprocket_requests_hint: "Captured by Sprocket. The .jsonl / .md files on the box are the source of truth — edit status and notes there.",
-    sprocket_no_requests: "No requests yet.",
-    sprocket_votes: "vote(s)",
-    sprocket_f_today: "Today", sprocket_f_freq: "Frequency", sprocket_f_impact: "Impact",
-    sprocket_f_example: "Example", sprocket_f_also: "Also asked by", sprocket_f_notes: "Notes",
-    sprocket_status_new: "New", sprocket_status_approved: "Approved", sprocket_status_in_progress: "In progress",
-    sprocket_status_done: "Done", sprocket_status_declined: "Declined",
     load_more: "Load more (50 of {n})",
     updates_waiting: "Updates waiting, tap to refresh",
     searching_loaded: "Searched the {n} loaded emails",
@@ -406,27 +387,6 @@ const STRINGS = {
     filter_btn: "Filter",
     sort_label: "Sorteren",
     sort_needs: "Actie eerst", sort_new: "Nieuwste eerst", sort_old: "Oudste eerst", sort_prio: "Prioriteit eerst",
-    // Sprocket — de in-app hulp (zwevende tandwielknop + chatvenster)
-    sprocket_tagline: "Axle-hulp",
-    sprocket_open: "Open Sprocket, de Axle-hulp",
-    sprocket_close: "Sluiten",
-    sprocket_greeting: "Hoi, ik ben Sprocket — je Axle-hulp. Vraag me hoe je iets in Axle doet.",
-    sprocket_ph: "Hoe doe ik…?",
-    sprocket_send: "Versturen",
-    sprocket_thinking: "Sprocket zoekt het even op…",
-    sprocket_error: "Sorry — er ging iets mis. Probeer het opnieuw.",
-    sprocket_dupe_note: "Goed nieuws — iemand anders heeft hier ook om gevraagd, dus ik heb jouw stem eraan toegevoegd.",
-    sprocket_dupe_note_self: "Dit lijkt op een verzoek dat je al hebt ingediend — ik heb het bij het bestaande verzoek gehouden in plaats van een duplicaat aan te maken.",
-    sprocket_requests_nav: "Verzoeken",
-    sprocket_new_badge: "Nieuwe, nog niet bekeken verzoeken",
-    sprocket_requests_title: "Functieverzoeken",
-    sprocket_requests_hint: "Vastgelegd door Sprocket. De .jsonl / .md-bestanden op de box zijn leidend — pas status en notities daar aan.",
-    sprocket_no_requests: "Nog geen verzoeken.",
-    sprocket_votes: "stem(men)",
-    sprocket_f_today: "Nu", sprocket_f_freq: "Frequentie", sprocket_f_impact: "Impact",
-    sprocket_f_example: "Voorbeeld", sprocket_f_also: "Ook gevraagd door", sprocket_f_notes: "Notities",
-    sprocket_status_new: "Nieuw", sprocket_status_approved: "Goedgekeurd", sprocket_status_in_progress: "In behandeling",
-    sprocket_status_done: "Klaar", sprocket_status_declined: "Afgewezen",
     load_more: "Meer laden (50 van {n})",
     updates_waiting: "Updates beschikbaar, tik om te verversen",
     searching_loaded: "Gezocht in de {n} geladen e-mails",
@@ -585,7 +545,7 @@ function renderAttachments(w) {
   try { atts = JSON.parse(w.attachments_json || "[]"); } catch (e) { /* ignore bad json */ }
   if (!atts.length) return "";
   const links = atts.map((a, i) =>
-    `<a class="att" href="/item/${w.id}/attachment/${i}" target="_blank" rel="noopener">&#128206; ${esc(a.name)} <span class="muted">(${fmtSize(a.size)})</span></a>`);
+    `<a class="att" href="${B}/item/${w.id}/attachment/${i}" target="_blank" rel="noopener">&#128206; ${esc(a.name)} <span class="muted">(${fmtSize(a.size)})</span></a>`);
   return `<p class="attrow">${links.join(" ")}</p>`;
 }
 
@@ -687,72 +647,9 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
 }
 // -------------------------------------------------------------------------------
 
-// --- Sprocket: the in-app helper widget -----------------------------------------
-// A floating circular cog button fixed bottom-right on EVERY page (it sits outside
-// #workpane, so htmx swaps never touch it). Click toggles a small chat panel that POSTs
-// to /sprocket/ask and renders the answer. Self-contained: markup + a single IIFE here,
-// styles in components.css. Read-only/log-only — the panel only asks Sprocket questions.
-// All rendered text goes in via textContent in the script (never innerHTML), so a model
-// answer can't inject markup; the greeting/labels below are esc()'d for the HTML context.
-const SP_COG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
-function sprocketWidget(lang) {
-  const S = JSON.stringify({ thinking: t(lang, "sprocket_thinking"), error: t(lang, "sprocket_error") });
-  return `<div id="sprocket" class="sprocket" data-open="0">
-  <button type="button" class="sprocket-fab" id="sprocketFab" aria-label="${esc(t(lang, "sprocket_open"))}" aria-expanded="false">${SP_COG}</button>
-  <section class="sprocket-panel" id="sprocketPanel" role="dialog" aria-label="Sprocket" hidden>
-    <header class="sp-head"><span class="sp-title">${SP_COG}<span>Sprocket</span><span class="sp-tag">${esc(t(lang, "sprocket_tagline"))}</span></span>
-      <button type="button" class="sp-close" id="sprocketClose" aria-label="${esc(t(lang, "sprocket_close"))}">&times;</button></header>
-    <div class="sp-log" id="sprocketLog" aria-live="polite"><div class="sp-msg sp-bot">${esc(t(lang, "sprocket_greeting"))}</div></div>
-    <form class="sp-input" id="sprocketForm">
-      <textarea id="sprocketQ" rows="1" placeholder="${esc(t(lang, "sprocket_ph"))}" aria-label="${esc(t(lang, "sprocket_ph"))}"></textarea>
-      <button type="submit" class="sp-send" id="sprocketSend" aria-label="${esc(t(lang, "sprocket_send"))}">&#9654;</button>
-    </form>
-  </section>
-</div>
-<script>
-(function () {
-  var root = document.getElementById("sprocket"); if (!root) return;
-  var S = ${S};
-  var fab = document.getElementById("sprocketFab"), panel = document.getElementById("sprocketPanel"),
-      form = document.getElementById("sprocketForm"), input = document.getElementById("sprocketQ"),
-      log = document.getElementById("sprocketLog"), send = document.getElementById("sprocketSend"),
-      closeBtn = document.getElementById("sprocketClose");
-  var busy = false;
-  function open(o) { panel.hidden = !o; root.setAttribute("data-open", o ? "1" : "0"); fab.setAttribute("aria-expanded", o ? "true" : "false"); if (o) setTimeout(function () { input.focus(); }, 0); }
-  fab.addEventListener("click", function () { open(panel.hidden); });
-  closeBtn.addEventListener("click", function () { open(false); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) open(false); });
-  function addMsg(who, text) { var d = document.createElement("div"); d.className = "sp-msg " + (who === "you" ? "sp-you" : "sp-bot"); d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; }
-  function grow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 120) + "px"; }
-  input.addEventListener("input", grow);
-  input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
-  form.addEventListener("submit", function (e) {
-    e.preventDefault(); if (busy) return;
-    var q = input.value.trim(); if (!q) return;
-    // Build the transcript so far (everything already in the log, minus any pending bubble) so the
-    // intake can be multi-turn — the server stays stateless and the client holds the conversation.
-    var prior = [];
-    log.querySelectorAll(".sp-msg").forEach(function (el) {
-      if (el.classList.contains("sp-pending")) return;
-      prior.push({ role: el.classList.contains("sp-you") ? "you" : "bot", text: el.textContent });
-    });
-    addMsg("you", q); input.value = ""; grow();
-    busy = true; send.disabled = true;
-    var pend = addMsg("bot", S.thinking); pend.classList.add("sp-pending");
-    fetch("/sprocket/ask", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ q: q, history: JSON.stringify(prior) }) })
-      .then(function (r) { return r.json().catch(function () { return { error: S.error }; }); })
-      .then(function (d) { pend.classList.remove("sp-pending"); pend.textContent = (d && d.answer) ? d.answer : (d && d.error) ? d.error : S.error; })
-      .catch(function () { pend.classList.remove("sp-pending"); pend.textContent = S.error; })
-      .finally(function () { busy = false; send.disabled = false; log.scrollTop = log.scrollHeight; input.focus(); });
-  });
-})();
-</script>`;
-}
-// -------------------------------------------------------------------------------
-
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris23";   // 2026-09-30: withdrawn-draft notice above the reply box (item #2368)
+const ASSET_V = "polaris24";   // 2026-10-02: base path, framed rendering, Sprocket removed (W3)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -764,9 +661,9 @@ function appMenu(lang, user) {
   const L = (k) => esc(t(lang, k));
   return `<details class="menu appmenu m-only"><summary class="btn appmenu-btn" aria-label="${L("menu")}"><span class="burger" aria-hidden="true"></span></summary><div class="menu-list">`
     + `<div class="sheet-title">${L("menu")}</div>`
-    + `<a class="mitem" href="/">${L("inbox")}</a><a class="mitem" href="/blocks">${L("nav_blocks")}</a>`
-    + (user.role === "admin" ? `<a class="mitem" href="/audit">${L("audit")}</a><a class="mitem" href="/sprocket/requests">${L("sprocket_requests_nav")}${user.sprocketNew ? ` <span class="hbadge" title="${L("sprocket_new_badge")}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : "")
-    + `<div class="mlabel">${L("language")}</div><div class="segrow"><a class="seg${lang === "en" ? " on" : ""}" href="/setlang?lang=en">EN</a><a class="seg${lang === "nl" ? " on" : ""}" href="/setlang?lang=nl">NL</a></div>`
+    + `<a class="mitem" href="${B}/">${L("inbox")}</a><a class="mitem" href="${B}/blocks">${L("nav_blocks")}</a>`
+    + (user.role === "admin" ? `<a class="mitem" href="${B}/audit">${L("audit")}</a>` : "")
+    + `<div class="mlabel">${L("language")}</div><div class="segrow"><a class="seg${lang === "en" ? " on" : ""}" href="${B}/setlang?lang=en">EN</a><a class="seg${lang === "nl" ? " on" : ""}" href="${B}/setlang?lang=nl">NL</a></div>`
     + `<div class="who-row muted">${L("signed_in_as")} <b>${esc(user.display_name)}</b> (${esc(user.role)})</div>`
     + `<button type="button" data-close>${L("close")}</button></div></details>`;
 }
@@ -782,15 +679,14 @@ function page(title, user, body, refreshSec, opts) {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <title>${esc(title)} - Axle</title>
-<link rel="stylesheet" href="/assets/tokens.css?v=${ASSET_V}">
-<link rel="stylesheet" href="/assets/components.css?v=${ASSET_V}">
+<link rel="stylesheet" href="${B}/assets/tokens.css?v=${ASSET_V}">
+<link rel="stylesheet" href="${B}/assets/components.css?v=${ASSET_V}">
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
-<script src="/assets/htmx.min.js?v=${ASSET_V}" defer></script>
+<script src="${B}/assets/htmx.min.js?v=${ASSET_V}" defer></script>
 </head><body${bodyCls ? ` class="${esc(bodyCls)}"` : ""}>
-<header><span class="brand">Axle</span><a href="/">${esc(t(lang, "inbox"))}</a><a href="/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="/audit">${esc(t(lang, "audit"))}</a><a href="/sprocket/requests">${esc(t(lang, "sprocket_requests_nav"))}${user.sprocketNew ? ` <span class="hbadge" title="${esc(t(lang, "sprocket_new_badge"))}">${esc(String(user.sprocketNew))}</span>` : ""}</a>` : ""}
-<span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>
+${user.inFrame ? "" : `<header><span class="brand">Axle</span><a href="${B}/">${esc(t(lang, "inbox"))}</a><a href="${B}/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="${B}/audit">${esc(t(lang, "audit"))}</a>` : ""}
+<span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="${B}/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="${B}/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>`}
 <main${isShell ? ' class="wide"' : ""}>${opts && opts.desktopNote ? `<div class="banner desktop-note m-only">${esc(t(lang, "best_on_desktop"))}</div>` : ""}${body}</main>
-${sprocketWidget(lang)}
 <script>
 // M-09: one phone test shared by the positioner and the splitter
 window.__axPhone = window.matchMedia("(max-width: 1100px)");
@@ -897,12 +793,12 @@ function axFoldCheck() {
   function defs(F) { return { reply: F.reply ? F.reply.defaultValue : null, subject: F.subject ? F.subject.defaultValue : null, feedback: F.feedback ? F.feedback.defaultValue : null }; }
   function same(a, b) { return !!a && !!b && nz(a.reply) === nz(b.reply) && nz(a.subject) === nz(b.subject) && nz(a.feedback) === nz(b.feedback); }
   function put(F, d) { ["reply", "subject", "feedback"].forEach(function (k) { if (F[k] && d[k] != null) F[k].value = d[k]; }); growAll(); }
-  function idFrom(s) { var m = new RegExp("^/item/([0-9]+)(/|$)").exec(s || ""); return m ? m[1] : null; }
+  function idFrom(s) { var m = new RegExp("^${B}/item/([0-9]+)(/|$)").exec(s || ""); return m ? m[1] : null; }
   function itemId() {
     var f = document.getElementById("workform");
     if (f) return idFrom(f.getAttribute("action"));
     if (!document.querySelector("#workpane .has-item")) return null;
-    var el = document.querySelector("#workpane form[action^='/item/'], #workpane [hx-get^='/item/']");
+    var el = document.querySelector("#workpane form[action^='${B}/item/'], #workpane [hx-get^='${B}/item/']");
     return el ? idFrom(el.getAttribute("action") || el.getAttribute("hx-get")) : null;
   }
   function write() {
@@ -976,9 +872,9 @@ function axFoldCheck() {
   // M-58: "Draft kept" on the queue card of every item with a stored draft
   function markCards() {
     if (!phone()) return;
-    document.querySelectorAll("a.qcard[href^='/item/']").forEach(function (a) {
+    document.querySelectorAll("a.qcard[href^='${B}/item/']").forEach(function (a) {
       var h = a.getAttribute("href") || "", id = idFrom(h);
-      if (!id || h !== "/item/" + id) return;
+      if (!id || h !== "${B}/item/" + id) return;
       var has = !!ls(function (s) { return s.getItem(PRE + id) != null; });
       var ex = a.querySelector(".draft-kept");
       if (has && !ex) {
@@ -1034,7 +930,7 @@ document.addEventListener("click", function (e) {
 // queue when the bar wrapped and stranded its button on the left. Fix: when a menu opens,
 // position its list with position:fixed (which escapes the panes' overflow), anchored to
 // its summary, flipped above/below for room and CLAMPED into the viewport so it can never
-// be clipped or run off-screen. z-index lifts it over the Sprocket cog too. Without JS the
+// be clipped or run off-screen. Without JS the
 // menus still open exactly as before (this only relocates an already-open list).
 (function () {
   var GAP = 6, PAD = 8, openEl = null;
@@ -1128,7 +1024,7 @@ document.addEventListener("click", function (e) {
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     if (!phone() || !isCard(srcElt(e))) return;
     window.__axCardElt = srcElt(e);   // M-52: Back during the skeleton aborts this request
-    if (location.pathname.indexOf("/item/") === 0) return;
+    if (location.pathname.indexOf("${B}/item/") === 0) return;
     window.__axList = { y: window.scrollY, url: location.pathname + location.search };
   });
   // the opened email starts at the top
@@ -1148,7 +1044,7 @@ document.addEventListener("click", function (e) {
     if (!resetWork()) return;
     e.preventDefault();
     window.scrollTo(0, (L && L.y) || 0);
-    history.pushState({ htmx: true }, "", (L && L.url) || "/");
+    history.pushState({ htmx: true }, "", (L && L.url) || "${B}/");
     if (window.__axMarkCards) window.__axMarkCards();
     // F8: the in-place Back never reloads, so the list refreshes itself here (scroll kept, 5 s debounce)
     if (window.__axQReturn) window.__axQReturn();
@@ -1184,13 +1080,13 @@ document.addEventListener("click", function (e) {
     var S = window.__axS;
     // SKBAR: mirrors skBar(lang) in routes/item.js
     var bar = '<div class="actionbar sk-bar m-only" aria-hidden="true"><span class="send-split"><button class="send send-stack" type="button" disabled><span class="send-now">' + h(S.send_now) + '</span><span class="send-to"></span></button><details class="menu recip-pop"><summary class="btn send-caret"><span class="m-only recip-line"><span class="sk" style="width:70%"></span></span>&#9662;</summary></details></span><details class="menu"><summary class="btn">&#8943;&nbsp;' + h(S.more_actions) + '</summary></details></div>';
-    wp.innerHTML = '<section class="pane-center has-item sk-detail"><a class="m-back" href="/"><span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">' + h(S.back_inbox) + '</span><span class="m-back-title"></span></a>'
+    wp.innerHTML = '<section class="pane-center has-item sk-detail"><a class="m-back" href="${B}/"><span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">' + h(S.back_inbox) + '</span><span class="m-back-title"></span></a>'
       + '<div class="pane-inner" aria-hidden="true"><div class="sk-chips"><span class="sk sk-chip"></span><span class="sk sk-chip"></span><span class="sk sk-chip"></span></div>'
       + '<div class="box skbox"><span class="sk sk-t" style="width:45%"></span><span class="sk" style="width:95%"></span><span class="sk" style="width:88%"></span><span class="sk" style="width:60%"></span><span class="sk sk-box"></span></div>'
       + '<div class="box skbox"><span class="sk sk-t" style="width:35%"></span><span class="sk sk-box" style="height:44px"></span><span class="sk sk-tall"></span></div>'
       + bar + '</div></section><aside class="pane-context"></aside>';
     // the title "#id subject" from the card, set as text
-    var m = new RegExp("^/item/([0-9]+)").exec(card.getAttribute("href") || ""), sj = card.querySelector(".q-subj");
+    var m = new RegExp("^${B}/item/([0-9]+)").exec(card.getAttribute("href") || ""), sj = card.querySelector(".q-subj");
     var subj = sj ? sj.textContent.trim() : "";
     if (subj.charCodeAt(0) === 9998) subj = subj.slice(1).trim();   // the compose pencil
     var tt = wp.querySelector(".m-back-title"); if (tt) tt.textContent = (m ? "#" + m[1] + " " : "") + subj;
@@ -1323,11 +1219,11 @@ document.addEventListener("click", function (e) {
     if (!phone()) return;
     var b = e.submitter || null, act = f.getAttribute("action") || "", fa = (b && b.getAttribute("formaction")) || "";
     // RegExp from strings: this script sits in a template literal, where a backslash escape would be eaten
-    var send = f.id === "workform" && new RegExp("^/item/[0-9]+/send$").test(fa);
-    var fwd = new RegExp("^/item/[0-9]+/owner$").test(act) && !!b && b.hasAttribute("data-confirm");   // only handover options carry a confirm
+    var send = f.id === "workform" && new RegExp("^${B}/item/[0-9]+/send$").test(fa);
+    var fwd = new RegExp("^${B}/item/[0-9]+/owner$").test(act) && !!b && b.hasAttribute("data-confirm");   // only handover options carry a confirm
     if (!send && !fwd) return;
     var i = document.createElement("input"); i.type = "hidden"; i.name = "ret"; i.value = "list"; f.appendChild(i);
-    var m = new RegExp("^/item/([0-9]+)/").exec(send ? fa : act);
+    var m = new RegExp("^${B}/item/([0-9]+)/").exec(send ? fa : act);
     if (m) ss(function (s) { s.setItem(RET, JSON.stringify({ id: m[1], t: Date.now() })); });
   });
   window.addEventListener("pageshow", function () { document.querySelectorAll("form input[name=ret]").forEach(function (i) { i.remove(); }); });
@@ -1335,7 +1231,7 @@ document.addEventListener("click", function (e) {
   // renders its own page, which drops the marker), so the item's local draft is done with.
   var rm = null;
   try { rm = JSON.parse(ss(function (s) { var v = s.getItem(RET); s.removeItem(RET); return v; }) || "null"); } catch (x) { rm = null; }
-  if (rm && rm.id && location.pathname === "/" && Date.now() - rm.t < 120000) {
+  if (rm && rm.id && location.pathname === "${B}/" && Date.now() - rm.t < 120000) {
     try { window.localStorage.removeItem("axle.draft." + rm.id); } catch (x) {}
     ss(function (s) { s.removeItem("axle.pending." + rm.id); });
   }
@@ -1558,7 +1454,7 @@ const workPanes = (centerHtml, contextHtml, opts) => {
   const backInner = back ? `<span class="m-back-ic" aria-hidden="true">&larr;</span><span class="sr">${esc(back)}</span>${title ? `<span class="m-back-title">${esc(title)}</span>` : ""}` : "";
   // M-36: the context sheet's "Back to email" bar; id="ctx" is the no-JS :target fallback
   const ctxBack = back ? `<a class="m-back m-ctxback m-only" id="ctx" href="#" data-ctx-close><span class="m-back-ic" aria-hidden="true">&larr;</span>${esc(t(lang, "back_to_email"))}</a>` : "";
-  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="/">${backInner}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
+  return `<section class="pane-center${back ? " has-item" : ""}">${back ? `<a class="m-back" href="${B}/">${backInner}</a>` : ""}<div class="pane-inner">${centerHtml}</div></section>
 <aside class="pane-context">${ctxBack}${contextHtml}</aside>`;
 };
 
@@ -1576,7 +1472,7 @@ const shell = (queueHtml, panesHtml) =>
 // (without JS the skeleton is static and the back-link still works).
 const QSKEL = `<div class="qskel"><span></span><span></span><span></span></div>`;
 const lazyQueue = (lang, qs) =>
-  `<div class="queue-lazy" hx-get="/queue${qs ? "?" + esc(qs) : ""}" hx-trigger="load" hx-swap="outerHTML"><a href="&#47;">${esc(t(lang, "back_inbox"))}</a>${QSKEL.repeat(4)}</div>`;
+  `<div class="queue-lazy" hx-get="${B}/queue${qs ? "?" + esc(qs) : ""}" hx-trigger="load" hx-swap="outerHTML"><a href="${B}&#47;">${esc(t(lang, "back_inbox"))}</a>${QSKEL.repeat(4)}</div>`;
 
 module.exports = {
   esc, UI_LANGS, DEFAULT_LANG, langOK, STRINGS, t,

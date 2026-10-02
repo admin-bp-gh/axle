@@ -6,6 +6,7 @@ const OB = require("../outlook-block.js");        // Outlook-side filing of bloc
 const { db, audit } = require("../db.js");
 const { esc, t, page, fmtDateTime } = require("../views/ui.js");
 const { markReadSafe } = require("./shared.js");
+const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
 
 module.exports = function mountAdmin(app) {
 
@@ -22,14 +23,14 @@ app.get("/item/:id/block", async (req, res) => {
   const lang = req.user.lang;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
-  if (w.origin === "compose") return res.redirect("/item/" + w.id);
+  if (w.origin === "compose") return res.redirect(BASE.url("/item/" + w.id));
   const addr = String(w.sender_email || "").trim().toLowerCase();
   const domain = addr.split("@")[1] || "";
-  if (!addr || !domain) return res.redirect("/item/" + w.id);
+  if (!addr || !domain) return res.redirect(BASE.url("/item/" + w.id));
   // Never offer to block ourselves. With the Outlook rule live (action #7) a block on one of our
   // own domains would file our own internal mail — including action #6's cross-mailbox handover
   // forwards — out of the inbox. Cheap guard, catastrophic omission.
-  if (OB.isInternal(addr)) return res.redirect("/item/" + w.id);
+  if (OB.isInternal(addr)) return res.redirect(BASE.url("/item/" + w.id));
 
   // SAP check: warn when the address belongs to a real customer (guest matches have no
   // CardCode and don't count). A SQL failure must not break the page - show "unknown".
@@ -44,17 +45,17 @@ app.get("/item/:id/block", async (req, res) => {
   } catch (e) { /* keep the unknown note */ }
 
   res.send(page(t(lang, "block_title"), req.user, `
-    <a class="m-back m-only" href="/item/${w.id}">&larr; #${w.id}</a>
-    <p class="m-hide"><a href="/item/${w.id}">&larr; #${w.id}</a></p>
+    <a class="m-back m-only" href="${BASE.path}/item/${w.id}">&larr; #${w.id}</a>
+    <p class="m-hide"><a href="${BASE.path}/item/${w.id}">&larr; #${w.id}</a></p>
     <h2>${esc(t(lang, "block_title"))}</h2>
     <div class="box">
       <p><b>${esc(w.sender_name || addr)}</b> &lt;${esc(addr)}&gt;</p>
       <p class="muted">${esc(t(lang, OB.active() ? "block_explain_outlook" : "block_explain"))}</p>
       ${sapNote}
-      <form method="post" action="/item/${w.id}/block">
+      <form method="post" action="${BASE.path}/item/${w.id}/block">
         <p><b>${esc(t(lang, "block_addr_opt"))}:</b> ${esc(addr)}</p>
         <button class="primary">${esc(t(lang, "block_confirm_btn"))}</button>
-        <a class="block-cancel" href="/item/${w.id}" style="margin-left:10px">${esc(t(lang, "block_back"))}</a>
+        <a class="block-cancel" href="${BASE.path}/item/${w.id}" style="margin-left:10px">${esc(t(lang, "block_back"))}</a>
       </form>
     </div>`));
 });
@@ -62,10 +63,10 @@ app.get("/item/:id/block", async (req, res) => {
 app.post("/item/:id/block", async (req, res) => {
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(req.user.lang, "not_found"))}</p>`));
-  if (w.origin === "compose") return res.redirect("/item/" + w.id);
+  if (w.origin === "compose") return res.redirect(BASE.url("/item/" + w.id));
   const addr = String(w.sender_email || "").trim().toLowerCase();
   const domain = addr.split("@")[1] || "";
-  if (!addr || !domain) return res.redirect("/item/" + w.id);
+  if (!addr || !domain) return res.redirect(BASE.url("/item/" + w.id));
   // Whole-domain blocking was REMOVED on 2026-07-27 (Brad's call). Two mis-clicks on the old
   // "the whole domain" option — '@gmail.com' and '@shopify.com' — silently swallowed 13 days of
   // consumer customer email and 4 weeks of webshop contact-form messages, with no trace anywhere
@@ -77,7 +78,7 @@ app.post("/item/:id/block", async (req, res) => {
   // any more, and remain removable on the Blocked page.
   const kind = "address";
   const pattern = addr.slice(0, 200);
-  if (OB.isInternal(pattern)) return res.redirect("/item/" + w.id);   // mirrors the GET guard
+  if (OB.isInternal(pattern)) return res.redirect(BASE.url("/item/" + w.id));   // mirrors the GET guard
   db.prepare("INSERT OR IGNORE INTO sender_blocks (pattern, kind, reason, added_by, work_item_id) VALUES (?, ?, 'unwanted sender', ?, ?)")
     .run(pattern, kind, req.user.tailscale_login, w.id);
   db.prepare("UPDATE work_items SET status = 'archived', resolution = 'no_action', updated_at = datetime('now') WHERE id = ?").run(w.id);
@@ -88,7 +89,7 @@ app.post("/item/:id/block", async (req, res) => {
   // never throws — a Graph failure is audited and leaves the Axle-side block standing rather than
   // failing the whole action in the user's face.
   await OB.applyBlock(req.user.tailscale_login, pattern, w.id);
-  res.redirect("/");
+  res.redirect(BASE.url("/"));
 });
 
 // Blocklist viewer: visible to the whole team, unblock allowed for anyone (audited), so a
@@ -119,8 +120,8 @@ app.get("/blocks", async (req, res) => {
   const trs = rows.map((b) => `<tr>
       <td>${esc(b.pattern)}</td><td>${esc(b.kind)}</td><td>${esc(b.added_by)}</td>
       <td class="muted">${esc(fmtDateTime(b.added_at, lang))}</td>
-      <td>${b.work_item_id ? `<a href="/item/${b.work_item_id}">#${b.work_item_id}</a>` : ""}</td>
-      <td><form method="post" action="/blocks/${b.id}/unblock"><button class="mini">${esc(t(lang, "unblock"))}</button></form></td>
+      <td>${b.work_item_id ? `<a href="${BASE.path}/item/${b.work_item_id}">#${b.work_item_id}</a>` : ""}</td>
+      <td><form method="post" action="${BASE.path}/blocks/${b.id}/unblock"><button class="mini">${esc(t(lang, "unblock"))}</button></form></td>
     </tr>`).join("");
   res.send(page(t(lang, "blocks_title"), req.user, `
     <h2>${esc(t(lang, "blocks_title"))}</h2>
@@ -140,7 +141,7 @@ app.post("/blocks/:id/unblock", async (req, res) => {
     // Unblocking is the fix-a-mistake path, so it has to undo the visible effect, not just the row.
     await OB.applyUnblock(req.user.tailscale_login, b.kind === "address" ? b.pattern : null, b.work_item_id || null);
   }
-  res.redirect("/blocks");
+  res.redirect(BASE.url("/blocks"));
 });
 
 // Audit log viewer (admin only). Searchable over the WHOLE table (not just the newest 500):
@@ -172,13 +173,13 @@ app.get("/audit", (req, res) => {
 
   const opts = ['<option value="">(any action)</option>']
     .concat(actionNames.map((a) => `<option value="${esc(a)}"${a === act ? " selected" : ""}>${esc(a)}</option>`)).join("");
-  const form = `<form method="get" action="/audit" style="margin:0 0 10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+  const form = `<form method="get" action="${BASE.path}/audit" style="margin:0 0 10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <input name="q" value="${esc(q)}" placeholder="Search user, action or detail&hellip;" style="width:18em">
       <select name="action">${opts}</select>
       <input name="item" value="${item || ""}" inputmode="numeric" placeholder="Item #" style="width:6em">
-      <button class="mini">Search</button>${(q || act || item) ? ` <a href="/audit">Clear</a>` : ""}
+      <button class="mini">Search</button>${(q || act || item) ? ` <a href="${BASE.path}/audit">Clear</a>` : ""}
     </form>`;
-  const trs = rows.map((r) => `<tr><td>${r.id}</td><td class="muted">${esc(r.ts)}</td><td>${esc(r.user)}</td><td>${esc(r.action)}</td><td>${r.work_item_id ? `<a href="/item/${r.work_item_id}">#${r.work_item_id}</a>` : ""}</td><td class="muted">${esc(r.detail || "")}</td></tr>`).join("");
+  const trs = rows.map((r) => `<tr><td>${r.id}</td><td class="muted">${esc(r.ts)}</td><td>${esc(r.user)}</td><td>${esc(r.action)}</td><td>${r.work_item_id ? `<a href="${BASE.path}/item/${r.work_item_id}">#${r.work_item_id}</a>` : ""}</td><td class="muted">${esc(r.detail || "")}</td></tr>`).join("");
   const note = (q || act || item)
     ? `${rows.length} match(es)${rows.length === 500 ? " — newest 500 shown, narrow the search for older entries" : ""}, newest first. Times are UTC.`
     : "Last 500 entries, newest first. Times are UTC.";

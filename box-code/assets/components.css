@@ -473,9 +473,6 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
      specificity, so they are repeated here to win on phone without resorting to !important */
   textarea.ans, #replybox, .cfsubj, .qbar select, input[type=search], input[type=text], input[type=email], .sp-input textarea, .modal input, .modal select, .modal textarea { font-size: var(--fs-input); }
 
-  /* M-03: Sprocket helper is off the phone */
-  .sprocket { display: none; }
-
   /* M-04: safe areas, using max() so nothing changes when the inset is 0 */
   header { padding-left: max(var(--s4), env(safe-area-inset-left)); padding-right: max(var(--s4), env(safe-area-inset-right)); padding-top: max(10px, env(safe-area-inset-top)); }
   .m-back { padding-left: max(var(--s4), env(safe-area-inset-left)); padding-right: max(var(--s4), env(safe-area-inset-right)); }
@@ -818,57 +815,3 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
      sheets keep their own overscroll-behavior: contain (fix 1 F2), this sets only the root scroller */
   html:has(> body.appshell:not(.ax-detail)) { overscroll-behavior-y: contain; }
 }
-
-/* --- Sprocket: the in-app helper (floating cog + chat panel) --------------------
-   Fixed bottom-right on every page; z-index above modals so the helper is always
-   reachable. The panel is a small flex column: header / scrolling log / input row. */
-.sprocket { position: fixed; right: 20px; bottom: 20px; z-index: 60; }
-.sprocket-fab { width: 52px; height: 52px; min-height: 0; padding: 0; border: none; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #fff; box-shadow: var(--shadow-pop); cursor: pointer; }
-.sprocket-fab:hover { background: var(--accent-strong); }
-.sprocket-fab:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
-.sprocket-fab svg { width: 24px; height: 24px; }
-.sprocket-panel { position: absolute; right: 0; bottom: 64px; width: 340px; max-width: calc(100vw - 32px);
-  height: min(70vh, 560px); height: min(70dvh, 560px); display: flex; flex-direction: column; overflow: hidden;
-  background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-card); box-shadow: var(--shadow-modal); }
-/* The panel toggles via the [hidden] attribute; this beats the display:flex above so close/open
-   (X button and the cog) actually hide it. Without it the panel can never be dismissed. */
-.sprocket-panel[hidden] { display: none; }
-.sp-head { flex: none; display: flex; align-items: center; justify-content: space-between;
-  padding: 10px var(--s3); border-bottom: 1px solid var(--border); background: var(--surface-2); }
-.sp-title { display: flex; align-items: center; gap: var(--s2); font-weight: 600; color: var(--ink); }
-.sp-title svg { width: 18px; height: 18px; color: var(--accent); }
-.sp-tag { font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
-.sp-close { min-height: 0; border: none; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 4px; }
-.sp-close:hover { color: var(--ink); }
-.sp-log { flex: 1 1 auto; overflow-y: auto; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
-.sp-msg { max-width: 85%; padding: 8px 11px; border-radius: var(--r-ctl); font-size: var(--fs-base);
-  line-height: var(--lh); white-space: pre-wrap; word-wrap: break-word; }
-.sp-bot { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); }
-.sp-you { align-self: flex-end; background: var(--accent-soft); color: var(--ink); }
-.sp-pending { color: var(--muted); font-style: italic; }
-.sp-input { flex: none; display: flex; align-items: flex-end; gap: var(--s2);
-  padding: var(--s2) var(--s3) var(--s3); border-top: 1px solid var(--border); }
-.sp-input textarea { flex: 1 1 auto; resize: none; font-family: inherit; font-size: var(--fs-base); line-height: var(--lh);
-  padding: 8px 10px; border: 1px solid var(--border-2); border-radius: var(--r-ctl); max-height: 120px; background: var(--surface); }
-.sp-input textarea:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; border-color: var(--accent-ring); }
-.sp-send { flex: none; width: 38px; height: 38px; min-height: 0; padding: 0; display: flex; align-items: center; justify-content: center;
-  border-radius: var(--r-ctl); background: var(--brand); color: #fff; border: 1px solid var(--brand); cursor: pointer; }
-.sp-send:hover { background: var(--brand-hover); }
-.sp-send:disabled { opacity: .5; cursor: default; }
-@media (max-width: 600px) {
-  .sprocket { right: 14px; bottom: 14px; }
-  .sprocket-panel { width: calc(100vw - 28px); height: min(75vh, 560px); height: min(75dvh, 560px); }
-}
-
-/* Sprocket: unread-requests count badge on the header "Requests" link */
-.hbadge { display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 3px; border-radius: 9px;
-  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; line-height: 16px;
-  text-align: center; vertical-align: middle; }
-
-/* Sprocket feature-request review (admin, read-only) */
-.sr-card { margin: var(--s2) 0; }
-.sr-head { font-size: var(--fs-md); margin-bottom: 4px; }
-.sr-meta { font-size: var(--fs-xs); margin-bottom: var(--s2); }
-.sr-f { margin: 2px 0; font-size: var(--fs-base); }

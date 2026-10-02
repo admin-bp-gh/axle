@@ -18,16 +18,17 @@ const { db, audit, acquireSync, releaseSync, syncStatus } = require("../db.js");
 const { esc, t, page, langOK, statusLabel, statusWithRes, suggestCloseChip, intentLabel, ownerLabel,
         fmtDateTime, fmtTime, parseTS, shell, workPanes } = require("../views/ui.js");
 const { anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, defaultMailbox } = require("./shared.js");
+const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
 
 module.exports = function mountInbox(app, { ACTION_COMPOSE_SEND }) {
 
 // Language toggle: set the per-browser language cookie and return to the prior page.
 app.get("/setlang", (req, res) => {
   const l = langOK(req.query.lang);
-  res.setHeader("Set-Cookie", `axle_lang=${l}; Path=/; Max-Age=31536000; SameSite=Lax`);
-  let back = "/";
+  res.setHeader("Set-Cookie", `axle_lang=${l}; Path=${BASE.path || "/"}; Max-Age=31536000; SameSite=Lax`);
+  let back = BASE.url("/");
   try { if (req.headers.referer) { const u = new URL(req.headers.referer); back = u.pathname + u.search; } } catch (e) { /* ignore */ }
-  if (!back.startsWith("/")) back = "/";
+  if (!back.startsWith("/")) back = BASE.url("/");
   audit(req.user.tailscale_login, "set_language", null, l);
   res.redirect(back);
 });
@@ -54,7 +55,7 @@ function startSync(login) {
 }
 app.post("/sync", (req, res) => {
   startSync(req.user.tailscale_login);
-  res.redirect("/?synced=1");
+  res.redirect(BASE.url("/?synced=1"));
 });
 
 // --- The work queue (Step 2: the shell's left pane) -----------------------------
@@ -141,9 +142,9 @@ async function buildQueuePane(req, opts) {
     catch (e) { return ""; }
     return n ? ` <span class="chip sugg" title="${esc(t(lang, "sugg_title"))}">&#128206;${n}</span>` : "";
   };
-  const mbLink = (v, label) => `<a class="mitem${mb === v ? " on" : ""}" href="/?mailbox=${v}&show=${show}&scope=${scope}">${label}</a>`;
-  const showTab = (v, label, n) => `<a class="qtab${show === v ? " on" : ""}" href="/?mailbox=${mb}&show=${v}&scope=${scope}" hx-get="/queue?mailbox=${mb}&show=${v}&scope=${scope}" hx-target="#queuepane" hx-swap="innerHTML" hx-push-url="/?mailbox=${mb}&show=${v}&scope=${scope}">${label}<span class="n">${n || 0}</span></a>`;
-  const scopeLink = (v, label) => `<a class="seg${scope === v ? " on" : ""}" href="/?mailbox=${mb}&show=${show}&scope=${v}">${label}</a>`;
+  const mbLink = (v, label) => `<a class="mitem${mb === v ? " on" : ""}" href="${BASE.path}/?mailbox=${v}&show=${show}&scope=${scope}">${label}</a>`;
+  const showTab = (v, label, n) => `<a class="qtab${show === v ? " on" : ""}" href="${BASE.path}/?mailbox=${mb}&show=${v}&scope=${scope}" hx-get="${BASE.path}/queue?mailbox=${mb}&show=${v}&scope=${scope}" hx-target="#queuepane" hx-swap="innerHTML" hx-push-url="${BASE.path}/?mailbox=${mb}&show=${v}&scope=${scope}">${label}<span class="n">${n || 0}</span></a>`;
+  const scopeLink = (v, label) => `<a class="seg${scope === v ? " on" : ""}" href="${BASE.path}/?mailbox=${mb}&show=${show}&scope=${v}">${label}</a>`;
   const searchable = (w) => [
     "#" + w.id, statusLabel(lang, w.status), w.mailbox, w.sender_name, w.sender_email, w.subject,
     sumOf(w), w.summary, intentLabel(lang, w.intent), ownerLabel(w), w.rule_id, w.email_text,
@@ -160,7 +161,7 @@ async function buildQueuePane(req, opts) {
   // work panes in place so the queue never reloads while browsing. data-* feeds
   // the client-side search filter and sort, exactly like the old table's columns.
   const cards = items.map((w, i) => `
-    <a class="qcard${sel === w.id ? " sel" : ""}" href="/item/${w.id}" hx-get="/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true"
+    <a class="qcard${sel === w.id ? " sel" : ""}" href="${BASE.path}/item/${w.id}" hx-get="${BASE.path}/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true"
        data-search="${esc(searchable(w))}" data-rank="${offset + i}" data-upd="${esc(w.updated_at || "")}" data-prio="${w.priority || 2}">
       <span class="q-l1"><span class="q-from">${esc(w.sender_name || w.sender_email)}</span><span class="q-time muted">${esc(fmtDateTime(w.updated_at, lang))}</span></span>
       <span class="q-l2"><span class="q-subj">${w.origin === "compose" ? "&#9998; " : ""}${esc(w.subject || t(lang, "no_subject"))}</span><span class="q-badges">${suggHint(w)}${(w.priority || 2) === 1 && !w.injection_flag ? ` <span class="badge prio1">P1</span>` : ""}</span></span>
@@ -170,7 +171,7 @@ async function buildQueuePane(req, opts) {
   // C1 Load more: a sibling after #qlist; its button appends the next page into #qlist and
   // each page response replaces this row out of band (or deletes it on the last page).
   const hasMore = paged && offset + items.length < total;
-  const moreBtn = `<button type="button" class="qmore" id="qmore" hx-get="/queue?mailbox=${mb}&show=${show}&scope=${scope}&page=${page + 1}" hx-target="#qlist" hx-swap="beforeend" data-page="${page}" data-total="${total}">${esc(t(lang, "load_more").replace("{n}", total))}</button>`;
+  const moreBtn = `<button type="button" class="qmore" id="qmore" hx-get="${BASE.path}/queue?mailbox=${mb}&show=${show}&scope=${scope}&page=${page + 1}" hx-target="#qlist" hx-swap="beforeend" data-page="${page}" data-total="${total}">${esc(t(lang, "load_more").replace("{n}", total))}</button>`;
   const trScript = `<script>
     (function () {
       // Background summary-translation fill (UX round): cards rendered instantly with
@@ -181,7 +182,7 @@ async function buildQueuePane(req, opts) {
       var pend = document.querySelectorAll("#qlist [data-trs]");
       if (!pend.length) return;
       var ids = Array.prototype.map.call(pend, function (el) { return el.getAttribute("data-trs"); });
-      fetch("/queue/summaries", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "ids=" + ids.join(",") })
+      fetch("${BASE.path}/queue/summaries", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "ids=" + ids.join(",") })
         .then(function (x) { return x.json(); })
         .then(function (d) {
           Array.prototype.forEach.call(pend, function (el) {
@@ -224,7 +225,7 @@ async function buildQueuePane(req, opts) {
                 <option value="prio">${esc(t(lang, "sort_prio"))}</option>
               </select>
               <div class="mlabel">${esc(t(lang, "sync"))}</div>
-              <form method="post" action="/sync"><button ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button></form>
+              <form method="post" action="${BASE.path}/sync"><button ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button></form>
               <button type="button" data-close>${esc(t(lang, "cancel"))}</button>
             </div></div>
         </details>
@@ -240,7 +241,7 @@ async function buildQueuePane(req, opts) {
         </select>
         <span class="qcount" id="qcount"></span>
       </div>
-      <form method="post" action="/sync" class="qlive">
+      <form method="post" action="${BASE.path}/sync" class="qlive">
         <span class="livedot${sync.running ? " busy" : ""}"></span>
         <span class="muted">${sync.running ? esc(t(lang, "syncing")) : esc(t(lang, "live_updated").replace("{t}", lastT))}</span>
         <button type="button" class="qupd m-only" id="qupd" hidden>${esc(t(lang, "updates_waiting"))}</button>
@@ -349,9 +350,9 @@ async function buildQueuePane(req, opts) {
         var c = window.__axQPoll;
         if (!c || !window.htmx) return;
         c.last = Date.now();
-        var parts = location.pathname.split("/");
+        var parts = location.pathname.slice(${BASE.path.length}).split("/");
         var sel = parts[1] === "item" ? (parseInt(parts[2], 10) || 0) : 0;
-        htmx.ajax("GET", "/queue?" + c.qs + "&sel=" + sel, { target: "#queuepane", swap: "innerHTML" });
+        htmx.ajax("GET", "${BASE.path}/queue?" + c.qs + "&sel=" + sel, { target: "#queuepane", swap: "innerHTML" });
       };
       // M-54: remember the last touch on the list (registered once per page).
       if (!window.__axQTouchWired) {
@@ -426,7 +427,7 @@ function composeUi(req) {
       <div class="modal-card">
         <div class="modal-head"><h2>${esc(t(lang, "compose_title"))}</h2>
           <button type="button" class="modal-x" id="composeClose" aria-label="Close">&times;</button></div>
-        <form method="post" action="/compose" id="composeForm" autocomplete="off">
+        <form method="post" action="${BASE.path}/compose" id="composeForm" autocomplete="off">
           <label class="fld"><span>${esc(t(lang, "compose_who"))}</span>
             <div class="whorow">
               <input type="text" name="who" id="who" placeholder="${esc(t(lang, "compose_who_ph"))}">
@@ -596,7 +597,7 @@ function composeUi(req) {
       function doFind() {
         var who = $("who").value.trim(); if (!who) return;
         var box = $("resolveBox"); box.style.display = "block"; box.innerHTML = '<span class="spin"></span> <span class="muted">' + esc2(L.finding) + "</span>";
-        fetch("/compose/resolve", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "who=" + encodeURIComponent(who) })
+        fetch("${BASE.path}/compose/resolve", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "who=" + encodeURIComponent(who) })
           .then(function (x) { return x.json(); }).then(renderResolve)
           .catch(function () { box.innerHTML = '<span class="rbad">(error)</span>'; });
       }

@@ -1129,7 +1129,8 @@ app.post("/item/:id/work", (req, res) => {
 app.post("/item/:id/teach", (req, res) => {
   const w = db.prepare("SELECT id, draft_edit FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(req.user.lang, "not_found"))}</p>`));
-  const ai = db.prepare("SELECT body FROM drafts WHERE work_item_id = ? AND is_interim = 0 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
+  // Newest AI draft of any kind: on a held item the box shows the interim, not the full draft.
+  const ai = db.prepare("SELECT body FROM drafts WHERE work_item_id = ? AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
   const id = K.flag(db, { workItemId: w.id, by: req.user.tailscale_login, text: req.body.text,
     snapshot: w.draft_edit != null ? w.draft_edit : (ai ? ai.body : "") });
   if (id) audit(req.user.tailscale_login, "teach_flag", w.id, `#${id} ${K.cleanText(req.body.text).slice(0, 100)}`);

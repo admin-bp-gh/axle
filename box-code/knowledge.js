@@ -57,6 +57,13 @@ function reject(db, id, by) {
     .run(by, id).changes === 1;
 }
 
+// Retire an approved entry: it leaves the prompt (folded into business-knowledge.md by hand, or
+// found wrong) and stays on record as 'retired'.
+function retire(db, id, by) {
+  return db.prepare("UPDATE teach_flags SET status = 'retired', reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ? AND status = 'approved'")
+    .run(by, id).changes === 1;
+}
+
 // Withdraw a pending flag: its author, or an admin. Decided rows are Brad's and cannot be withdrawn.
 function withdraw(db, id, by, isAdmin) {
   const f = db.prepare("SELECT flagged_by FROM teach_flags WHERE id = ? AND status = 'pending'").get(id);
@@ -87,4 +94,4 @@ function block(db) {
   return `<business_knowledge>\n${STATIC}${learned}</business_knowledge>`;
 }
 
-module.exports = { block, cleanText, flag, approve, reject, withdraw, pendingCount, learnedLine, MAX_TEXT, HEADING };
+module.exports = { block, cleanText, flag, approve, reject, retire, withdraw, pendingCount, learnedLine, MAX_TEXT, HEADING };

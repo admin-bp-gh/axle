@@ -280,8 +280,9 @@ CREATE TABLE IF NOT EXISTS sender_block_sync (
 `);
 
 // Teach Axle (Phase 6, 2026-10-05). A salesperson flags from an item what Axle should have known;
-// Brad reviews on /teach. status pending -> approved | rejected (rejected rows are kept for the
-// audit trail, never deleted). Approved rows are read into the drafting prompt by knowledge.js on
+// Brad reviews on /teach. status pending -> approved | rejected, approved -> retired (once folded
+// into business-knowledge.md or found wrong). Decided rows are kept for the audit trail, never
+// deleted; only the author (or an admin) can withdraw a still-pending flag. Approved rows are read into the drafting prompt by knowledge.js on
 // every draft; final_text is the text Brad approved (his edit of the flag, or the flag verbatim).
 // draft_snapshot is the reply box at the moment of flagging, so Brad sees what the salesperson saw.
 db.exec(`

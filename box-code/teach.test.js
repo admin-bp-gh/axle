@@ -92,4 +92,15 @@ test("learned lines keep approval order and fall back to the login when the user
   assert.ok(b.includes(`(ghost@bp, item #2500): Later fact`));
 });
 
+test("retire takes an approved entry out of the prompt and keeps the row", () => {
+  const f6 = K.flag(db, { workItemId: 2600, by: "jack@bp", text: "Folded into the file" });
+  K.approve(db, f6, "brad@bp", "Folded into the file");
+  assert.ok(K.block(db).includes("Folded into the file"));
+  assert.ok(K.retire(db, f6, "brad@bp"));
+  assert.strictEqual(row(f6).status, "retired");
+  assert.ok(!K.block(db).includes("Folded into the file"));
+  assert.ok(!K.retire(db, f6, "brad@bp"), "only approved rows can be retired");
+  assert.ok(!K.retire(db, f2, "brad@bp"), "a rejected row cannot be retired");
+});
+
 console.log(`\n${pass} passed`);

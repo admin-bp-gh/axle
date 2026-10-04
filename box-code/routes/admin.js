@@ -197,14 +197,15 @@ app.get("/teach", (req, res) => {
       <td><span class="chip">${esc(t(lang, "teach_" + f.status))}</span></td>
       <td>${f.status === "approved" ? esc(K.learnedLine(f)) : esc(f.text)}</td>
       <td class="muted">${esc(f.reviewed_by || "")} ${esc(fmtDateTime(f.reviewed_at, lang))}</td>
-      <td><a href="${BASE.path}/item/${f.work_item_id}">#${f.work_item_id}</a></td></tr>`).join("");
+      <td><a href="${BASE.path}/item/${f.work_item_id}">#${f.work_item_id}</a></td>
+      <td>${f.status === "approved" ? `<form method="post" action="${BASE.path}/teach/${f.id}/retire"><button class="mini" data-confirm="${esc(t(lang, "teach_retire_confirm"))}">${esc(t(lang, "teach_retire"))}</button></form>` : ""}</td></tr>`).join("");
 
   res.send(page(t(lang, "teach_page"), req.user, `
     <h2>${esc(t(lang, "teach_page"))} ${pending.length ? `<span class="chip">${pending.length}</span>` : ""}</h2>
     <p class="muted">${esc(t(lang, "teach_explain"))}</p>
     ${pendingHtml || `<p class="muted">${esc(t(lang, "teach_none"))}</p>`}
     ${decided.length ? `<h3 style="margin-top:18px">${esc(t(lang, "teach_decided"))}</h3>
-      <div class="hscroll"><table><tr><th></th><th>${esc(t(lang, "teach_col_text"))}</th><th>${esc(t(lang, "teach_col_by"))}</th><th>${esc(t(lang, "col_item_b"))}</th></tr>${decidedRows}</table></div>` : ""}`,
+      <div class="hscroll"><table><tr><th></th><th>${esc(t(lang, "teach_col_text"))}</th><th>${esc(t(lang, "teach_col_by"))}</th><th>${esc(t(lang, "col_item_b"))}</th><th></th></tr>${decidedRows}</table></div>` : ""}`,
     null, { desktopNote: true }));
 });
 
@@ -213,6 +214,15 @@ app.post("/teach/:id/approve", (req, res) => {
   const f = db.prepare("SELECT work_item_id, text FROM teach_flags WHERE id = ?").get(req.params.id);
   const final = f && K.approve(db, req.params.id, req.user.tailscale_login, req.body.text);
   if (final) audit(req.user.tailscale_login, "teach_approve", f.work_item_id, `#${req.params.id}${final !== f.text ? " (edited)" : ""} ${final.slice(0, 100)}`);
+  res.redirect(BASE.url("/teach"));
+});
+
+app.post("/teach/:id/retire", (req, res) => {
+  if (!requireAdmin(req, res, "teach")) return;
+  const f = db.prepare("SELECT work_item_id, final_text FROM teach_flags WHERE id = ?").get(req.params.id);
+  if (f && K.retire(db, req.params.id, req.user.tailscale_login)) {
+    audit(req.user.tailscale_login, "teach_retire", f.work_item_id, `#${req.params.id} ${String(f.final_text || "").slice(0, 100)}`);
+  }
   res.redirect(BASE.url("/teach"));
 });
 

@@ -178,7 +178,9 @@ async function runRedraft(itemId, login) {
     const prev = WA.previousAttempt(w, latestWithdrawn(itemId), latestDraftVersion(itemId),
       db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL").all(itemId));
     if (prev) seed.previous_attempt = prev;
-    const { result, toolLog } = await E.agenticDraft(anthropic, email, [], seed, MAILBOX_OF[w.mailbox]);
+    const { result, toolLog } = await E.agenticDraft(anthropic, email, [], seed, MAILBOX_OF[w.mailbox], {
+      exemplars: { intent: w.intent, language: w.language, mailbox: w.mailbox, excludeItemId: itemId },
+    });
     const { status, ver } = persistResult(itemId, result, toolLog, seed);
     // Refresh suggested documents from the newest body + the model's referenced_documents hint
     // (read-only; same deterministic resolve+scope gate). Skipped for contact-form/flagged items.

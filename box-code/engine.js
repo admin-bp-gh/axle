@@ -16,6 +16,7 @@
 const fs = require("fs");
 const C = require("./connectors.js");
 const T = require("./agent-tools.js");
+const X = require("./exemplars.js");
 
 const MODEL = "claude-sonnet-5-5";   // upgraded from claude-sonnet-4-6 on 2026-09-30; watch draft quality
 const CLASSIFY_MODEL = "claude-haiku-4-5-20251001";
@@ -646,10 +647,23 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     const threadBlock = history.length
       ? `<thread_history>\n${history.map((m) => `--- ${m.received} ---\n${stripInvisible(m.text || "").slice(0, 1500)}`).join("\n")}\n</thread_history>\n\n`
       : "";
+    // Style exemplars (2026-10-04): real replies our team sent for the same intent + language,
+    // so the draft reads like the team writes. Tone only; the block forbids reusing their facts.
+    // Logged as a pseudo tool call so the item brief shows which sends shaped the draft.
+    let styleBlock = "";
+    if (opts.exemplars) {
+      const list = X.pickExemplars(opts.exemplars);
+      if (list.length) {
+        styleBlock = X.exemplarBlock(list, stripInvisible);
+        toolLog.push({ tool: "style_exemplars", ok: true, purpose: `${opts.exemplars.intent}/${opts.exemplars.language}`,
+          input: list.map((e) => `send ${e.sendId}${e.edited ? " (edited)" : ""}`).join(", "), result: "" });
+      }
+    }
     firstContent =
       `<email_untrusted_data>\nFrom: ${eName} <${email.from.address}>\nSubject: ${eSubj}\nReceived: ${email.received}\nBody: ${eBody.slice(0, 3000)}\n</email_untrusted_data>\n\n` +
       threadBlock +
       `<seed_context>\n${stripInvisible(JSON.stringify(seed, null, 2))}\n</seed_context>\n\n` +
+      styleBlock +
       "Investigate with the tools as needed, then produce the final JSON.";
   }
   const messages = [{ role: "user", content: firstContent }];

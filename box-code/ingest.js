@@ -247,7 +247,9 @@ async function processThread(anthropic, key, msgs, ctx) {
   // Agentic investigation + draft (same engine as drafts2).
   const seed = await E.gatherSeed(email, history);
   if (callerInfo) seed.caller_match = callerInfo;
-  const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX);
+  const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX, {
+    exemplars: { intent: cls.intent, language: cls.language, mailbox: boxName, excludeItemId: itemId },
+  });
 
   // no_reply NEVER auto-closes (threat-model T13; and "no email reply" can still mean work,
   // e.g. an internal "please call X"). The item lands OPEN with a suggestion flag; a human

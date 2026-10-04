@@ -201,7 +201,7 @@ const STRINGS = {
     sort_label: "Sort",
     sort_needs: "Needs me first", sort_new: "Newest first", sort_old: "Oldest first", sort_prio: "Priority first",
     load_more: "Load more (50 of {n})",
-    updates_waiting: "Updates waiting, tap to refresh",
+    updates_waiting: "New activity, refresh",
     searching_loaded: "Searched the {n} loaded emails",
     retry: "Retry",
     load_failed_title: "Couldn't load this email",
@@ -388,7 +388,7 @@ const STRINGS = {
     sort_label: "Sorteren",
     sort_needs: "Actie eerst", sort_new: "Nieuwste eerst", sort_old: "Oudste eerst", sort_prio: "Prioriteit eerst",
     load_more: "Meer laden (50 van {n})",
-    updates_waiting: "Updates beschikbaar, tik om te verversen",
+    updates_waiting: "Nieuwe activiteit, verversen",
     searching_loaded: "Gezocht in de {n} geladen e-mails",
     retry: "Opnieuw proberen",
     load_failed_title: "Deze e-mail kon niet worden geladen",
@@ -649,7 +649,7 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris24";   // 2026-10-02: base path, framed rendering, Sprocket removed (W3)
+const ASSET_V = "polaris25";   // 2026-10-04: live queue (qnew, desktop qupd)
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is

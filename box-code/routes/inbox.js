@@ -11,6 +11,9 @@
 // 2026-09-26, mobile Phase 3, C3: compose modal moved out of buildQueuePane into composeUi(req).
 // 2026-09-26, mobile Phase 3, C1/C2/M-54: done and all paginate (Load more), status tabs swap
 // only #queuepane, and the poll skips while the user is reading (chip #qupd offers the refresh).
+// 2026-10-04, live queue: the pane probes GET /queue/stamp every 10 s on every device and
+// re-renders only when the stamp changed, so new mail appears without a reload (desktop used
+// to refresh only while a sync was running at render time).
 const INGEST = require("../ingest.js");
 const TR = require("../translate.js");
 const SCEN = require("../scenarios.js");
@@ -66,12 +69,9 @@ app.post("/sync", (req, res) => {
 // IDENTICAL to the pre-shell inbox; summary translations are cache-inline +
 // async-fill since the UX round (2026-06-11). Shared by GET / (inline) and
 // GET /queue (the lazy fragment item deep-links load), so both render the same DOM.
-async function buildQueuePane(req, opts) {
-  const lang = req.user.lang;
-  const sel = (opts && opts.sel) || 0;
-  // C1 pagination: done and all load PAGE_SIZE cards at a time; open and archived stay whole.
-  const PAGE_SIZE = 50;
-  const page = Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1);
+// The queue's filter, resolved once from the request so the pane render and the cheap
+// change probe (GET /queue/stamp) agree on exactly the same rows.
+function queueFilter(req) {
   // Mailbox filter. Sales see everything by default because their scope is already "mine" (their
   // own owner label), which confines them to their own queue anyway. Admins are scope="all", and
   // an unfiltered All is both mailboxes' entire traffic at once - so they land on Gouda (info@)
@@ -93,6 +93,39 @@ async function buildQueuePane(req, opts) {
   const params = [];
   if (mb !== "all") { conds.push("w.mailbox = ?"); params.push(mb); }
   if (scope === "mine") { conds.push("w.owner = ?"); params.push(myOwner); }
+  // Status-tab counts under the current mailbox + scope (the status filter itself excluded).
+  const cConds = [], cParams = [];
+  if (mb !== "all") { cConds.push("w.mailbox = ?"); cParams.push(mb); }
+  if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(myOwner); }
+  return { mb, show, scope, conds, params, cConds, cParams };
+}
+function tabCounts(f) {
+  return db.prepare(
+    `SELECT SUM(CASE WHEN w.status NOT IN ('done','archived') THEN 1 ELSE 0 END) AS open_n,
+            SUM(CASE WHEN w.status = 'done' THEN 1 ELSE 0 END) AS done_n,
+            SUM(CASE WHEN w.status = 'archived' THEN 1 ELSE 0 END) AS arch_n,
+            COUNT(*) AS all_n
+     FROM work_items w ${f.cConds.length ? "WHERE " + f.cConds.join(" AND ") : ""}`
+  ).get(...f.cParams);
+}
+// Change stamp for the queue as filtered: row count + newest updated_at of the matching rows
+// + the four tab counts. Any ingest, status change, reassignment or edit moves at least one of
+// these, so a differing stamp means "the pane you are looking at is stale". Two trivial
+// indexed aggregates; safe to probe every few seconds from every open browser.
+function queueStamp(f, counts) {
+  const r = db.prepare(`SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM work_items w WHERE ${f.conds.join(" AND ")}`).get(...f.params);
+  const c = counts || tabCounts(f);
+  return [r.n, r.u || "", c.open_n || 0, c.done_n || 0, c.arch_n || 0, c.all_n || 0].join("|");
+}
+
+async function buildQueuePane(req, opts) {
+  const lang = req.user.lang;
+  const sel = (opts && opts.sel) || 0;
+  // C1 pagination: done and all load PAGE_SIZE cards at a time; open and archived stay whole.
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1);
+  const f = queueFilter(req);
+  const { mb, show, scope, conds, params } = f;
   // F2 default order, open view: what needs me next. Completed views stay newest-first.
   const order = show === "open"
     ? " ORDER BY w.injection_flag DESC, CASE WHEN w.status = 'awaiting_input' THEN 0 WHEN w.status = 'ready' THEN 1 WHEN w.status = 'new' THEN 2 ELSE 3 END, w.priority ASC, w.updated_at DESC"
@@ -105,21 +138,11 @@ async function buildQueuePane(req, opts) {
     `SELECT w.*, (SELECT COUNT(*) FROM questions q WHERE q.work_item_id = w.id AND q.answer IS NULL) AS open_q
      FROM work_items w WHERE ${conds.join(" AND ")}${order}${paged ? " LIMIT ? OFFSET ?" : ""}`
   ).all(...params, ...(paged ? [PAGE_SIZE, offset] : []));
-  // Status-tab counts under the current mailbox + scope (the status filter itself excluded).
-  const cConds = [], cParams = [];
-  if (mb !== "all") { cConds.push("w.mailbox = ?"); cParams.push(mb); }
-  if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(myOwner); }
-  const counts = db.prepare(
-    `SELECT SUM(CASE WHEN w.status NOT IN ('done','archived') THEN 1 ELSE 0 END) AS open_n,
-            SUM(CASE WHEN w.status = 'done' THEN 1 ELSE 0 END) AS done_n,
-            SUM(CASE WHEN w.status = 'archived' THEN 1 ELSE 0 END) AS arch_n,
-            COUNT(*) AS all_n
-     FROM work_items w ${cConds.length ? "WHERE " + cConds.join(" AND ") : ""}`
-  ).get(...cParams);
+  const counts = tabCounts(f);
+  const stamp = queueStamp(f, counts);
   // The tab's full matching count: the page itself for unpaged tabs, the counts query otherwise.
   const total = show === "done" ? (counts.done_n || 0) : show === "all" ? (counts.all_n || 0) : items.length;
   audit(req.user.tailscale_login, "view_inbox", null, `mailbox=${mb} scope=${scope} show=${show} items=${total} lang=${lang}`);
-  const investigating = items.some((w) => w.status === "investigating");
   const sync = syncStatus();
   // Axle authors summaries in English; CACHED translations render inline (sync DB
   // hit), uncached ones show English first and fill in via POST /queue/summaries in
@@ -202,7 +225,7 @@ async function buildQueuePane(req, opts) {
     const row = hasMore
       ? `<div class="qmore-row" id="qmoreRow" hx-swap-oob="true">${moreBtn}</div>`
       : `<div id="qmoreRow" hx-swap-oob="delete"></div>`;
-    return { html: `${cards}\n    ${row}\n    ${trScript}`, sync, investigating, lang };
+    return { html: `${cards}\n    ${row}\n    ${trScript}`, sync, lang };
   }
 
   const paneHtml = `
@@ -243,8 +266,8 @@ async function buildQueuePane(req, opts) {
       </div>
       <form method="post" action="${BASE.path}/sync" class="qlive">
         <span class="livedot${sync.running ? " busy" : ""}"></span>
-        <span class="muted">${sync.running ? esc(t(lang, "syncing")) : esc(t(lang, "live_updated").replace("{t}", lastT))}</span>
-        <button type="button" class="qupd m-only" id="qupd" hidden>${esc(t(lang, "updates_waiting"))}</button>
+        <span class="muted" id="qlivet">${sync.running ? esc(t(lang, "syncing")) : esc(t(lang, "live_updated").replace("{t}", lastT))}</span>
+        <button type="button" class="qupd" id="qupd" hidden>${esc(t(lang, "updates_waiting"))}</button>
         <span class="spacer"></span>
         <button class="mini" ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button>
       </form>
@@ -335,21 +358,42 @@ async function buildQueuePane(req, opts) {
     ${trScript}
     <script>
     (function () {
-      // Queue auto-refresh while a sync or investigation runs. Replaces the old
-      // declarative page refresh, which navigated the whole DOCUMENT back to "/"
-      // (the address it was parsed with) and so closed the open item after a few
-      // seconds. This swaps ONLY the queue pane; the centre/context panes — and any
-      // half-typed reply — are never touched. Singleton timer: each freshly rendered
-      // queue fragment updates the config; sec=0 (idle) makes the timer a no-op, so
-      // it extinguishes itself when the sync finishes (desktop; F8 gives the phone a
-      // 45 s idle floor inside the tick, the config stays as rendered). Same cadence and audit side
-      // effects as the old refresh (/queue = the old inbox data path).
-      window.__axQPoll = { sec: ${sync.running ? 8 : investigating ? 15 : 0}, qs: ${JSON.stringify(`mailbox=${mb}&show=${show}&scope=${scope}`)}, last: Date.now() };
-      // The refresh itself, shared by the tick and the #qupd chip.
+      // Live queue (2026-10-04). Every open browser probes GET /queue/stamp every 10 s: a tiny
+      // JSON {stamp, running} computed from the same filter as this pane. Only when the stamp
+      // differs from the one this pane was rendered with does the queue pane re-render (htmx
+      // swap of #queuepane ONLY; the centre/context panes and any half-typed reply are never
+      // touched). The old design polled the full pane on a cadence the SERVER chose at render
+      // time (8 s during a sync, otherwise never on desktop), so new mail from the scheduled
+      // ingest sat invisible until the user reloaded. Now the list refreshes itself whenever
+      // anything changed, and is otherwise never redrawn. Singleton timer; each fresh pane
+      // fragment replaces the config (stamp, filter, strings).
+      // Skip rules, so the list is never yanked out from under the user: a field in the pane
+      // has focus, a menu in it is open, the list is paged past page 1, or it is scrolled away
+      // from the top (desktop: #queuepane scrollTop; phone: the page scroll or a touch in the
+      // last 10 s). In those cases the #qupd chip ("Updates waiting") appears instead and the
+      // user takes the refresh when ready. A hidden tab pauses the probe; coming back probes
+      // at once.
+      window.__axQPoll = {
+        qs: ${JSON.stringify(`mailbox=${mb}&show=${show}&scope=${scope}`)},
+        stamp: ${JSON.stringify(stamp)},
+        running: ${sync.running ? "true" : "false"},
+        L: ${JSON.stringify({ syncing: t(lang, "syncing"), live: t(lang, "live_updated") })},
+        nl: ${lang === "nl" ? "true" : "false"},
+        inflight: 0,
+      };
+      // Mark cards that were not in the previous render (the probe sets __axQPrev before the swap).
+      var prev = window.__axQPrev; window.__axQPrev = null;
+      if (prev) document.querySelectorAll("#qlist a.qcard").forEach(function (a) {
+        if (!prev[a.getAttribute("href")]) a.classList.add("qnew");
+      });
+      // The refresh itself, shared by the tick, the #qupd chip and the phone's pull/return paths.
       window.__axQFetch = function () {
         var c = window.__axQPoll;
         if (!c || !window.htmx) return;
-        c.last = Date.now();
+        c.inflight = Date.now();
+        var ids = {};
+        document.querySelectorAll("#qlist a.qcard").forEach(function (a) { ids[a.getAttribute("href")] = 1; });
+        window.__axQPrev = ids;
         var parts = location.pathname.slice(${BASE.path.length}).split("/");
         var sel = parts[1] === "item" ? (parseInt(parts[2], 10) || 0) : 0;
         htmx.ajax("GET", "${BASE.path}/queue?" + c.qs + "&sel=" + sel, { target: "#queuepane", swap: "innerHTML" });
@@ -362,45 +406,62 @@ async function buildQueuePane(req, opts) {
         }, { capture: true, passive: true });
       }
       var upd = document.getElementById("qupd");
-      if (upd) upd.addEventListener("click", function () { window.__axQFetch(); window.scrollTo(0, 0); upd.hidden = true; });
+      if (upd) upd.addEventListener("click", function () {
+        upd.hidden = true;
+        var qp = document.getElementById("queuepane");
+        if (qp) qp.scrollTop = 0;
+        window.scrollTo(0, 0);
+        window.__axQFetch();
+      });
       if (!window.__axQPollTimer) {
-        window.__axQPollTimer = setInterval(function () {
+        // Sync indicator without a re-render: the dot pulses while the ingest runs; when it ends
+        // the line shows the finish time (the pane re-renders anyway if the run brought changes).
+        var setLive = function (running) {
+          var c = window.__axQPoll, dot = document.querySelector(".qlive .livedot"), tx = document.getElementById("qlivet");
+          if (!c || c.running === running || !dot || !tx) return;
+          c.running = running;
+          dot.classList.toggle("busy", running);
+          if (running) { tx.textContent = c.L.syncing; return; }
+          var d = new Date(), tm = c.nl
+            ? d.toLocaleTimeString("nl-NL", { timeZone: "Europe/Amsterdam", hour: "numeric", minute: "2-digit", hour12: false })
+            : d.toLocaleTimeString("en-US", { timeZone: "Europe/Amsterdam", hour: "numeric", minute: "2-digit", hour12: true }).replace(" ", "").toLowerCase();
+          tx.textContent = c.L.live.replace("{t}", tm);
+        };
+        var tick = function () {
           var c = window.__axQPoll;
-          var phone = !!(window.__axPhone && window.__axPhone.matches);
-          // F8: on the phone an idle config (sec 0) still refreshes every 45 s, because the in-place
-          // Back never reloads the page; the config object itself (what the desktop reads) is unchanged.
-          var sec = c ? (c.sec || (phone ? 45 : 0)) : 0;
-          if (!c || !sec || !window.htmx) return;
-          if (Date.now() - c.last < sec * 1000) return;
-          var qp = document.getElementById("queuepane");
-          // Never yank the queue out from under the user: skip while they're in it
-          // (typing in search, an open menu); retry on the next tick.
-          if (!qp || (document.activeElement && qp.contains(document.activeElement))) return;
-          // M-12, M-54 skip rules: a hidden tab, or a list already paged past page 1.
-          // Phone only: the list not displayed, scrolled, or touched in the last 10 s;
-          // then the chip offers the refresh instead (when the list is displayed).
-          if (document.hidden) return;
-          var ql = document.getElementById("qlist");
-          if (ql && +ql.getAttribute("data-page") > 1) return;
-          if (phone) {
-            var shown = getComputedStyle(qp).display !== "none";
-            if (!shown) return;
-            // Touched in the last 10 s: never swap under the finger; the chip offers the refresh.
-            if (Date.now() - (window.__axQTouch || 0) < 10000) {
-              var up = document.getElementById("qupd");
-              if (up) up.hidden = false;
-              return;
-            }
-            // F8: only scrolled: refresh anyway and put the scroll back after the swap (ui.js, the
-            // htmx:afterSwap listener for #queuepane reads __axQKeepY), so the list never goes stale.
-            if (window.scrollY > 0) window.__axQKeepY = window.scrollY;
-          }
-          window.__axQFetch();
-        }, 2000);
+          if (!c || !window.htmx || document.hidden) return;
+          if (c.inflight && Date.now() - c.inflight < 15000) return;   // a swap is on its way
+          fetch("${BASE.path}/queue/stamp?" + c.qs, { headers: { Accept: "application/json" }, cache: "no-store" })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+              var c2 = window.__axQPoll;
+              if (!d || !c2 || c2.qs !== c.qs) return;   // the pane moved to another filter meanwhile
+              setLive(!!d.running);
+              if (d.stamp === c2.stamp) return;
+              var qp = document.getElementById("queuepane");
+              if (!qp) return;
+              var phone = !!(window.__axPhone && window.__axPhone.matches);
+              if (phone && getComputedStyle(qp).display === "none") return;   // list not on screen: next tick
+              var chip = function () { var up = document.getElementById("qupd"); if (up) up.hidden = false; };
+              var a = document.activeElement;
+              if (a && a !== document.body && qp.contains(a)) return chip();
+              if (qp.querySelector("details[open]")) return chip();
+              var ql = document.getElementById("qlist");
+              if (ql && +ql.getAttribute("data-page") > 1) return chip();
+              if (phone) {
+                if (Date.now() - (window.__axQTouch || 0) < 10000) return chip();
+                if (window.scrollY > 0) return chip();
+              } else if (qp.scrollTop > 0) return chip();
+              window.__axQFetch();
+            })
+            .catch(function () { /* offline or restarting: try again next tick */ });
+        };
+        window.__axQPollTimer = setInterval(tick, 10000);
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) tick(); });
       }
     })();
     </script>`;
-  return { html: paneHtml, sync, investigating, lang };
+  return { html: paneHtml, sync, lang };
 }
 
 // --- Compose modal (C3, 2026-09-26) ---------------------------------------------
@@ -705,6 +766,16 @@ app.get("/", async (req, res) => {
 app.get("/queue", async (req, res) => {
   const q = await buildQueuePane(req, { sel: parseInt(req.query.sel, 10) || 0 });
   res.send(q.html);
+});
+
+// Change probe for the live queue (see the poll script in buildQueuePane): the stamp of the
+// queue as the caller has it filtered, plus whether an ingest is running. Deliberately NOT
+// audited and translation-free: it fires every 10 s from every open browser and must stay
+// a pair of indexed aggregates.
+app.get("/queue/stamp", (req, res) => {
+  const f = queueFilter(req);
+  res.set("Cache-Control", "no-store");
+  res.json({ stamp: queueStamp(f), running: !!syncStatus().running });
 });
 
 // Background queue-summary translations (see buildQueuePane). SECURITY: ids only -

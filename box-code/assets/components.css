@@ -350,6 +350,10 @@ body.ax-resizing { cursor: col-resize; user-select: none; }
 .qtab.on .n { background: var(--border); color: var(--ink); }
 .qlive { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-xs); margin: 0; }
 .qlive button { white-space: nowrap; }
+/* "Updates waiting" chip: shown when the live refresh held back (field focused, menu open,
+   scrolled, paged); the click refreshes. The phone block below restyles it to tap height. */
+.qlive .qupd { display: inline-flex; align-items: center; height: 22px; padding: 0 var(--s2); border: 1px solid var(--accent); border-radius: var(--r-chip); background: var(--accent-soft); color: var(--ink); font-size: var(--fs-xs); cursor: pointer; }
+.qlive .qupd[hidden] { display: none; }
 .livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
 .livedot.busy { background: var(--info-fg); animation: ax-pulse 1.2s ease-in-out infinite; }
 .banner.mini { margin: var(--s2) var(--s3) 0; padding: 7px 10px; font-size: var(--fs-sm); }
@@ -368,6 +372,9 @@ details.menu > summary.btn.mini { font-size: var(--fs-xs); padding: 4px 9px; }
 .qcard { display: block; padding: 10px var(--s3); border-bottom: 1px solid var(--border); text-decoration: none; color: var(--ink); background: var(--surface); }
 .qcard:hover { background: var(--surface-2); color: var(--ink); }
 .qcard.sel { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--brand); }
+/* live queue: a card that arrived in a background refresh settles in from a soft highlight */
+.qcard.qnew { animation: ax-new 3s ease-out 1; }
+@keyframes ax-new { 0%, 40% { background-color: var(--accent-soft); } 100% { background-color: var(--surface); } }
 .qcard > span { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
 .q-from { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .q-time { font-size: var(--fs-xs); white-space: nowrap; flex: none; }

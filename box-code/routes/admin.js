@@ -144,6 +144,22 @@ app.post("/blocks/:id/unblock", async (req, res) => {
   res.redirect(BASE.url("/blocks"));
 });
 
+// Adoption dashboard (admin only). A static file the "Axle Report" task regenerates daily from the
+// live DB (adoption-report.js via run-report.ps1); nothing is computed per request. 404 with a hint
+// until the task has run once.
+app.get("/adoption", (req, res) => {
+  if (req.user.role !== "admin") {
+    audit(req.user.tailscale_login, "adoption_denied", null, null);
+    return res.status(403).send(page("Forbidden", req.user, "<p>Admins only.</p>"));
+  }
+  const file = process.env.AXLE_REPORT_OUT || require("path").join(__dirname, "..", "..", "data", "adoption-dashboard.html");
+  if (!require("fs").existsSync(file)) {
+    return res.status(404).send(page("Adoption", req.user, "<p>No report yet. The Axle Report task writes it daily; run <code>run-report.ps1</code> for one now.</p>"));
+  }
+  audit(req.user.tailscale_login, "view_adoption", null, null);
+  res.sendFile(file);
+});
+
 // Audit log viewer (admin only). Searchable over the WHOLE table (not just the newest 500):
 // free text runs a parameterised LIKE across user/action/detail (wildcards escaped, so input
 // is matched literally), combinable with an action-type dropdown and a work-item filter.

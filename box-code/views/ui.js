@@ -20,7 +20,7 @@ const langOK = (l) => (UI_LANGS.includes(l) ? l : DEFAULT_LANG);
 
 const STRINGS = {
   en: {
-    inbox: "Inbox", audit: "Audit",
+    inbox: "Inbox", audit: "Audit", adoption: "Adoption",
     // The mailbox filter is named after the LOCATION the team works in, not the address:
     // everyone says "Gouda" and "Drachten", never "info@". The query value stays 'info'.
     mailbox: "Mailbox", status: "Status", all: "All", info: "Gouda", drachten: "Drachten",
@@ -209,7 +209,7 @@ const STRINGS = {
     refreshing: "Refreshing",
   },
   nl: {
-    inbox: "Postvak", audit: "Audit",
+    inbox: "Postvak", audit: "Audit", adoption: "Adoptie",
     mailbox: "Mailbox", status: "Status", all: "Alle", info: "Gouda", drachten: "Drachten",
     // NB "archived" is the FILTER-TAB label only (chips use STATUS_LABEL) — kept short so the
     // counted NL tabs fit the queue pane.
@@ -662,7 +662,7 @@ function appMenu(lang, user) {
   return `<details class="menu appmenu m-only"><summary class="btn appmenu-btn" aria-label="${L("menu")}"><span class="burger" aria-hidden="true"></span></summary><div class="menu-list">`
     + `<div class="sheet-title">${L("menu")}</div>`
     + `<a class="mitem" href="${B}/">${L("inbox")}</a><a class="mitem" href="${B}/blocks">${L("nav_blocks")}</a>`
-    + (user.role === "admin" ? `<a class="mitem" href="${B}/audit">${L("audit")}</a>` : "")
+    + (user.role === "admin" ? `<a class="mitem" href="${B}/audit">${L("audit")}</a><a class="mitem" href="${B}/adoption">${L("adoption")}</a>` : "")
     + `<div class="mlabel">${L("language")}</div><div class="segrow"><a class="seg${lang === "en" ? " on" : ""}" href="${B}/setlang?lang=en">EN</a><a class="seg${lang === "nl" ? " on" : ""}" href="${B}/setlang?lang=nl">NL</a></div>`
     + `<div class="who-row muted">${L("signed_in_as")} <b>${esc(user.display_name)}</b> (${esc(user.role)})</div>`
     + `<button type="button" data-close>${L("close")}</button></div></details>`;
@@ -684,7 +684,7 @@ ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
 <script src="${B}/assets/htmx.min.js?v=${ASSET_V}" defer></script>
 </head><body${bodyCls ? ` class="${esc(bodyCls)}"` : ""}>
-${user.inFrame ? "" : `<header><span class="brand">Axle</span><a href="${B}/">${esc(t(lang, "inbox"))}</a><a href="${B}/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="${B}/audit">${esc(t(lang, "audit"))}</a>` : ""}
+${user.inFrame ? "" : `<header><span class="brand">Axle</span><a href="${B}/">${esc(t(lang, "inbox"))}</a><a href="${B}/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="${B}/audit">${esc(t(lang, "audit"))}</a><a href="${B}/adoption">${esc(t(lang, "adoption"))}</a>` : ""}
 <span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="${B}/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="${B}/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>`}
 <main${isShell ? ' class="wide"' : ""}>${opts && opts.desktopNote ? `<div class="banner desktop-note m-only">${esc(t(lang, "best_on_desktop"))}</div>` : ""}${body}</main>
 <script>

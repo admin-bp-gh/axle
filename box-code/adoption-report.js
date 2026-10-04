@@ -7,15 +7,20 @@
 //
 // Usage:
 //   node adoption-report.js [outputPath]
-//   AXLE_DB=C:\Axle\data\axle.db node adoption-report.js C:\Admin\Projects\Axle\adoption-dashboard.html
+//   AXLE_DB=C:\Axle\data\axle.db node adoption-report.js C:\Axle\data\adoption-dashboard.html
 //
 // Defaults: DB  = process.env.AXLE_DB || ../data/axle.db (the live box DB)
-//           out = ./adoption-dashboard.html
+//           out = AXLE_REPORT_OUT || ../data/adoption-dashboard.html
+//
+// Scheduled (2026-10-04, P4.10/P4.11): the "Axle Report" task runs run-report.ps1 daily as `axle`;
+// the server serves the file to admins at /adoption. Sections added then: weekly acceptance trend
+// (the before/after for prompt changes such as the 4 Oct style exemplars) and the most-edited
+// drafts of the last 7 days, grouped by intent, each linking to its item.
 const fs = require("fs");
 const path = require("path");
 
 const DB_PATH = process.env.AXLE_DB || path.join(__dirname, "..", "data", "axle.db");
-const OUT = process.argv[2] || path.join(__dirname, "adoption-dashboard.html");
+const OUT = process.argv[2] || process.env.AXLE_REPORT_OUT || path.join(__dirname, "..", "data", "adoption-dashboard.html");
 
 // Two ways to get DATA:
 //  - Normal (on the box): read the live SQLite DB directly via better-sqlite3.
@@ -165,8 +170,34 @@ sendRows.forEach((s) => {
 });
 const confidence = ["high", "medium", "low", "none"].filter((k) => conf[k]).map((k) => ({ ...conf[k], pct: Math.round((100 * conf[k].verbatim) / conf[k].n) }));
 
+// --- weekly acceptance trend ---------------------------------------------
+// ISO week buckets of graded sends: the before/after view for any drafting change.
+const isoWeek = (ts) => {
+  const d = new Date(ts); d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const y = d.getUTCFullYear(), wk = Math.ceil(((d - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7);
+  return `${y}-W${String(wk).padStart(2, "0")}`;
+};
+const wk = {};
+sendRows.filter((s) => s.sim != null).forEach((s) => {
+  const k = isoWeek(s.sent_at);
+  const o = wk[k] || (wk[k] = { week: k, n: 0, verbatim: 0, modHeavy: 0 });
+  o.n++; if (s.bucket === "verbatim") o.verbatim++; if (s.bucket === "moderate" || s.bucket === "heavy") o.modHeavy++;
+});
+const weekly = Object.values(wk).sort((a, b) => (a.week < b.week ? -1 : 1))
+  .map((o) => ({ ...o, verbatimPct: Math.round((100 * o.verbatim) / o.n), modHeavyPct: Math.round((100 * o.modHeavy) / o.n) }));
+
+// --- most-edited drafts, last 7 days (P4.11 digest) ----------------------
+const since = new Date(Date.now() - 7 * 864e5).toISOString();
+const digest = sendRows
+  .filter((s) => s.sim != null && s.sim < 0.80 && s.sent_at >= since)
+  .map((s) => ({ item: s.work_item_id, intent: s.intent || "unknown", user: label(s.sent_by), sent_at: s.sent_at,
+                 sim: Math.round(s.sim * 100), bucket: s.bucket,
+                 aiLen: (draftsById[s.source_draft_id].body || "").length, sentLen: (s.body || "").length }))
+  .sort((a, b) => a.intent.localeCompare(b.intent) || a.sim - b.sim);
+
   db.close();
-  return { meta, perUser, mailbox, trend, intents, confidence };
+  return { meta, perUser, mailbox, trend, intents, confidence, weekly, digest };
 }
 
 // --- render ---------------------------------------------------------------
@@ -194,7 +225,7 @@ function renderHtml(D) {
   .pill.good{background:rgba(62,207,142,.15);color:var(--good)} .pill.warn{background:rgba(245,166,35,.15);color:var(--warn)} .pill.bad{background:rgba(245,101,101,.15);color:var(--bad)}
   .bar{height:9px;border-radius:6px;background:var(--line);overflow:hidden;display:flex}
   .bar i{display:block;height:100%}
-  canvas{max-height:300px}
+  canvas{max-height:300px} a{color:var(--accent)}
   .foot{color:var(--mut);font-size:12px;margin-top:34px;border-top:1px solid var(--line);padding-top:14px}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:6px 0 10px}
   .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
@@ -222,6 +253,16 @@ function renderHtml(D) {
 
 <h2>Where replies are resolved</h2>
 <div class="grid2"><div class="panel"><canvas id="resInfo"></canvas></div><div class="panel"><canvas id="resDrach"></canvas></div></div>
+
+<h2>Draft acceptance by week</h2>
+<div class="panel"><canvas id="weekChart"></canvas>
+  <div class="sub" style="margin-top:10px">Graded Axle sends per ISO week. Style exemplars went live 4 Oct 2026 (week 40): verbatim should rise and moderate+heavy fall from week 41.</div></div>
+
+<h2>Most-edited drafts, last 7 days</h2>
+<div class="panel"><table id="digestTable"><thead><tr>
+  <th>Topic</th><th>Item</th><th>Sent by</th><th>When</th><th class="num">Match</th><th>Edit</th><th class="num">Draft → sent (chars)</th>
+</tr></thead><tbody></tbody></table>
+<div class="sub" style="margin-top:10px">Sends under 80% match to the AI draft, grouped by topic, worst first. Open the item to compare the draft with what went out.</div></div>
 
 <div class="grid2">
   <div><h2>Draft edited most by topic</h2><div class="panel"><canvas id="intentChart"></canvas></div></div>
@@ -292,6 +333,21 @@ new Chart(document.getElementById('intentChart'),{type:'bar',
     {label:'Moderate+heavy edit %',data:D.intents.map(i=>i.modHeavyPct),backgroundColor:C.bad,borderRadius:3}]},
   options:{indexAxis:'y',plugins:{legend:{position:'bottom'}},scales:{x:{beginAtZero:true,max:100}}}});
 
+// weekly acceptance
+new Chart(document.getElementById('weekChart'),{type:'line',
+  data:{labels:D.weekly.map(w=>w.week+' (n='+w.n+')'),datasets:[
+    {label:'Verbatim %',data:D.weekly.map(w=>w.verbatimPct),borderColor:C.good,backgroundColor:C.good,tension:.25},
+    {label:'Moderate+heavy edit %',data:D.weekly.map(w=>w.modHeavyPct),borderColor:C.bad,backgroundColor:C.bad,tension:.25}]},
+  options:{plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true,max:100}}}});
+
+// digest
+const BASE = location.pathname.replace(/\\/adoption\\/?$/, '');
+const pillOf = b => b==='light'?'good':b==='moderate'?'warn':'bad';
+document.querySelector('#digestTable tbody').innerHTML = D.digest.length ? D.digest.map(d=>
+  '<tr><td>'+d.intent+'</td><td><a href="'+BASE+'/item/'+d.item+'">#'+d.item+'</a></td><td>'+d.user+'</td><td>'+fmtDate(d.sent_at)+'</td>'+
+  '<td class="num">'+d.sim+'%</td><td><span class="pill '+pillOf(d.bucket)+'">'+d.bucket+'</span></td><td class="num">'+d.aiLen+' → '+d.sentLen+'</td></tr>').join('')
+  : '<tr><td colspan="7" class="sub">No edited sends in the last 7 days.</td></tr>';
+
 // confidence calibration
 new Chart(document.getElementById('confChart'),{type:'bar',
   data:{labels:D.confidence.map(c=>c.confidence+' (n='+c.n+')'),datasets:[
@@ -300,6 +356,6 @@ new Chart(document.getElementById('confChart'),{type:'bar',
 
 document.getElementById('foot').innerHTML =
   'Verbatim = sent text ≥97% identical to Axle\\'s AI draft · Light ≥80% · Moderate ≥45% · Heavy &lt;45%. '+
-  'Drachten figures cover the shared Rob/Huub login. Regenerate by running <code>node adoption-report.js</code> on the box against the live DB.';
+  'Drachten figures cover the shared Rob/Huub login. Regenerated daily by the Axle Report task; run <code>node adoption-report.js</code> on the box for a fresh copy.';
 </script></body></html>`;
 }

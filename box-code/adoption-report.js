@@ -20,20 +20,17 @@ const fs = require("fs");
 const path = require("path");
 
 const DB_PATH = process.env.AXLE_DB || path.join(__dirname, "..", "data", "axle.db");
-const OUT = process.argv[2] || process.env.AXLE_REPORT_OUT || path.join(__dirname, "..", "data", "adoption-dashboard.html");
 
-// Two ways to get DATA:
-//  - Normal (on the box): read the live SQLite DB directly via better-sqlite3.
-//  - AXLE_DATA_JSON set: render from a pre-computed metrics JSON (used to build the
-//    dashboard from an environment without a native sqlite binding). Same template either way.
-let DATA;
-if (process.env.AXLE_DATA_JSON) {
-  DATA = JSON.parse(fs.readFileSync(process.env.AXLE_DATA_JSON, "utf8"));
-} else {
-  DATA = computeFromDb();
+function render() { return renderHtml(computeFromDb()); }
+
+if (require.main === module) {
+  const OUT = process.argv[2] || path.join(__dirname, "..", "data", "adoption-dashboard.html");
+  // AXLE_DATA_JSON: render from pre-computed metrics (for building the file without a sqlite binding).
+  const DATA = process.env.AXLE_DATA_JSON ? JSON.parse(fs.readFileSync(process.env.AXLE_DATA_JSON, "utf8")) : computeFromDb();
+  fs.writeFileSync(OUT, renderHtml(DATA));
+  console.log(`Wrote ${OUT}  (items=${DATA.meta.totalItems}, sends=${DATA.meta.totalSends}, window ${(DATA.meta.windowStart||'').slice(0,10)}..${(DATA.meta.windowEnd||'').slice(0,10)})`);
 }
-fs.writeFileSync(OUT, renderHtml(DATA));
-console.log(`Wrote ${OUT}  (items=${DATA.meta.totalItems}, sends=${DATA.meta.totalSends}, window ${(DATA.meta.windowStart||'').slice(0,10)}..${(DATA.meta.windowEnd||'').slice(0,10)})`);
+module.exports = { render, computeFromDb, renderHtml };
 
 function computeFromDb() {
 const Database = require("better-sqlite3");

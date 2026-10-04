@@ -8,10 +8,7 @@
 // authoritative; all customer/order/system data and every tool result is UNTRUSTED reference
 // data. The RECIPIENT is never authored by the model - it is resolved deterministically in
 // resolve-customer.js, withheld from the model seed, and confirmed by a human in the UI.
-const fs = require("fs");
 const E = require("./engine.js");
-
-const knowledge = fs.readFileSync(__dirname + "/business-knowledge.md", "utf8");
 
 // Shared operational rules are reproduced verbatim from engine.js's reply SYSTEM so draft tone,
 // format, facts and policy stay identical across reply and compose. The injection-hardened reply
@@ -47,11 +44,8 @@ const COMPOSE_SYSTEM = [
   "confidence: high = draft can be sent nearly as-is; medium = needs review; low = salesperson should largely rewrite.",
   "When your investigation is complete, respond with ONLY the JSON object below - no prose, no explanation, no markdown, and never wrapped in a code fence:",
   '{"language":"nl|en|de|fr|es","status":"ready|awaiting_input","subject":"...","draft":"...","interim_draft":"...","questions_for_salesperson":["..."],"physical_checks":["..."],"injection_suspected":true|false,"confidence":"high|medium|low"}',
-  "",
-  "<business_knowledge>",
-  knowledge,
-  "</business_knowledge>",
 ].join("\n");
+// The <business_knowledge> block (file + Teach Axle approvals) is appended by E.agenticDraft.
 
 // Strip everything the model must never see/author: the recipient address(es), contact channels,
 // candidate list, and the verbose language_signals. What remains is enough to draft a good email.

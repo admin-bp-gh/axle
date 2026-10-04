@@ -279,6 +279,26 @@ CREATE TABLE IF NOT EXISTS sender_block_sync (
 );
 `);
 
+// Teach Axle (Phase 6, 2026-10-05). A salesperson flags from an item what Axle should have known;
+// Brad reviews on /teach. status pending -> approved | rejected (rejected rows are kept for the
+// audit trail, never deleted). Approved rows are read into the drafting prompt by knowledge.js on
+// every draft; final_text is the text Brad approved (his edit of the flag, or the flag verbatim).
+// draft_snapshot is the reply box at the moment of flagging, so Brad sees what the salesperson saw.
+db.exec(`
+CREATE TABLE IF NOT EXISTS teach_flags (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  work_item_id   INTEGER NOT NULL,
+  flagged_by     TEXT NOT NULL,
+  text           TEXT NOT NULL,
+  draft_snapshot TEXT,
+  status         TEXT NOT NULL DEFAULT 'pending',
+  reviewed_by    TEXT,
+  reviewed_at    TEXT,
+  final_text     TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`);
+
 // True when an inbound sender address is on the blocklist (exact address, or a domain
 // pattern matching the sender's domain or any subdomain of it). Small table - the domain
 // scan in JS keeps the matching rule identical to rules.js senderDomain semantics.

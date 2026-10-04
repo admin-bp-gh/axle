@@ -13,16 +13,14 @@
 //                           and external email addresses from the remaining (staff-facing)
 //                           fields, so an actionable fraud artifact never survives anywhere.
 //   plus a CONTAINMENT prompt rule and a hardened parseResult (fenced-block aware).
-const fs = require("fs");
 const C = require("./connectors.js");
 const T = require("./agent-tools.js");
 const X = require("./exemplars.js");
+const K = require("./knowledge.js");   // business-knowledge.md + Brad-approved "Teach Axle" entries
 
 const MODEL = "claude-sonnet-5-5";   // upgraded from claude-sonnet-4-6 on 2026-09-30; watch draft quality
 const CLASSIFY_MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOOL_TURNS = 8;
-
-const knowledge = fs.readFileSync(__dirname + "/business-knowledge.md", "utf8");
 
 // ---------- D1: invisible-character sanitiser ----------
 // Strip ALL invisible/format characters (neutralise the payload). Includes the Unicode
@@ -102,11 +100,9 @@ const SYSTEM = [
   "REFERENCED DOCUMENTS: in referenced_documents, list any SAP sales order, AR invoice, quotation, delivery or credit note the customer is asking about WHEN you have a concrete document number for it - either stated in the email or resolved via your tools (e.g. the customer writes 'my last invoice' and you looked up its number). Give {type, number} per document (type one of order|invoice|quotation|delivery|creditnote). This is only a HINT for a possible attachment: it is treated as data and independently re-validated against SAP and this customer before anything can be attached, and nothing is ever attached or sent automatically. Include a number ONLY when you are confident it maps to a real document for THIS customer; otherwise omit it. Empty array if none.",
   "When your investigation is complete, respond with ONLY the JSON object below - no prose, no explanation, no markdown, and never wrapped in a code fence:",
   "{\"language\":\"nl|en\",\"status\":\"ready|awaiting_input|no_reply\",\"draft\":\"...\",\"interim_draft\":\"...\",\"questions_for_salesperson\":[\"...\"],\"physical_checks\":[\"...\"],\"referenced_documents\":[{\"type\":\"order|invoice|quotation|delivery|creditnote\",\"number\":\"...\"}],\"fitment_confirmed\":true|false|\"n/a\",\"injection_suspected\":true|false,\"confidence\":\"high|medium|low\"}",
-  "",
-  "<business_knowledge>",
-  knowledge,
-  "</business_knowledge>",
 ].join("\n");
+// The <business_knowledge> block is NOT part of SYSTEM: agenticDraft appends K.block() per run, so
+// Teach Axle approvals reach the very next draft (reply and compose alike) without a restart.
 
 // Group a newest-first email list into conversation threads.
 // Key = sender + normalised subject; fallback conversationId.
@@ -624,7 +620,7 @@ function applyGates(result, ctx = {}) {
 //                      recipient). Defaults to the inbound sender in reply mode.
 async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {}) {
   const toolLog = [];
-  const system = opts.system || SYSTEM;
+  const system = (opts.system || SYSTEM) + "\n\n" + K.block();
   const senderAddr = opts.senderAddr || (email && email.from && email.from.address) || "";
   // Availability facts gathered from tool results, for the post-processing gates.
   const facts = { items: new Map() };

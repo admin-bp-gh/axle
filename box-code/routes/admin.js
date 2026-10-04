@@ -4,6 +4,7 @@
 const RESOLVE = require("../resolve-customer.js"); // read-only SAP-customer check on the block page
 const OB = require("../outlook-block.js");        // Outlook-side filing of blocked senders (action #7)
 const { db, audit } = require("../db.js");
+const K = require("../knowledge.js");             // Teach Axle: text cap, sanitiser, prompt line format
 const { esc, t, page, fmtDateTime } = require("../views/ui.js");
 const { markReadSafe } = require("./shared.js");
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
@@ -158,6 +159,76 @@ app.get("/adoption", (req, res) => {
   }
   audit(req.user.tailscale_login, "view_adoption", null, null);
   res.type("html").send(adoptionCache.html);
+});
+
+// Teach Axle review (admin only, Phase 6). Pending flags first, each with the item link, the
+// draft as the salesperson saw it, and an editable text box: Approve stores the box's text as
+// final_text (so Brad's edit IS the gate), Reject keeps the row with status 'rejected'. Approved
+// entries are listed below as they appear in the prompt, for folding into business-knowledge.md
+// by hand. Opened from the Workbench shell (owners' Teach button) or at /teach directly.
+const requireAdmin = (req, res, what) => {
+  if (req.user.role === "admin") return true;
+  audit(req.user.tailscale_login, what + "_denied", null, null);
+  res.status(403).send(page("Forbidden", req.user, "<p>Admins only.</p>"));
+  return false;
+};
+
+app.get("/teach", (req, res) => {
+  if (!requireAdmin(req, res, "teach")) return;
+  const lang = req.user.lang;
+  audit(req.user.tailscale_login, "view_teach", null, null);
+  const rows = db.prepare(`SELECT f.*, COALESCE(u.display_name, f.flagged_by) AS who, w.subject
+    FROM teach_flags f LEFT JOIN users u ON u.tailscale_login = f.flagged_by LEFT JOIN work_items w ON w.id = f.work_item_id
+    ORDER BY CASE f.status WHEN 'pending' THEN 0 ELSE 1 END, f.id DESC`).all();
+  const pending = rows.filter((f) => f.status === "pending");
+  const decided = rows.filter((f) => f.status !== "pending").slice(0, 100);
+
+  const pendingHtml = pending.map((f) => `<div class="box">
+      <p><b>${esc(f.who)}</b> &middot; <a href="${BASE.path}/item/${f.work_item_id}">#${f.work_item_id}</a> ${esc(f.subject || "")}
+        <span class="muted">(${esc(fmtDateTime(f.created_at, lang))})</span></p>
+      ${f.draft_snapshot ? `<details><summary class="muted">${esc(t(lang, "teach_draft_then"))}</summary><pre class="mail">${esc(f.draft_snapshot)}</pre></details>` : ""}
+      <form method="post" action="${BASE.path}/teach/${f.id}/approve">
+        <textarea class="ans" name="text" maxlength="${K.MAX_TEXT}" required>${esc(f.text)}</textarea>
+        <p style="margin-top:6px"><button class="primary">${esc(t(lang, "teach_approve"))}</button>
+        <button class="mini" formaction="${BASE.path}/teach/${f.id}/reject" formnovalidate style="margin-left:10px">${esc(t(lang, "teach_reject"))}</button></p>
+      </form></div>`).join("");
+
+  const decidedRows = decided.map((f) => `<tr>
+      <td><span class="chip">${esc(t(lang, "teach_" + f.status))}</span></td>
+      <td>${f.status === "approved" ? esc(K.learnedLine(f)) : esc(f.text)}</td>
+      <td class="muted">${esc(f.reviewed_by || "")} ${esc(fmtDateTime(f.reviewed_at, lang))}</td>
+      <td><a href="${BASE.path}/item/${f.work_item_id}">#${f.work_item_id}</a></td></tr>`).join("");
+
+  res.send(page(t(lang, "teach_page"), req.user, `
+    <h2>${esc(t(lang, "teach_page"))} ${pending.length ? `<span class="chip">${pending.length}</span>` : ""}</h2>
+    <p class="muted">${esc(t(lang, "teach_explain"))}</p>
+    ${pendingHtml || `<p class="muted">${esc(t(lang, "teach_none"))}</p>`}
+    ${decided.length ? `<h3 style="margin-top:18px">${esc(t(lang, "teach_decided"))}</h3>
+      <div class="hscroll"><table><tr><th></th><th>${esc(t(lang, "teach_col_text"))}</th><th>${esc(t(lang, "teach_col_by"))}</th><th>${esc(t(lang, "col_item_b"))}</th></tr>${decidedRows}</table></div>` : ""}`,
+    null, { desktopNote: true }));
+});
+
+app.post("/teach/:id/approve", (req, res) => {
+  if (!requireAdmin(req, res, "teach")) return;
+  const f = db.prepare("SELECT work_item_id, text FROM teach_flags WHERE id = ?").get(req.params.id);
+  const final = f && K.approve(db, req.params.id, req.user.tailscale_login, req.body.text);
+  if (final) audit(req.user.tailscale_login, "teach_approve", f.work_item_id, `#${req.params.id}${final !== f.text ? " (edited)" : ""} ${final.slice(0, 100)}`);
+  res.redirect(BASE.url("/teach"));
+});
+
+app.post("/teach/:id/reject", (req, res) => {
+  if (!requireAdmin(req, res, "teach")) return;
+  const f = db.prepare("SELECT work_item_id, text FROM teach_flags WHERE id = ?").get(req.params.id);
+  if (f && K.reject(db, req.params.id, req.user.tailscale_login)) {
+    audit(req.user.tailscale_login, "teach_reject", f.work_item_id, `#${req.params.id} ${f.text.slice(0, 100)}`);
+  }
+  res.redirect(BASE.url("/teach"));
+});
+
+// Pending count for the Workbench shell badge. JSON, admin only, not audited (polled).
+app.get("/teach/count", (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ error: "admin only" });
+  res.json({ pending: K.pendingCount(db) });
 });
 
 // Audit log viewer (admin only). Searchable over the WHOLE table (not just the newest 500):

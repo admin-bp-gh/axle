@@ -207,6 +207,16 @@ const STRINGS = {
     load_failed_title: "Couldn't load this email",
     pull_refresh: "Pull to refresh",
     refreshing: "Refreshing",
+    // Teach Axle (Phase 6, 2026-10-05)
+    teach: "Teach", teach_title: "Teach Axle", teach_page: "Teach Axle",
+    teach_hint: "Something Axle should have known for this email? Write it down in one or two sentences. Brad reviews it before Axle learns it.",
+    teach_ph: "What should Axle have known?",
+    teach_btn: "Flag for Brad", teach_withdraw: "Withdraw",
+    teach_pending: "waiting for Brad", teach_approved: "learned", teach_rejected: "not added",
+    teach_explain: "Flags from the team. Edit the text if needed, then Approve: it joins the business knowledge on the next draft. Reject keeps the flag on record without teaching it.",
+    teach_draft_then: "Draft at the time of flagging",
+    teach_approve: "Approve", teach_reject: "Reject", teach_none: "Nothing waiting.",
+    teach_decided: "Decided (newest first)", teach_col_text: "Text", teach_col_by: "Decided by",
   },
   nl: {
     inbox: "Postvak", audit: "Audit", adoption: "Adoptie",
@@ -394,6 +404,16 @@ const STRINGS = {
     load_failed_title: "Deze e-mail kon niet worden geladen",
     pull_refresh: "Trek om te verversen",
     refreshing: "Verversen",
+    // Teach Axle (Phase 6, 2026-10-05)
+    teach: "Leren", teach_title: "Leer Axle iets", teach_page: "Leer Axle iets",
+    teach_hint: "Had Axle iets moeten weten voor deze e-mail? Schrijf het op in een of twee zinnen. Brad beoordeelt het voordat Axle het leert.",
+    teach_ph: "Wat had Axle moeten weten?",
+    teach_btn: "Doorgeven aan Brad", teach_withdraw: "Intrekken",
+    teach_pending: "wacht op Brad", teach_approved: "geleerd", teach_rejected: "niet toegevoegd",
+    teach_explain: "Meldingen van het team. Pas de tekst zo nodig aan en keur goed: vanaf de volgende conceptmail hoort het bij de bedrijfskennis. Afwijzen bewaart de melding zonder dat Axle het leert.",
+    teach_draft_then: "Concept op het moment van melden",
+    teach_approve: "Goedkeuren", teach_reject: "Afwijzen", teach_none: "Niets in de wacht.",
+    teach_decided: "Beoordeeld (nieuwste eerst)", teach_col_text: "Tekst", teach_col_by: "Beoordeeld door",
   },
 };
 const t = (lang, k) => (STRINGS[lang] && STRINGS[lang][k] != null) ? STRINGS[lang][k]
@@ -662,7 +682,7 @@ function appMenu(lang, user) {
   return `<details class="menu appmenu m-only"><summary class="btn appmenu-btn" aria-label="${L("menu")}"><span class="burger" aria-hidden="true"></span></summary><div class="menu-list">`
     + `<div class="sheet-title">${L("menu")}</div>`
     + `<a class="mitem" href="${B}/">${L("inbox")}</a><a class="mitem" href="${B}/blocks">${L("nav_blocks")}</a>`
-    + (user.role === "admin" ? `<a class="mitem" href="${B}/audit">${L("audit")}</a><a class="mitem" href="${B}/adoption">${L("adoption")}</a>` : "")
+    + (user.role === "admin" ? `<a class="mitem" href="${B}/audit">${L("audit")}</a><a class="mitem" href="${B}/adoption">${L("adoption")}</a><a class="mitem" href="${B}/teach">${L("teach")}</a>` : "")
     + `<div class="mlabel">${L("language")}</div><div class="segrow"><a class="seg${lang === "en" ? " on" : ""}" href="${B}/setlang?lang=en">EN</a><a class="seg${lang === "nl" ? " on" : ""}" href="${B}/setlang?lang=nl">NL</a></div>`
     + `<div class="who-row muted">${L("signed_in_as")} <b>${esc(user.display_name)}</b> (${esc(user.role)})</div>`
     + `<button type="button" data-close>${L("close")}</button></div></details>`;
@@ -684,7 +704,7 @@ ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
 <script src="${B}/assets/htmx.min.js?v=${ASSET_V}" defer></script>
 </head><body${bodyCls ? ` class="${esc(bodyCls)}"` : ""}>
-${user.inFrame ? "" : `<header><span class="brand">Axle</span><a href="${B}/">${esc(t(lang, "inbox"))}</a><a href="${B}/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="${B}/audit">${esc(t(lang, "audit"))}</a><a href="${B}/adoption">${esc(t(lang, "adoption"))}</a>` : ""}
+${user.inFrame ? "" : `<header><span class="brand">Axle</span><a href="${B}/">${esc(t(lang, "inbox"))}</a><a href="${B}/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="${B}/audit">${esc(t(lang, "audit"))}</a><a href="${B}/adoption">${esc(t(lang, "adoption"))}</a><a href="${B}/teach">${esc(t(lang, "teach"))}</a>` : ""}
 <span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="${B}/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="${B}/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>`}
 <main${isShell ? ' class="wide"' : ""}>${opts && opts.desktopNote ? `<div class="banner desktop-note m-only">${esc(t(lang, "best_on_desktop"))}</div>` : ""}${body}</main>
 <script>

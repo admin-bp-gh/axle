@@ -23,6 +23,7 @@ const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
         isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
         latestWithdrawn, latestDraftVersion } = require("./shared.js");
 const WA = require("../withdrawn-attempt.js");     // why the reply box is empty after a gate withdrew the draft
+const K = require("../knowledge.js");              // Teach Axle: text cap + sanitiser for flags
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
 
 // Resolver-backed address lookups, built once. Best-effort by contract (see recipient-set.js).
@@ -519,6 +520,26 @@ app.get("/item/:id", async (req, res) => {
        ${atts.length ? `<div class="box"><h3>${esc(t(lang, "attachments"))} (${atts.length})</h3><div id="attlist">${attRowsHtml}</div></div>` : ""}
        <div class="box"><h3>${esc(t(lang, "questions_for_you"))} (${open.length} ${esc(t(lang, "open_lc"))})</h3>${qfInner}</div>`;
 
+  // --- Teach Axle (Phase 6): "Axle should know this", one note, queued for Brad. Its own form,
+  // placed right after the work form (a form cannot nest inside #workform). Earlier flags on this
+  // item are listed with their status; a pending one can be withdrawn by its author or an admin.
+  // Nothing here touches the draft or triggers a redraft; approvals happen on /teach.
+  const teachFlags = db.prepare("SELECT * FROM teach_flags WHERE work_item_id = ? ORDER BY id").all(w.id);
+  const teachRows = teachFlags.map((f) => `<li><span class="chip">${esc(t(lang, "teach_" + f.status))}</span> ${esc(f.text)}
+      <span class="muted">(${esc(f.flagged_by)}, ${esc(fmtDateTime(f.created_at, lang))})</span>
+      ${f.status === "pending" && (f.flagged_by === req.user.tailscale_login || req.user.role === "admin")
+        ? `<form method="post" action="${BASE.path}/item/${w.id}/teach/${f.id}/withdraw" style="display:inline"><button class="mini">${esc(t(lang, "teach_withdraw"))}</button></form>` : ""}</li>`).join("");
+  const teachCard = busy ? "" : `<div class="box"><details${teachFlags.length ? " open" : ""}>
+      <summary>${esc(t(lang, "teach_title"))}${teachFlags.length ? ` (${teachFlags.length})` : ""}</summary>
+      <div style="margin-top:8px">
+        <p class="muted hint">${esc(t(lang, "teach_hint"))}</p>
+        ${teachRows ? `<ul class="qs">${teachRows}</ul>` : ""}
+        <form method="post" action="${BASE.path}/item/${w.id}/teach">
+          <textarea class="ans" name="text" maxlength="${K.MAX_TEXT}" required placeholder="${esc(t(lang, "teach_ph"))}"></textarea>
+          <button class="mini" style="margin-top:6px">${esc(t(lang, "teach_btn"))}</button>
+        </form>
+      </div></details></div>`;
+
   // --- combined "SAP documents" card (F11): suggested documents (one-click attach via
   // the proven /attach-doc route) + the manual attach-by-number form, together. Not for
   // contact-form items (/attach-doc refuses them, as before).
@@ -845,6 +866,7 @@ app.get("/item/:id", async (req, res) => {
 
     ${busy && !full && !interim ? `<div class="box"><span class="muted">${esc(t(lang, "no_draft_busy"))}</span><div class="sk-lines m-only" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div></div>` : ""}
     ${workSection}
+    ${teachCard}
     ${supersededCard}
     ${actionBar}
     <script>
@@ -1098,6 +1120,29 @@ app.post("/item/:id/work", (req, res) => {
     setImmediate(() => runRedraft(w.id, req.user.tailscale_login));
   }
   res.redirect(BASE.url("/item/" + w.id));
+});
+
+// Teach Axle (Phase 6): queue "Axle should know this" for Brad. The flag carries the item and the
+// reply box as it stands (the salesperson's edit if any, else the newest AI draft) so the review
+// has context. Text is sanitised and capped on the way in; it reaches the prompt only after Brad
+// approves it on /teach. No draft change, no redraft.
+app.post("/item/:id/teach", (req, res) => {
+  const w = db.prepare("SELECT id, draft_edit FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(req.user.lang, "not_found"))}</p>`));
+  const ai = db.prepare("SELECT body FROM drafts WHERE work_item_id = ? AND is_interim = 0 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
+  const id = K.flag(db, { workItemId: w.id, by: req.user.tailscale_login, text: req.body.text,
+    snapshot: w.draft_edit != null ? w.draft_edit : (ai ? ai.body : "") });
+  if (id) audit(req.user.tailscale_login, "teach_flag", w.id, `#${id} ${K.cleanText(req.body.text).slice(0, 100)}`);
+  res.redirect(BASE.url("/item/" + w.id));
+});
+
+// Withdraw a pending flag: its author or an admin. Approved and rejected rows are Brad's, untouched.
+app.post("/item/:id/teach/:fid/withdraw", (req, res) => {
+  const f = db.prepare("SELECT text FROM teach_flags WHERE id = ? AND work_item_id = ?").get(req.params.fid, req.params.id);
+  if (f && K.withdraw(db, req.params.fid, req.user.tailscale_login, req.user.role === "admin")) {
+    audit(req.user.tailscale_login, "teach_withdraw", parseInt(req.params.id, 10), `#${req.params.fid} ${f.text.slice(0, 100)}`);
+  }
+  res.redirect(BASE.url("/item/" + req.params.id));
 });
 
 // Change an item's language.

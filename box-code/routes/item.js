@@ -419,7 +419,11 @@ app.get("/item/:id", async (req, res) => {
       ? (scen ? `<span class="chip">${esc(lang === "nl" ? scen.label_nl : scen.label_en)}</span>` : "")
       : `<span class="chip">${esc(intentLabel(lang, w.intent))}</span>`,
     langChip,
-    w.confidence ? `<span class="chip">${esc(t(lang, "confidence"))}: ${esc(w.confidence)}</span>` : "",
+    // Confidence chip is admin-only since 2026-10-04 (P4.12): the self-rating carried almost no
+    // signal for the team ("high" was sent verbatim 37% vs 28% for "medium"), so salespeople no
+    // longer see it. It is still stored and still charted on /adoption, so it comes back if the
+    // calibration improves.
+    w.confidence && req.user.role === "admin" ? `<span class="chip">${esc(t(lang, "confidence"))}: ${esc(w.confidence)}</span>` : "",
     ownerChip,
   ].filter(Boolean).join(" ");
 

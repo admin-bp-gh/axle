@@ -1740,7 +1740,7 @@ function extractEntities(text) {
 }
 
 module.exports = {
-  htmlToText, graphToken, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, getAttachment,
+  htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, getAttachment,
   getMessageStates, folderIds, folderName,
   getPool, closePool, sapCustomerContext, sapStockPrice,
   partDossier, customerCode, assembleDossier, availabilityOf,

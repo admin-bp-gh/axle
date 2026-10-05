@@ -247,3 +247,37 @@ test("the refusal is keyed on the rule id only, so nothing else changes behaviou
 test("a flagged forwarded item is refused for being flagged first", () => {
   assert.throws(() => SG.assembleSend({ ...forwarded, injection_flag: 1 }, BODY), /injection/);
 });
+
+// ---- voicemail items are phone only (Change A, A6) --------------------------------------------
+// A KPN voicemail's sender is KPN's notification address: there is nobody to email. assembleSend
+// must refuse ALWAYS, whatever recipient a human set, and say why in plain words.
+const voicemail = { ...base, sender_email: "voicemail@hipservice.nl", sender_name: "KPN", rule_id: "voicemail", subject: "Voice Message Attached from 0612345678 - 0612345678" };
+
+test("voicemail: refused without a recipient", () => {
+  assert.throws(() => SG.assembleSend(voicemail, BODY), /refused: this is a voicemail, so there is nobody to email/);
+});
+
+test("voicemail: refused even with a confirmed or typed recipient", () => {
+  for (const r of [{ recipient: "jan@dekker4x4.nl" }, { recipient: "jan@dekker4x4.nl", recipient_source: "typed" }]) {
+    assert.throws(() => SG.assembleSend({ ...voicemail, ...r }, BODY), /voicemail/);
+  }
+});
+
+test("voicemail: recognised by the rule id or by the KPN sender alone", () => {
+  assert.ok(SG.isVoicemailItem({ rule_id: "voicemail", sender_email: "x@y.nl" }));
+  assert.ok(SG.isVoicemailItem({ rule_id: null, sender_email: " Voicemail@HipService.nl " }));
+  assert.ok(!SG.isVoicemailItem(base));
+  assert.throws(() => SG.assembleSend({ ...voicemail, rule_id: "other" }, BODY), /voicemail/);
+  assert.throws(() => SG.assembleSend({ ...voicemail, sender_email: "jan@dekker4x4.nl" }, BODY), /voicemail/);
+});
+
+test("voicemail: the refusal message has no em or en dash", () => {
+  try { SG.assembleSend(voicemail, BODY); assert.fail("should refuse"); }
+  catch (e) { assert.ok(!/[–—]/.test(e.message), e.message); }
+});
+
+test("voicemail rule leaves a normal reply item unaffected", () => {
+  const p = SG.assembleSend({ ...base, rule_id: "orders" }, BODY);
+  assert.equal(p.to, "jan@dekker4x4.nl");
+  assert.equal(SG.isVoicemailItem({ ...base, rule_id: "orders" }), false);
+});

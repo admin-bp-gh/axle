@@ -150,9 +150,12 @@ function suggestionsPanel(w, suggestions, lang) {
 // Resolve the item's customer CardCode on the TRUSTED side only: compose_customer for a compose
 // item, else the inbound sender via customerByEmail. Never derived from email content, so this can
 // only ever read the email's own customer. Contact-form items (sender = Shopify's mailer) get none.
+// A KPN voicemail item's sender is KPN, never the customer: its card is the one ingest chose from
+// the caller's number (work_items.caller_card, Change A), read from SAP by our own lookup only.
 async function itemCardCode(w) {
   let cc = null; try { cc = JSON.parse(w.compose_customer || "null"); } catch (e) { cc = null; }
   if (cc && cc.cardCode) return cc.cardCode;
+  if (SG.isVoicemailItem(w)) return w.caller_card || null;
   if (w.origin !== "compose" && !isContactFormItem(w) && !isReturnNotificationItem(w) && w.sender_email) {
     try { const m = await SAPDOC.customerByEmail(w.sender_email); if (m && m.cardCode) return m.cardCode; }
     catch (e) { /* unknown sender -> no card */ }
@@ -168,7 +171,7 @@ function fmtMoney(n, cur) {
 
 // The at-a-glance customer card for the context pane (s = summary from customer-summary.js, or null).
 // "View full customer" opens the detail dialog and htmx-loads /customer-modal into it.
-function customerCard(s, lang, itemId) {
+function customerCard(s, lang, itemId, opts = {}) {
   if (!s) return "";
   const chip = (label, val) => `<div class="cuschip"><p class="cuslbl">${esc(label)}</p><p class="cusval">${val}</p></div>`;
   const tier = s.tier ? esc(s.tier) : "&mdash;";
@@ -177,7 +180,7 @@ function customerCard(s, lang, itemId) {
   const sub = [s.cardCode, s.country, s.group].filter(Boolean).map(esc).join(" &middot; ");
   const frozen = s.frozen ? ` <span class="st-warn">${esc(t(lang, "cust_frozen"))}</span>` : "";
   return `<div class="box cuscard">
-      <div class="boxhead"><h3>${esc(t(lang, "cust_card_title"))}</h3></div>
+      <div class="boxhead"><h3>${esc(t(lang, "cust_card_title"))}</h3>${opts.guess ? ` <span class="st-warn" title="${esc(t(lang, "cust_best_guess_tip"))}">${esc(t(lang, "cust_best_guess"))}</span>` : ""}</div>
       <p class="cusname">${esc(s.cardName || s.cardCode)}${frozen}</p>
       <p class="muted cussub">${sub}</p>
       <div class="cusgrid">
@@ -194,6 +197,37 @@ function customerCard(s, lang, itemId) {
         <script>(function(){var d=document.getElementById('cusModal');if(d&&!d._wired){d._wired=1;d.addEventListener('click',function(e){if(e.target===d)d.close();});}})();</script>
       </dialog>
     </div>`;
+}
+
+// Voicemail items (Change A, A5): the names to ask for on the call back. Three read-only sources,
+// merged by connectors.callerPeople: the SAP contact whose number matched, people who have emailed
+// us from this customer's on-file addresses (the resolver's own address set, our mailboxes
+// skipped), and SAP contact persons. Best effort: any failure returns "" and the page carries on.
+async function voicemailPeople(w, cardCode, lang) {
+  try {
+    let addrs = [];
+    try { addrs = await RSET_DEPS.addressesByCardCode(cardCode); } catch (e) { addrs = []; }
+    const OB = require("../outlook-block.js");
+    addrs = [...new Set(addrs.map((a) => String(a || "").trim().toLowerCase()).filter((a) => a && !OB.isInternal(a)))];
+    const emailers = addrs.length ? db.prepare(
+      `SELECT TRIM(sender_name) AS name, MAX(COALESCE(email_received, created_at)) AS last FROM work_items
+       WHERE LOWER(TRIM(sender_email)) IN (${addrs.map(() => "?").join(", ")})
+         AND TRIM(COALESCE(sender_name, '')) <> '' AND sender_name NOT LIKE '%@%'
+       GROUP BY LOWER(TRIM(sender_name)) ORDER BY last DESC LIMIT 12`
+    ).all(...addrs) : [];
+    let sap = [];
+    try { sap = await C.contactPersons(cardCode); } catch (e) { sap = []; }
+    const people = C.callerPeople({ matched: w.caller_contact, sap, emailers });
+    if (!people.length) return "";
+    const when = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(lang === "nl" ? "nl-NL" : "en-GB", { day: "numeric", month: "short", year: "numeric" }); };
+    const row = (p) => `<li>${p.matched ? `<b>${esc(p.name)}</b> <span class="st-ok">${esc(t(lang, "vm_people_matched"))}</span>` : esc(p.name)}`
+      + (p.position ? ` <span class="muted">&middot; ${esc(p.position)}</span>` : "")
+      + (p.last && when(p.last) ? ` <span class="muted">&middot; ${esc(t(lang, "vm_people_last_email"))} ${esc(when(p.last))}</span>` : "") + "</li>";
+    return `<div class="box"><div class="boxhead"><h3>${esc(t(lang, "vm_people_title"))}</h3></div><ul class="vmpeople">${people.map(row).join("")}</ul></div>`;
+  } catch (e) {
+    audit("system", "voicemail_people_error", w.id, String(e.message || e).slice(0, 150));
+    return "";
+  }
 }
 
 // The detail-modal body (loaded into #cusModalBody by the /customer-modal route). d = detail().
@@ -313,7 +347,9 @@ app.get("/item/:id", async (req, res) => {
   // recipient is confirmed - mirrored here so the button says "Confirm recipient" rather than
   // offering a Send that is going to be refused at the route.
   const fwdNeedsRecipient = SG.needsConfirmedRecipient(w);
-  const canSend = editable && !w.injection_flag && !fwdNeedsRecipient
+  // Voicemail items are phone only: send-guard always refuses them, so no Send button here (Change A).
+  const isVoicemail = SG.isVoicemailItem(w);
+  const canSend = editable && !w.injection_flag && !fwdNeedsRecipient && !isVoicemail
     && (!isCompose || composeCanSend) && (!isContactForm || cfCanSend) && (!isRN || rnCanSend);
   // The editable reply: the human's saved edit if any, else the AI full draft, else the holding reply.
   const replyText = w.draft_edit != null ? w.draft_edit : (full ? full.body : (interim ? interim.body : ""));
@@ -334,7 +370,9 @@ app.get("/item/:id", async (req, res) => {
     const card = await itemCardCode(w);
     if (card) {
       const s = await CUSTSUM.summarise(card);
-      custHtml = customerCard(s, lang, w.id);
+      const isVm = SG.isVoicemailItem(w);
+      custHtml = customerCard(s, lang, w.id, { guess: isVm && !!w.caller_card_guess });
+      if (isVm && s) custHtml += await voicemailPeople(w, card, lang);
       custName = (s && s.name) || "";
     }
   } catch (e) { audit("system", "cust_summary_error", w.id, String(e.message || e).slice(0, 150)); }
@@ -644,6 +682,7 @@ app.get("/item/:id", async (req, res) => {
          ${recipPop}
        </span>${typedWarn || changedPill}`
     : w.injection_flag ? `<span class="note">${esc(t(lang, "send_disabled_inj"))}</span>`
+    : isVoicemail ? `<span class="note">${esc(t(lang, "voicemail_phone_only"))}</span>`
     : needsRecipient && recipPop
       ? `<span class="send-split"><span class="btn send-stack recip-needed"><span class="send-now">${esc(t(lang, "recip_confirm_btn"))}</span><span class="send-to">${esc(t(lang, "recip_none_yet"))}</span></span><button type="button" class="m-only send send-ph" disabled>${esc(t(lang, "send_now"))}</button>${recipPop}</span>`
     : isContactForm ? `<span class="note">${esc(t(lang, w.recipient ? "cf_send_not_enabled" : "cf_confirm_first"))}</span>`

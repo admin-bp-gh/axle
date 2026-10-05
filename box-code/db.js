@@ -152,6 +152,9 @@ ensureColumn("work_items", "email_received", "TEXT"); // newest inbound received
 ensureColumn("work_items", "attachments_json", "TEXT"); // [{id,name,contentType,size}] of newest inbound
 ensureColumn("work_items", "feedback", "TEXT");        // salesperson's freeform guidance for redraft
 ensureColumn("work_items", "caller_info", "TEXT");     // voicemail caller match (CardName/code/number)
+ensureColumn("work_items", "caller_card", "TEXT");        // voicemail: CardCode whose customer card is shown (Change A)
+ensureColumn("work_items", "caller_card_guess", "INTEGER"); // voicemail: 1 when caller_card is a best guess
+ensureColumn("work_items", "caller_contact", "TEXT");     // voicemail: SAP contact person(s) whose number matched, "; " separated
 ensureColumn("work_items", "draft_edit", "TEXT");      // human-edited "reply to send" (persists across reloads; cleared on a fresh AI draft)
 
 // Compose (Phase 6): a work item created from a proactively-composed outbound email rather than an
@@ -372,7 +375,17 @@ function setWatermark(box, iso) {
   db.prepare("UPDATE sync_state SET watermarks = ? WHERE id = 1").run(JSON.stringify(w));
 }
 
-module.exports = { db, audit, acquireSync, releaseSync, syncStatus, getWatermark, setWatermark, isBlockedSender };
+// Voicemail caller match: the caller line and the card it implies are written TOGETHER in one
+// statement, so a re-opened voicemail item can never show the card from an earlier voicemail
+// next to a newer caller line. A new match without a card clears the card fields.
+// m = connectors.lookupCaller() result: { callerInfo, card, guess, contact }.
+function setCallerMatch(itemId, m) {
+  db.prepare(
+    "UPDATE work_items SET caller_info = ?, caller_card = ?, caller_card_guess = ?, caller_contact = ? WHERE id = ?"
+  ).run(m.callerInfo, m.card || null, m.card && m.guess ? 1 : 0, (m.card && m.contact) || null, itemId);
+}
+
+module.exports = { db, audit, setCallerMatch, acquireSync, releaseSync, syncStatus, getWatermark, setWatermark, isBlockedSender };
 
 // Smoke test when run directly: node db.js
 if (require.main === module) {

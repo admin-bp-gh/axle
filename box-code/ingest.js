@@ -36,7 +36,7 @@ const OUTLOOK = require("./outlook-close.js");   // Outlook -> Axle: close what 
 const OBLOCK = require("./outlook-block.js");    // Axle -> Outlook: file blocked senders out of the inbox
 const ACK = require("./acknowledgement.js");     // no_reply courtesy line: when to keep it, and what may be in it
 const US = require("./unread-sweep.js");         // which unread mail the watermark missed may be added to a run
-const { db, audit, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
+const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
 // pure helpers, no express and no route registration, so this pulls in nothing web-facing.
@@ -126,14 +126,13 @@ async function processThread(anthropic, key, msgs, ctx) {
 
   const cls = await E.classify(anthropic, email, history);
 
-  // Voicemail caller match: look up the number in the body against SAP business partners.
-  let callerInfo = null;
+  // Voicemail caller match: the caller number is in the SUBJECT of a KPN voicemail (the body
+  // only says "click attachment to listen"). Every matching SAP business partner is reported,
+  // including contact persons; the customer card is chosen only by the approved rules (Change A).
+  let callerMatch = null;
   if ((email.from.address || "").toLowerCase() === "voicemail@hipservice.nl") {
     try {
-      const nums = C.extractPhoneNumbers(email.text);
-      const hit = await C.findCustomerByPhone(nums);
-      if (hit) callerInfo = `Caller: ${hit.CardName} (${hit.CardCode})${hit.Phone1 ? " — " + hit.Phone1 : ""}`;
-      else if (nums.length) callerInfo = `Caller number ${nums[0]} — no SAP match`;
+      callerMatch = await C.lookupCaller(email);
     } catch (e) { audit("system", "voicemail_lookup_error", existing ? existing.id : null, e.message.slice(0, 150)); }
   }
 
@@ -191,7 +190,9 @@ async function processThread(anthropic, key, msgs, ctx) {
     cls.injection_suspected ? 1 : 0, email.id, rule.id, rule.owner || null,
     email.text, email.received, JSON.stringify(atts), itemId
   );
-  if (callerInfo) db.prepare("UPDATE work_items SET caller_info = ? WHERE id = ?").run(callerInfo, itemId);
+  // Caller line, card, guess flag and matched contact in one write (a match without a card clears it).
+  if (callerMatch) setCallerMatch(itemId, callerMatch);
+  const callerInfo = callerMatch ? callerMatch.callerInfo : null;
 
   // Contact-form enrichment (Step 2): parse the structured body deterministically and resolve
   // the customer on the trusted side, storing the result for the To line + send path.

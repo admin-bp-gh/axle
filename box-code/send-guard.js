@@ -222,9 +222,23 @@ function needsConfirmedRecipient(workItem) {
   return String(workItem.rule_id || "") === INTERNAL_FORWARD_RULE && !String(workItem.recipient || "").trim();
 }
 
+// A KPN voicemail item (rule 'voicemail', sender voicemail@hipservice.nl) has nobody to email: the
+// thread sender is KPN's notification address, so a reply would vanish without a trace. Voicemail
+// items are phone only (Change A, 2026-10-05): the send is ALWAYS refused, whatever the recipient,
+// and the item page shows a call-back notice instead of a Send button.
+const VOICEMAIL_RULE = "voicemail";
+const VOICEMAIL_SENDER = "voicemail@hipservice.nl";
+function isVoicemailItem(workItem) {
+  return String(workItem.rule_id || "") === VOICEMAIL_RULE
+    || String(workItem.sender_email || "").trim().toLowerCase() === VOICEMAIL_SENDER;
+}
+
 function assembleSend(workItem, body, stagedAtts = []) {
   if (!workItem) throw new Error("refused: no work item");
   if (workItem.injection_flag) throw new Error("refused: item is flagged as possible injection - resolve before sending");
+  if (isVoicemailItem(workItem)) {
+    throw new Error("refused: this is a voicemail, so there is nobody to email. Call the customer back and close the item as handled by phone.");
+  }
   if (needsConfirmedRecipient(workItem)) {
     throw new Error("refused: this email was forwarded to us internally, so replying to the sender would reply to our own mailbox - confirm the customer's address first");
   }
@@ -299,7 +313,7 @@ const assembleContactFormSend = assembleNewOutboundSend;
 
 module.exports = {
   URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256, acceptTypedRecipient,
-  escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient,
+  escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient, isVoicemailItem,
   assembleNewOutboundSend, assembleContactFormSend,
   findImageTokens, applyInlineImages, contentIdFor,
 };

@@ -838,25 +838,253 @@ function extractPhoneNumbers(text) {
   return [...new Set(out)];
 }
 
-// Match a caller number against OCRD.Phone1/Phone2 regardless of stored format. Numbers
-// are stored inconsistently (+31, 0031, 0, spaces, dashes), so we compare the last 9
-// significant digits on both sides: SQL strips separators with nested REPLACEs and takes
-// RIGHT(...,9); we do the same to the search number. Handles +31 6.., 0031 6.., 06.. etc.
-function last9(s) { return String(s || "").replace(/\D/g, "").slice(-9); }
-async function findCustomerByPhone(numbers) {
-  const keys = [...new Set((numbers || []).map(last9).filter((d) => d.length === 9))];
-  if (!keys.length) return null;
+// The caller number of a KPN voicemail is in the SUBJECT, not the body. KPN (hipservice.nl)
+// sends "Voice Message Attached from 0612345678 - 0612345678" (or "- KPN Zakelijk" when the
+// network knows a name, or "+4912345678 - +4912345678" for international callers). The body is
+// only "Time: ... Click attachment to listen". Until 2026-10 only the body was scanned, so the
+// SAP lookup never ran: 0 matches on 155 voicemails. Subject first, body as fallback.
+function extractCallerNumbers(email) {
+  const subject = String((email && email.subject) || "");
+  // Take only the first token after "from": KPN repeats the number (or a name) after " - ".
+  const m = subject.match(/\bfrom\s+(\+?[\d\s().\/]*\d)/i);
+  const fromSubject = m ? extractPhoneNumbers(m[1]) : extractPhoneNumbers(subject);
+  if (fromSubject.length) return fromSubject;
+  return extractPhoneNumbers(email && email.text);
+}
+
+// Normalise a phone number to international digits without "+" or "00": "06 1234 5678",
+// "+31 6 12345678", "0031612345678" all become "31612345678". A number we cannot read as
+// international (no country code, not Dutch national) is returned as its bare digits.
+function normalisePhone(s) {
+  let d = String(s || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("00")) d = d.slice(2);
+  else if (d.startsWith("0") && d.length === 10) d = "31" + d.slice(1);   // Dutch national 0xx
+  return d;
+}
+
+// Does a stored SAP number refer to the same line as the caller? Both sides are normalised; a
+// stored number without a country code (e.g. "612345678" or "6-12345678") counts for Dutch
+// callers only. Exact digits are required for international callers so that a Belgian and a
+// Dutch number sharing their last 9 digits never match each other.
+function samePhone(callerNorm, storedRaw) {
+  const stored = normalisePhone(storedRaw);
+  if (!callerNorm || !stored) return false;
+  if (stored === callerNorm) return true;
+  if (callerNorm.startsWith("31") && callerNorm.length === 11) {
+    const storedDigits = String(storedRaw || "").replace(/\D/g, "");
+    if (storedDigits.length === 9 && storedDigits === callerNorm.slice(2)) return true;
+  }
+  return false;
+}
+
+// Find every business partner whose own numbers (OCRD Phone1, Phone2, Cellular) or whose contact
+// persons (OCPR Tel1, Tel2, Cellolar) carry the caller's number. SQL does a cheap last-9-digit
+// prefilter (numbers are stored in every format: +31, 0031, 0, spaces, dashes); samePhone()
+// then verifies each row exactly. Returns ALL hits, deduplicated by CardCode, so the caller
+// can see when a number is shared and never silently pick one. deps.pool is for tests.
+async function findCustomersByPhone(numbers, deps = {}) {
+  const callers = [...new Set((numbers || []).map(normalisePhone).filter((d) => d.length >= 9))];
+  if (!callers.length) return [];
   const strip = (col) =>
     `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(${col},''),' ',''),'-',''),'+',''),'(',''),')',''),'.',''),'/',''),9)`;
-  const pool = await getPool();
-  for (const k of keys) {
+  const pool = deps.pool || await getPool();
+  const hits = new Map();
+  for (const caller of callers) {
+    const k = caller.slice(-9);
     const r = await pool.request().input("p", sql.NVarChar, k).query(
-      `SELECT TOP 1 CardCode, CardName, Phone1, Phone2 FROM OCRD
-       WHERE ${strip("Phone1")} = @p OR ${strip("Phone2")} = @p`
+      `SELECT T0.CardCode, T0.CardName, T0.CardType, T0.frozenFor, T0.Phone1, T0.Phone2, T0.Cellular,
+              NULL AS ContactName, NULL AS ContactTel
+       FROM OCRD T0
+       WHERE ${strip("T0.Phone1")} = @p OR ${strip("T0.Phone2")} = @p OR ${strip("T0.Cellular")} = @p
+       UNION ALL
+       SELECT T0.CardCode, T0.CardName, T0.CardType, T0.frozenFor, T0.Phone1, T0.Phone2, T0.Cellular,
+              T1.Name AS ContactName,
+              CASE WHEN ${strip("T1.Tel1")} = @p THEN T1.Tel1
+                   WHEN ${strip("T1.Tel2")} = @p THEN T1.Tel2 ELSE T1.Cellolar END AS ContactTel
+       FROM OCPR T1 JOIN OCRD T0 ON T0.CardCode = T1.CardCode
+       WHERE ${strip("T1.Tel1")} = @p OR ${strip("T1.Tel2")} = @p OR ${strip("T1.Cellolar")} = @p`
     );
-    if (r.recordset.length) return { ...r.recordset[0], matched: k };
+    for (const row of r.recordset || []) {
+      const viaContact = row.ContactTel && samePhone(caller, row.ContactTel);
+      const viaCard = [row.Phone1, row.Phone2, row.Cellular].some((n) => samePhone(caller, n));
+      if (!viaContact && !viaCard) continue;
+      const prev = hits.get(row.CardCode);
+      const hit = prev || {
+        CardCode: row.CardCode, CardName: row.CardName, CardType: row.CardType,
+        frozen: row.frozenFor === "Y", contacts: [], matched: caller,
+      };
+      if (viaContact && row.ContactName && !hit.contacts.includes(row.ContactName)) hit.contacts.push(row.ContactName);
+      hits.set(row.CardCode, hit);
+    }
   }
-  return null;
+  return [...hits.values()];
+}
+
+// Backwards-compatible single-hit lookup: the one customer when exactly one matches, else null.
+async function findCustomerByPhone(numbers, deps = {}) {
+  const hits = (await findCustomersByPhone(numbers, deps)).filter((h) => h.CardType === "C");
+  return hits.length === 1 ? hits[0] : null;
+}
+
+// The facts the confident-guess rules need for each customer hit, in ONE read-only query: the
+// OCRD email and the date of the latest sales order (ORDR, same source as the customer card's
+// "Last order"). Returns Map CardCode -> { email, lastOrder: "YYYY-MM-DD" | null }.
+async function callerCardFacts(cardCodes, deps = {}) {
+  const codes = [...new Set((cardCodes || []).filter(Boolean))];
+  if (!codes.length) return new Map();
+  const pool = deps.pool || await getPool();
+  const req = pool.request();
+  codes.forEach((c, i) => req.input(`c${i}`, sql.NVarChar, c));
+  const r = await req.query(
+    `SELECT T0.CardCode, T0.E_Mail,
+            CONVERT(varchar(10), (SELECT MAX(T1.DocDate) FROM ORDR T1 WHERE T1.CardCode = T0.CardCode), 23) AS LastOrder
+     FROM OCRD T0
+     WHERE T0.CardCode IN (${codes.map((_, i) => `@c${i}`).join(", ")})`
+  );
+  const out = new Map();
+  for (const row of r.recordset || []) out.set(row.CardCode, { email: row.E_Mail || "", lastOrder: row.LastOrder || null });
+  return out;
+}
+
+// --- choosing the customer card (design D32 to D40, Change A section A2) ---------------------
+const normName = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+const normMail = (s) => String(s || "").trim().toLowerCase();
+function orderDate(v) {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(String(v).slice(0, 10) + "T00:00:00Z");
+  return isNaN(d) ? null : d;
+}
+function twelveMonthsBefore(now) {
+  const d = new Date(now);
+  d.setUTCFullYear(d.getUTCFullYear() - 1);
+  d.setUTCHours(0, 0, 0, 0);   // whole days: an order on the same date last year still counts
+  return d;
+}
+function orderedRecently(h, now) {
+  const d = orderDate(h.lastOrder);
+  return !!d && d >= twelveMonthsBefore(now);
+}
+// Latest order first; records without orders last; otherwise SAP's own order is kept.
+function byLatestOrder(list) {
+  return list.map((h, i) => ({ h, i, t: (orderDate(h.lastOrder) || { getTime: () => -Infinity }).getTime() }))
+    .sort((a, b) => (b.t - a.t) || (a.i - b.i)).map((x) => x.h);
+}
+
+// Apply the rules in the approved order. Works on customer hits only (CardType C); each hit may
+// carry email and lastOrder from callerCardFacts. Returns { rule, card, guess, others } where
+// card is the hit whose customer card is shown (or null) and others are the remaining customers.
+function decideCallerCard(hits, opts = {}) {
+  const now = opts.now || new Date();
+  const customers = (hits || []).filter((h) => h.CardType === "C");
+  const none = (rule) => ({ rule, card: null, guess: false, others: customers });
+  if (!customers.length) return none("none");
+  if (customers.length === 1) return { rule: "one", card: customers[0], guess: false, others: [] };
+  if (customers.length >= 5) return none("many");
+  const names = new Set(customers.map((h) => normName(h.CardName)));
+  const mails = new Set(customers.map((h) => normMail(h.email)));
+  const sameName = names.size === 1 && !names.has("");
+  const sameMail = mails.size === 1 && !mails.has("");
+  if (sameName || sameMail) {
+    const [card, ...others] = byLatestOrder(customers);
+    return { rule: "same", card, guess: false, others };
+  }
+  const recent = customers.filter((h) => !h.frozen && orderedRecently(h, now));
+  if (recent.length === 1) {
+    return { rule: "favourite", card: recent[0], guess: true, others: customers.filter((h) => h !== recent[0]) };
+  }
+  return none("unclear");
+}
+
+// "Aug 2026" within the last 12 months, "2023" before that, "no orders" when there are none.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function lastOrderLabel(h, now) {
+  const d = orderDate(h.lastOrder);
+  if (!d) return "no orders";
+  return orderedRecently(h, now) ? `last order ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : `last order ${d.getUTCFullYear()}`;
+}
+
+// One line for the item (work_items.caller_info, shown in the queue and used as draft seed).
+// Shown numbers keep the caller's own format so staff can dial it back as displayed. Wording is
+// the approved set from the Change A brief, section A3; no em or en dashes.
+function formatCallerInfo(numbers, hits, opts = {}) {
+  const now = opts.now || new Date();
+  const shown = (numbers && numbers[0]) || "";
+  if (!shown) return "Caller number not shown by KPN";
+  const customers = (hits || []).filter((h) => h.CardType === "C");
+  const others = (hits || []).filter((h) => h.CardType !== "C");
+  const inactive = (h) => (h.frozen ? ", inactive" : "");
+  const name = (h) => ((h.contacts || []).length ? `${h.contacts.join(", ")} at ` : "") + `${h.CardName} (${h.CardCode})` + inactive(h);
+  const entry = (h) => `${h.CardCode} ${h.CardName}${inactive(h)}`;
+  if (customers.length) {
+    const d = decideCallerCard(hits, { now });
+    const n = customers.length;
+    if (d.rule === "one") return `Caller: ${name(d.card)}, ${shown}`;
+    if (d.rule === "same") return `Caller: ${name(d.card)}, ${shown}. Same person also on ${d.others.map((h) => h.CardCode).join(", ")}`;
+    if (d.rule === "favourite") {
+      return `Caller number ${shown} is on ${n} customer records. Best guess: ${name(d.card)}, the only one who ordered in the last 12 months. Also: ${d.others.map(entry).join(", ")}`;
+    }
+    const listed = byLatestOrder(customers);
+    const list = listed.slice(0, 5).map((h) => `${entry(h)} (${lastOrderLabel(h, now)})`).join(", ")
+      + (n > 5 ? `, and ${n - 5} more` : "");
+    return `Caller number ${shown} is on ${n} customer records, check which one: ${list}`;
+  }
+  if (others.length) return `Caller number ${shown}: ${others[0].CardName} (${others[0].CardCode})${inactive(others[0])}, a supplier, not a customer`;
+  return `Caller number ${shown}, no SAP match`;
+}
+
+// The whole voicemail lookup for ingest: number from the subject, every SAP hit, the facts for the
+// guess rules, the caller line, and which card (if any) to show. Returns the fields ingest writes
+// together: { callerInfo, card, guess, contact }. Throws on a SAP failure (ingest audits it).
+async function lookupCaller(email, deps = {}) {
+  const now = deps.now || new Date();
+  const numbers = extractCallerNumbers(email);
+  let hits = numbers.length ? await findCustomersByPhone(numbers, deps) : [];
+  const custCodes = hits.filter((h) => h.CardType === "C").map((h) => h.CardCode);
+  if (custCodes.length > 1) {
+    const facts = await callerCardFacts(custCodes, deps);
+    hits = hits.map((h) => (facts.has(h.CardCode) ? { ...h, ...facts.get(h.CardCode) } : h));
+  }
+  const d = decideCallerCard(hits, { now });
+  return {
+    callerInfo: formatCallerInfo(numbers, hits, { now }),
+    card: d.card ? d.card.CardCode : null,
+    guess: d.card && d.guess ? 1 : 0,
+    contact: d.card && d.card.contacts.length ? d.card.contacts.join("; ") : null,
+  };
+}
+
+// SAP contact persons for a CardCode (OCPR Name, Position) for the "people we know" list on a
+// voicemail item. Read-only; blank names skipped.
+async function contactPersons(cardCode, deps = {}) {
+  if (!cardCode) return [];
+  const pool = deps.pool || await getPool();
+  const r = await pool.request().input("cc", sql.NVarChar, cardCode).query(
+    `SELECT Name, Position FROM OCPR WHERE CardCode = @cc AND ISNULL(LTRIM(RTRIM(Name)), '') <> '' ORDER BY Name`
+  );
+  return (r.recordset || []).map((row) => ({ name: String(row.Name).trim(), position: String(row.Position || "").trim() }));
+}
+
+// Merge the three sources of "people we know at this customer" into one short list: the contact
+// whose number matched (highlighted) first, then people who emailed us (latest first), then SAP
+// contact persons. Same name (case and spacing ignored) appears once. Pure, for tests.
+//   matched: "Name; Name" (work_items.caller_contact) or null
+//   sap: [{ name, position }], emailers: [{ name, last }]  (last = ISO date of their latest email)
+function callerPeople({ matched, sap, emailers }, limit = 6) {
+  const out = [];
+  const seen = new Map();
+  const add = (p) => {
+    const k = normName(p.name);
+    if (!k) return;
+    if (seen.has(k)) { const e = seen.get(k); e.position = e.position || p.position || ""; e.last = e.last || p.last || null; return; }
+    const e = { name: String(p.name).trim(), position: p.position || "", last: p.last || null, matched: !!p.matched };
+    seen.set(k, e); out.push(e);
+  };
+  for (const n of String(matched || "").split(";")) add({ name: n, matched: true });
+  const recent = (emailers || []).slice().sort((a, b) => String(b.last || "").localeCompare(String(a.last || "")));
+  for (const p of recent) add(p);
+  for (const p of sap || []) add(p);
+  return out.slice(0, limit);
 }
 
 // ---------- Shopify (read-only custom app, GraphQL only) ----------
@@ -1519,7 +1747,8 @@ module.exports = {
   partFinder, vinDecode, modelToColumn, rankCandidates, categoryFromTokens, tokenize, shopifyHandles,
   shopifyCustomerContext, shopifyOrderByName,
   myparcelSearch, myparcelTrack, extractEntities, shopifyGraphql,
-  extractPhoneNumbers, findCustomerByPhone,
+  extractPhoneNumbers, extractCallerNumbers, normalisePhone, samePhone, findCustomersByPhone, findCustomerByPhone,
+  callerCardFacts, decideCallerCard, formatCallerInfo, lookupCaller, contactPersons, callerPeople,
   returnDossier, whoPaysForReason, businessSignal, electricalHint, refundRoute,
   claimDossier,
 };

@@ -21,6 +21,8 @@ header .brand::before { content: ""; width: 16px; height: 16px; border-radius: 5
 header .who { margin-left: auto; font-size: var(--fs-sm); color: var(--ink-2); display: flex; align-items: center; gap: var(--s3); }
 header a { color: var(--ink-2); text-decoration: none; padding: 2px 0; border-bottom: 2px solid transparent; }
 header a:hover { color: var(--ink); }
+header a.wb-home { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border-radius: 8px; background: var(--ink); color: var(--surface); border-bottom: 0; }
+header a.wb-home:hover { color: var(--surface); opacity: .85; }
 .langtoggle a { color: var(--ink-2); padding: 0 2px; font-weight: 600; }
 .langtoggle a.on { color: var(--ink); text-decoration: underline; }
 .langtoggle .sep { color: var(--faint); }
@@ -495,6 +497,8 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
     min-height: calc(var(--bar-h) + env(safe-area-inset-top)); height: calc(var(--bar-h) + env(safe-area-inset-top));
     padding-top: env(safe-area-inset-top); padding-bottom: 0; }
   header > a, header .who { display: none; }
+  /* The way back to the Workbench shell: a house, same size as the menu button, left of the brand. */
+  header > a.wb-home { display: flex; align-items: center; justify-content: center; width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; margin-left: -10px; border-bottom: 0; border-radius: var(--r-ctl); background: transparent; color: var(--ink); }
   header .appmenu { margin-left: auto; }
   header .appmenu > summary.appmenu-btn { width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0;
     display: flex; align-items: center; justify-content: center; border-radius: var(--r-ctl); }

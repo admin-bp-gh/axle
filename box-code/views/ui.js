@@ -189,7 +189,7 @@ const STRINGS = {
     save_now: "Save your edits without redrafting",
     // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
     menu: "Menu", close: "Close", cancel: "Cancel", filters: "Filters", sort: "Sort", sync: "Mail",
-    signed_in_as: "Signed in as", no_matches: "No matches for '{q}'", clear_search: "Clear search",
+    workbench_home: "Workbench home", signed_in_as: "Signed in as", no_matches: "No matches for '{q}'", clear_search: "Clear search",
     best_on_desktop: "Best on desktop", search_open: "Search emails", send_to: "Send to",
     sap_docs: "SAP documents", attach_manual: "Attach by number",
     relang_note: "Changing the language re-drafts the email.",
@@ -390,7 +390,7 @@ const STRINGS = {
     save_now: "Bewaar je wijzigingen zonder opnieuw op te stellen",
     // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
     menu: "Menu", close: "Sluiten", cancel: "Annuleren", filters: "Filters", sort: "Sorteren", sync: "Mail",
-    signed_in_as: "Ingelogd als", no_matches: "Geen resultaten voor '{q}'", clear_search: "Zoekopdracht wissen",
+    workbench_home: "Workbench-start", signed_in_as: "Ingelogd als", no_matches: "Geen resultaten voor '{q}'", clear_search: "Zoekopdracht wissen",
     best_on_desktop: "Werkt het best op een computer", search_open: "E-mails zoeken", send_to: "Verzenden naar",
     sap_docs: "SAP-documenten", attach_manual: "Bijvoegen op nummer",
     relang_note: "Een andere taal stelt de e-mail opnieuw op.",
@@ -677,7 +677,7 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris25";   // 2026-10-04: live queue (qnew, desktop qupd)
+const ASSET_V = "polaris26";   // 2026-10-05: Workbench home link in the header and phone menu
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is
@@ -689,6 +689,7 @@ function appMenu(lang, user) {
   const L = (k) => esc(t(lang, k));
   return `<details class="menu appmenu m-only"><summary class="btn appmenu-btn" aria-label="${L("menu")}"><span class="burger" aria-hidden="true"></span></summary><div class="menu-list">`
     + `<div class="sheet-title">${L("menu")}</div>`
+    + (B ? `<a class="mitem wb-home" href="/#/">${L("workbench_home")}</a><div class="mlabel">Axle</div>` : "")
     + `<a class="mitem" href="${B}/">${L("inbox")}</a><a class="mitem" href="${B}/blocks">${L("nav_blocks")}</a>`
     + (user.role === "admin" ? `<a class="mitem" href="${B}/audit">${L("audit")}</a><a class="mitem" href="${B}/adoption">${L("adoption")}</a><a class="mitem" href="${B}/teach">${L("teach")}</a>` : "")
     + `<div class="mlabel">${L("language")}</div><div class="segrow"><a class="seg${lang === "en" ? " on" : ""}" href="${B}/setlang?lang=en">EN</a><a class="seg${lang === "nl" ? " on" : ""}" href="${B}/setlang?lang=nl">NL</a></div>`
@@ -712,7 +713,7 @@ ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
 <script src="${B}/assets/htmx.min.js?v=${ASSET_V}" defer></script>
 </head><body${bodyCls ? ` class="${esc(bodyCls)}"` : ""}>
-${user.inFrame ? "" : `<header><span class="brand">Axle</span><a href="${B}/">${esc(t(lang, "inbox"))}</a><a href="${B}/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="${B}/audit">${esc(t(lang, "audit"))}</a><a href="${B}/adoption">${esc(t(lang, "adoption"))}</a><a href="${B}/teach">${esc(t(lang, "teach"))}</a>` : ""}
+${user.inFrame ? "" : `<header>${B ? `<a class="wb-home" href="/#/" title="${esc(t(lang, "workbench_home"))}" aria-label="${esc(t(lang, "workbench_home"))}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>` : ""}<span class="brand">Axle</span><a href="${B}/">${esc(t(lang, "inbox"))}</a><a href="${B}/blocks">${esc(t(lang, "nav_blocks"))}</a>${user.role === "admin" ? `<a href="${B}/audit">${esc(t(lang, "audit"))}</a><a href="${B}/adoption">${esc(t(lang, "adoption"))}</a><a href="${B}/teach">${esc(t(lang, "teach"))}</a>` : ""}
 <span class="who"><span class="langtoggle"><a class="${lang === "en" ? "on" : ""}" href="${B}/setlang?lang=en">EN</a><span class="sep">/</span><a class="${lang === "nl" ? "on" : ""}" href="${B}/setlang?lang=nl">NL</a></span><span>${esc(user.display_name)} (${esc(user.role)})</span></span>${appMenu(lang, user)}</header>`}
 <main${isShell ? ' class="wide"' : ""}>${opts && opts.desktopNote ? `<div class="banner desktop-note m-only">${esc(t(lang, "best_on_desktop"))}</div>` : ""}${body}</main>
 <script>

@@ -392,8 +392,11 @@ async function runClaim(itemId, email, lang) {
 // GATED like the carrier-claim staging. AXLE_ACTION_DOC_AUTOATTACH in C:\Axle\secrets\.env:
 //     unset / anything else - off.   dry - audit what WOULD be staged.   on - stage.
 //
-// A document is staged once per item: one already on the draft is skipped, and so is one staged
-// here before (the audit row), so a human's Remove survives the next redraft. Never throws.
+// A document is staged once per item: one that was ever put on this item's draft, by Axle or by
+// hand (the attachment_added audit row), is not staged again. So a human's Remove survives the
+// next redraft, and invoices already sent are not re-staged when the customer writes back. An
+// item Axle thinks needs no reply (the "thank you" after the invoices went out) gets nothing.
+// Never throws.
 function docAutoMode() {
   const v = String(process.env.AXLE_ACTION_DOC_AUTOATTACH || "").trim().toLowerCase();
   return v === "on" ? "on" : v === "dry" ? "dry" : "off";
@@ -403,14 +406,13 @@ async function stageWantedDocs(itemId, suggestions) {
   if (mode === "off") return;
   try {
     const item = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
-    if (!item || item.injection_flag) return;
-    const onDraft = new Set(db.prepare("SELECT name FROM draft_attachments WHERE work_item_id = ?").all(itemId).map((r) => r.name));
-    const stagedBefore = db.prepare("SELECT 1 FROM audit_log WHERE work_item_id = ? AND action = 'doc_auto_attached' AND detail LIKE ?");
+    if (!item || item.injection_flag || item.suggest_close) return;
+    const stagedBefore = db.prepare("SELECT 1 FROM audit_log WHERE work_item_id = ? AND action = 'attachment_added' AND detail LIKE ?");
     for (const s of suggestions.filter((x) => x.auto)) {
       const d = s.docs[0];
       const type = Object.keys(SAPDOC.DOC_TYPES).find((k) => SAPDOC.DOC_TYPES[k].objectId === d.objectId);
       const name = SAPDOC.DOC_TYPES[type].prefix + "-" + d.docNum + ".pdf";
-      if (onDraft.has(name) || stagedBefore.get(itemId, name + " %")) continue;
+      if (stagedBefore.get(itemId, name + " (%")) continue;
       if (mode === "dry") { audit("system", "doc_auto_dry", itemId, `${name} cust ${d.cardCode}`); continue; }
       // Re-resolve from the document NUMBER and check SAP's own answer is the document that was
       // scope-checked, rather than rendering a DocEntry carried over from the suggestion.

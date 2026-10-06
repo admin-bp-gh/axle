@@ -112,9 +112,10 @@ const SCOPE = { cardCode: "K127177", cardName: "BV Newcraft" };
 
   // --- suggestForEmail: sender -> scope -> suggestions (the shared ingest/server path) ---
   const emailDeps = Object.assign({}, deps, {
-    async customerByEmail(e) {
-      if (String(e).toLowerCase() === "laurens@yvesmichiels.be") return { cardCode: "K127177", cardName: "BV Newcraft" };
-      return { cardCode: null };   // unknown / shared address -> no single customer
+    async customersByEmail(e) {
+      if (String(e).toLowerCase() === "laurens@yvesmichiels.be") return [{ cardCode: "K127177", cardName: "BV Newcraft" }];
+      if (String(e).toLowerCase() === "pieter@deloods.nl") return [{ cardCode: "K012903", cardName: "De Loods Zorg" }, { cardCode: "K120698", cardName: "De Loods Zorg" }];
+      return [];   // unknown sender -> no customer
     },
   });
   s = await suggestForEmail("laurens@yvesmichiels.be", "Please resend invoice 426407.", {}, emailDeps);
@@ -126,6 +127,63 @@ const SCOPE = { cardCode: "K127177", cardName: "BV Newcraft" };
   // A foreign customer's number still never becomes in_scope, even for a known sender.
   s = await suggestForEmail("laurens@yvesmichiels.be", "Also invoice 999001 please.", {}, emailDeps);
   ok(s.length === 1 && s[0].status === "out_of_scope", "suggestForEmail: known sender + foreign doc -> out_of_scope");
+
+  // --- item 2525: sender on TWO cards asks for invoices by Shopify order name ---
+  // Orders S18169 (card K120698) and S18964 (card K012903) each have one invoice; S20001 has two
+  // (split delivery); S20002 is not invoiced yet; S99999 is a foreign customer's order.
+  const ORD = {
+    S18169: { docEntry: 26694, docNum: 226793, cardCode: "K120698" },
+    S18964: { docEntry: 27833, docNum: 227932, cardCode: "K012903" },
+    S20001: { docEntry: 30001, docNum: 230001, cardCode: "K120698" },
+    S20002: { docEntry: 30002, docNum: 230002, cardCode: "K120698" },
+    S99999: { docEntry: 9999, docNum: 226999, cardCode: "K999999" },
+  };
+  const INV = {
+    26694: [{ docEntry: 27227, docNum: 427060, cardCode: "K120698" }],
+    27833: [{ docEntry: 28327, docNum: 428160, cardCode: "K012903" }],
+    30001: [{ docEntry: 31001, docNum: 431001, cardCode: "K120698" }, { docEntry: 31002, docNum: 431002, cardCode: "K120698" }],
+    9999:  [{ docEntry: 9001, docNum: 999001, cardCode: "K999999" }],
+  };
+  const invDeps = Object.assign({}, emailDeps, {
+    async resolveShopifyOrder(sName) {
+      const o = ORD[String(sName).toUpperCase()];
+      return { ok: true, candidates: o ? [asCand(Object.assign({ objectId: 17, label: "Order", cardName: "x" }, o))] : [] };
+    },
+    async invoicesForOrder(docEntry) {
+      return (INV[docEntry] || []).map((d) => asCand(Object.assign({ objectId: 13, label: "Invoice", cardName: "x" }, d)));
+    },
+  });
+  const ask = "Zou u mij een paar facturen kunnen sturen?\nOrder S18169 €61.64\nOrder S18964 €167.22";
+  s = await suggestForEmail("pieter@deloods.nl", ask, { intent: "invoice" }, invDeps);
+  ok(s.length === 2 && s.every((x) => x.status === "in_scope"), "2525: sender on two cards -> both cards' documents in_scope");
+  ok(s.every((x) => x.docs[0].objectId === 13) && s[0].docs[0].docNum === 427060 && s[1].docs[0].docNum === 428160, "2525: order names swapped for their invoices");
+  ok(s.every((x) => x.auto === true), "2525: invoice request + in scope -> auto");
+
+  s = await suggestForEmail("pieter@deloods.nl", ask, { intent: "order_status" }, invDeps);
+  ok(s.length === 2 && s.every((x) => !x.auto), "intent not 'invoice' -> suggested, never auto");
+
+  s = await suggestForEmail("pieter@deloods.nl", "Waar blijft order S18169?", { intent: "invoice" }, invDeps);
+  ok(s.length === 1 && s[0].docs[0].objectId === 17 && !s[0].auto, "no invoice wording -> the order itself, not auto");
+
+  s = await suggestForEmail("pieter@deloods.nl", "Graag de factuur van order S20001", { intent: "invoice" }, invDeps);
+  ok(s.length === 2 && s.every((x) => x.status === "in_scope" && x.auto), "two invoices from one order -> two clean suggestions, no picker");
+
+  s = await suggestForEmail("pieter@deloods.nl", "Graag de factuur van order S20002", { intent: "invoice" }, invDeps);
+  ok(s.length === 1 && s[0].docs[0].objectId === 17 && !s[0].auto, "order not invoiced yet -> order suggestion kept, not auto");
+
+  s = await suggestForEmail("pieter@deloods.nl", "Graag de factuur van order S99999", { intent: "invoice" }, invDeps);
+  ok(s.length === 1 && s[0].status === "out_of_scope" && !s[0].auto, "FOREIGN order's invoice -> out_of_scope, never auto");
+
+  s = await suggestForEmail("unknown@example.com", ask, { intent: "invoice" }, invDeps);
+  ok(s.length === 2 && s.every((x) => x.status === "out_of_scope" && !x.auto), "unknown sender asking for invoices -> out_of_scope, never auto");
+
+  s = await suggestForEmail("pieter@deloods.nl", "Order S18169", { intent: "invoice", requestText: "Order S18169" }, invDeps);
+  ok(s[0].docs[0].objectId === 17, "invoice wording is read from the newest message only");
+  s = await suggestForEmail("pieter@deloods.nl", "Order S18169\n\n> oude factuur", { intent: "invoice", requestText: "Order S18169" }, invDeps);
+  ok(s[0].docs[0].objectId === 17 && !s[0].auto, "an old quoted 'factuur' does not make a new message an invoice request");
+
+  s = await buildSuggestions("facturen graag\n" + ask + "\ninvoice 426407, order 226108, order 300500", { cardCodes: ["K127177", "K012903", "K120698"] }, { intent: "invoice" }, invDeps);
+  ok(s.length === 5, "mixed order, invoice and Shopify references all resolve under a multi-card scope (got " + s.length + ")");
 
   console.log(`\n${pass}/${pass + fail} asserts passed` + (fail ? `  (${fail} FAILED)` : "  ✓"));
   process.exit(fail ? 1 : 0);

@@ -40,7 +40,7 @@ const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWa
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
 // pure helpers, no express and no route registration, so this pulls in nothing web-facing.
-const { runClaim } = require("./routes/shared.js");
+const { runClaim, stageWantedDocs } = require("./routes/shared.js");
 
 const arg0 = process.argv[2];
 const BOXES = arg0 === "all" ? ["info", "drachten"] : arg0 === "drachten" ? ["drachten"] : ["info"];
@@ -74,7 +74,7 @@ function briefMd(seed, toolLog) {
 // and cache them on the item for instant render on the detail page. Skipped for contact-form items
 // (the sender is Shopify's mailer, not the customer) and for injection-flagged items (surface
 // nothing automatically). READ-ONLY; a failure here must never block the item.
-async function storeSuggestions(itemId, senderEmail, scanText, isContactForm, injectionSuspected, modelRefs, claimScope) {
+async function storeSuggestions(itemId, senderEmail, scanText, isContactForm, injectionSuspected, modelRefs, claimScope, request) {
   if (isContactForm || injectionSuspected) {
     db.prepare("UPDATE work_items SET doc_suggestions_json = NULL WHERE id = ?").run(itemId);
     return;
@@ -84,10 +84,13 @@ async function storeSuggestions(itemId, senderEmail, scanText, isContactForm, in
     // nobody and files every correct document under "different customer" (what item 1316 did).
     // The scope becomes the customer on the order that the shipment's OWN label names - our data,
     // not the email's. Same resolve-and-classify path either way; only the scope differs.
+    // request = { text, intent } of the NEWEST message: what the customer is asking for now.
+    const opts = { extraRefs: modelRefs || [], requestText: request && request.text, intent: request && request.intent };
     const sugg = claimScope && claimScope.cardCode
-      ? await DS.buildSuggestions(scanText, claimScope, { extraRefs: modelRefs || [] })
-      : await DS.suggestForEmail(senderEmail, scanText, { extraRefs: modelRefs || [] });
+      ? await DS.buildSuggestions(scanText, claimScope, opts)
+      : await DS.suggestForEmail(senderEmail, scanText, opts);
     db.prepare("UPDATE work_items SET doc_suggestions_json = ? WHERE id = ?").run(JSON.stringify(sugg), itemId);
+    await stageWantedDocs(itemId, sugg);
     if (sugg.length) {
       audit("system", "doc_suggestions", itemId,
         sugg.map((s) => `${s.status}:${(s.docs[0] && s.docs[0].docNum) || "?"}`).join(" ").slice(0, 150));
@@ -241,7 +244,7 @@ async function processThread(anthropic, key, msgs, ctx) {
   }
 
   if (!rule.draft) {
-    await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, cls.injection_suspected);
+    await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, cls.injection_suspected, null, null, { text: email.text, intent: cls.intent });
     return { itemId, status: "new", drafted: false, threadLen: msgs.length };
   }
 
@@ -318,7 +321,7 @@ async function processThread(anthropic, key, msgs, ctx) {
     senderAddress: email.from.address, subject: email.subject, text: email.text,
   }, result.language);
 
-  await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, !!injection, result.referenced_documents, claimScope);
+  await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, !!injection, result.referenced_documents, claimScope, { text: email.text, intent: cls.intent });
 
   audit("system", "item_drafted", itemId, `status=${status}${suggestClose ? " suggest_close" : ""} v=${ver} tools=${toolLog.length} inj=${injection}`);
   return { itemId, status, drafted: Boolean(result.draft || result.interim_draft), threadLen: msgs.length, tools: toolLog.length };

@@ -134,24 +134,55 @@ async function resolveShopifyOrder(sName) {
   return { ok: true, candidates };
 }
 
-// Resolve an inbound sender's email to a SINGLE active SAP customer (READ-ONLY). Returns
-// { cardCode, cardName } only when EXACTLY one active customer matches E_Mail/U_E_Mail; on no
-// match or several (a shared address), returns { cardCode: null } so the caller falls back to an
-// explicit human confirm rather than assuming a customer.
-async function customerByEmail(email) {
+// Every active SAP customer card that carries this address in E_Mail/U_E_Mail (READ-ONLY).
+// One person is often on two cards (item 2525: a webshop card and an older account card, same
+// name, same address). Each of those cards is the sender's own, so the document-scope guard
+// treats all of them as this email's customer. Returns [{ cardCode, cardName }], possibly empty.
+async function customersByEmail(email) {
   const e = String(email || "").trim().toLowerCase();
-  if (!e || e.indexOf("@") < 1) return { cardCode: null };
+  if (!e || e.indexOf("@") < 1) return [];
   const pool = await C.getPool();
   const r = await pool.request().input("e", sql.NVarChar, e).query(
     "SELECT CardCode, CardName FROM OCRD WHERE CardType='C' AND validFor='Y' " +
-    "AND (LOWER(E_Mail) = @e OR LOWER(U_E_Mail) = @e)"
+    "AND (LOWER(E_Mail) = @e OR LOWER(U_E_Mail) = @e) ORDER BY CardCode"
   );
-  const rows = r.recordset || [];
-  if (rows.length === 1) return { cardCode: rows[0].CardCode, cardName: rows[0].CardName };
-  return { cardCode: null };
+  return (r.recordset || []).map((c) => ({ cardCode: c.CardCode, cardName: c.CardName }));
 }
 
-module.exports = { DOC_TYPES, docTypeInfo, resolveDocument, resolveShopifyOrder, tokenInNumAtCard, renderPdf, buildDocumentPdf, customerByEmail };
+// Resolve an inbound sender's email to a SINGLE active SAP customer (READ-ONLY). Returns
+// { cardCode, cardName } only when EXACTLY one active customer matches; on no match or several,
+// returns { cardCode: null }. For callers that need ONE card (the customer summary); the
+// document-scope guard uses customersByEmail.
+async function customerByEmail(email) {
+  const rows = await customersByEmail(email);
+  return rows.length === 1 ? rows[0] : { cardCode: null };
+}
+
+// The AR invoice(s) drawn from a sales order, directly or through a delivery (READ-ONLY).
+// A customer who asks for "the invoice for order S18169" names the order, not the invoice; this
+// is the deterministic step from one to the other. Cancelled invoices are left out. Same
+// candidate shape as resolveDocument, so the caller scope-checks each invoice on its own CardCode.
+async function invoicesForOrder(orderDocEntry) {
+  const n = parseInt(orderDocEntry, 10);
+  if (!Number.isInteger(n) || n <= 0) return [];
+  const t = DOC_TYPES.invoice;
+  const pool = await C.getPool();
+  const r = await pool.request().input("n", sql.Int, n).query(
+    "SELECT DocEntry, DocNum, CardCode, CardName, DocTotal, DocCur, DocDate FROM OINV " +
+    "WHERE CANCELED = 'N' AND DocEntry IN (" +
+    "SELECT DocEntry FROM INV1 WHERE BaseType = 17 AND BaseEntry = @n " +
+    "UNION SELECT l.DocEntry FROM INV1 l JOIN DLN1 d ON l.BaseType = 15 AND l.BaseEntry = d.DocEntry " +
+    "WHERE d.BaseType = 17 AND d.BaseEntry = @n) ORDER BY DocEntry"
+  );
+  return (r.recordset || []).map((d) => ({
+    type: t.label, objectId: t.objectId,
+    docEntry: d.DocEntry, docNum: d.DocNum,
+    cardCode: d.CardCode, cardName: d.CardName,
+    docTotal: d.DocTotal, docCur: d.DocCur, docDate: d.DocDate,
+  }));
+}
+
+module.exports = { DOC_TYPES, docTypeInfo, resolveDocument, resolveShopifyOrder, tokenInNumAtCard, renderPdf, buildDocumentPdf, customerByEmail, customersByEmail, invoicesForOrder };
 
 // --- JSON CLI for the mail MCPs' attach_sap_document tool ---
 //   node sap-doc-pdf.js --json <type|shopify> <number> <outPath> [recipientEmail,...]
@@ -170,7 +201,7 @@ async function jsonCli(type, number, outPath, recipients) {
   fs.writeFileSync(outPath, r.buffer);
   const prefix = Object.values(DOC_TYPES).find((t) => t.objectId === doc.objectId).prefix;
   const customers = [];
-  for (const e of recipients) { const c = await customerByEmail(e); if (c.cardCode) customers.push(c); }
+  for (const e of recipients) customers.push(...await customersByEmail(e));
   const scope = customers.some((c) => c.cardCode === doc.cardCode) ? "match" : customers.length ? "mismatch" : "unknown";
   return { ok: true, doc, filename: prefix + "-" + doc.docNum + ".pdf", bytes: r.bytes, path: outPath, customers, scope };
 }

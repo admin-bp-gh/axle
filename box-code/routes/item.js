@@ -91,12 +91,18 @@ async function computeItemSuggestions(w) {
 // customer - review" area whose button hits /attach-doc WITHOUT confirm, so the existing
 // scope-warn + attach-anyway (SCOPE-OVERRIDE audit) screen handles it. Every button posts to the
 // proven /attach-doc route; this panel never renders or stages anything itself.
-function suggestionsPanel(w, suggestions, lang) {
-  if (!suggestions || !suggestions.length) return "";
-  const docType = (objectId) => {
-    for (const k of Object.keys(SAPDOC.DOC_TYPES)) if (SAPDOC.DOC_TYPES[k].objectId === objectId) return k;
-    return "order";
-  };
+// The file name a SAP document gets on the draft; also how "already attached" is recognised.
+const docTypeOf = (objectId) => Object.keys(SAPDOC.DOC_TYPES).find((k) => SAPDOC.DOC_TYPES[k].objectId === objectId) || "order";
+const docFileName = (d) => SAPDOC.DOC_TYPES[docTypeOf(d.objectId)].prefix + "-" + d.docNum + ".pdf";
+
+function suggestionsPanel(w, suggestions, lang, attachedNames) {
+  // A document already on the draft (staged by Axle or attached by hand) is no longer a suggestion.
+  const have = new Set(attachedNames || []);
+  suggestions = (suggestions || [])
+    .map((s) => Object.assign({}, s, { docs: s.docs.filter((d) => !have.has(docFileName(d))) }))
+    .filter((s) => s.docs.length);
+  if (!suggestions.length) return "";
+  const docType = docTypeOf;
   const fmtDoc = (d) => {
     const date = d.docDate ? new Date(d.docDate).toISOString().slice(0, 10) : "";
     const money = (d.docTotal != null ? d.docTotal : "") + (d.docCur ? " " + d.docCur : "");
@@ -125,6 +131,12 @@ function suggestionsPanel(w, suggestions, lang) {
 
   const inScope = suggestions.filter((s) => s.status === "in_scope" || s.status === "ambiguous");
   const offScope = suggestions.filter((s) => s.status === "out_of_scope");
+  // One click for every clean (in_scope) suggestion; ambiguous ones still need their pick.
+  const clean = inScope.filter((s) => s.status === "in_scope").length;
+  const allHtml = clean > 1 ? `
+    <form method="post" action="${BASE.path}/item/${w.id}/attach-all" style="margin:4px 0 8px">
+      <button class="primary">${esc(t(lang, "sugg_add_all"))} (${clean})</button>
+    </form>` : "";
 
   const inHtml = inScope.map((s) => {
     const ref = `<span class="muted">${esc(t(lang, "sugg_ref"))} "${esc(s.reference.raw)}"</span>`;
@@ -143,7 +155,7 @@ function suggestionsPanel(w, suggestions, lang) {
   // Step 1 (F11): content-only — rendered inside the combined "SAP documents" card,
   // next to the manual attach-by-number form. Buttons and routes unchanged.
   return `<p class="muted hint">${esc(t(lang, "sugg_hint"))}</p>
-      ${inHtml}${offHtml}`;
+      ${allHtml}${inHtml}${offHtml}`;
 }
 
 // --- FR-0002: at-a-glance customer summary + detail modal (READ-ONLY) --------------------
@@ -359,7 +371,7 @@ app.get("/item/:id", async (req, res) => {
   // (read-only; rendered/staged only when the human clicks Attach, via the existing /attach-doc
   // route). Skipped for compose/contact-form/injection-flagged items inside the helper. Step 1
   // (F11): rendered inside the combined "SAP documents" card below, not as its own box.
-  const suggHtml = editable ? suggestionsPanel(w, (await computeItemSuggestions(w)).suggestions, lang) : "";
+  const suggHtml = editable ? suggestionsPanel(w, (await computeItemSuggestions(w)).suggestions, lang, atts.map((a) => a.name)) : "";
 
   // FR-0002: at-a-glance customer summary (read-only; 3-min cached). Shown whenever the item resolves
   // to a SAP customer (inbound sender or the compose customer). Wrapped so SAP slowness/errors can
@@ -1350,6 +1362,55 @@ app.post("/item/:id/attach-add", (req, res) => {
 // draft_attachments behind the same approval gate as any hand-attached file: it never sends and
 // never writes to SAP. A document whose customer differs from the email's is held for an explicit
 // confirm, so another customer's document can't be attached by mistake.
+// The customer card(s) a document may belong to without a confirm (the scope guard), resolved on
+// the trusted side only: the compose customer, else EVERY active card carrying the inbound
+// sender's address. Empty = unknown customer, which forces the explicit show-and-confirm.
+async function itemScope(w) {
+  let cc = null; try { cc = JSON.parse(w.compose_customer || "null"); } catch (e) { cc = null; }
+  if (cc && cc.cardCode) return { cards: [cc.cardCode], name: cc.name || "" };
+  if (w.origin === "compose" || !w.sender_email) return { cards: [], name: "" };
+  const rows = await SAPDOC.customersByEmail(w.sender_email);
+  return { cards: rows.map((r) => r.cardCode), name: rows.length ? rows[0].cardName || "" : "" };
+}
+
+// Render one resolved document and stage it on the draft, like a hand-attached file.
+// Returns null on success or the i18n key of the failure.
+async function stageDocPdf(w, doc, login, lang, inScope) {
+  let r;
+  try { r = await SAPDOC.renderPdf(doc.objectId, doc.docEntry); }
+  catch (e) { audit(login, "attach_doc_error", w.id, e.message.slice(0, 180)); return { error: t(lang, "attach_doc_render_failed"), code: 502 }; }
+  if (!r.ok) { audit(login, "attach_doc_render_failed", w.id, String(r.error).slice(0, 180)); return { error: t(lang, "attach_doc_render_failed"), code: 502 }; }
+  const ares = addAttachment(w, { data: r.buffer.toString("base64"), name: docFileName(doc), ctype: "application/pdf" }, login, lang);
+  if (ares.error) return { error: ares.error, code: 413 };
+  audit(login, "doc_pdf_attached", w.id, `${doc.type} ${doc.docNum} DocEntry ${doc.docEntry} cust ${doc.cardCode || "?"} ${r.bytes}b${inScope ? "" : " SCOPE-OVERRIDE"}`);
+  return { error: null };
+}
+
+// Attach every clean suggestion in one click. Nothing is trusted from the page: the list is the
+// item's own stored suggestions, and each document is re-resolved and re-scope-checked against
+// live SAP before it is rendered. Anything that no longer resolves to the same in-scope document
+// is skipped and stays in the panel for the per-document buttons.
+app.post("/item/:id/attach-all", async (req, res) => {
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(req.user.lang, "not_found"))}</p>`));
+  if (!isContactFormItem(w) && !isReturnNotificationItem(w)) {
+    const have = new Set(db.prepare("SELECT name FROM draft_attachments WHERE work_item_id = ?").all(w.id).map((r) => r.name));
+    const scope = await itemScope(w);
+    const sugg = (await computeItemSuggestions(w)).suggestions.filter((s) => s.status === "in_scope");
+    for (const d of sugg.map((s) => s.docs[0])) {
+      if (have.has(docFileName(d))) continue;
+      const resolved = await SAPDOC.resolveDocument(docTypeOf(d.objectId), d.docNum);
+      const doc = resolved.ok && resolved.candidates.find((c) => c.docEntry === d.docEntry);
+      if (!doc || !scope.cards.includes(doc.cardCode)) { audit(login, "attach_all_skipped", w.id, `${d.type} ${d.docNum}`); continue; }
+      const out = await stageDocPdf(w, doc, login, req.user.lang, true);
+      if (out.error) break;   // size cap or renderer down: the rest would fail the same way
+      have.add(docFileName(doc));
+    }
+  }
+  res.redirect(BASE.url("/item/" + w.id));
+});
+
 app.post("/item/:id/attach-doc", async (req, res) => {
   const lang = req.user.lang;
   const login = req.user.tailscale_login;
@@ -1365,8 +1426,20 @@ app.post("/item/:id/attach-doc", async (req, res) => {
   const num = String(req.body.docnum || "").trim();
   if (!SAPDOC.DOC_TYPES[type] || !num) return small(`<p>${esc(t(lang, "attach_doc_none"))}</p>`, 400);
 
+  // A webshop order name (S18169) is accepted for an order, and for an invoice it means the
+  // invoice(s) drawn from that order. Everything after this works on the resolved candidates.
+  const sName = (type === "order" || type === "invoice") && num.match(/^#?(S\d{3,6})$/i);
   let resolved;
-  try { resolved = await SAPDOC.resolveDocument(type, num); }
+  try {
+    if (sName) {
+      resolved = await SAPDOC.resolveShopifyOrder(sName[1]);
+      if (resolved.ok && type === "invoice") {
+        const inv = [];
+        for (const o of resolved.candidates) inv.push(...await SAPDOC.invoicesForOrder(o.docEntry));
+        resolved = { ok: true, candidates: inv };
+      }
+    } else resolved = await SAPDOC.resolveDocument(type, num);
+  }
   catch (e) { audit(login, "attach_doc_error", w.id, e.message.slice(0, 180)); return small(`<p>${esc(t(lang, "attach_doc_render_failed"))}</p>`, 502); }
   if (!resolved.ok || !resolved.candidates.length) { audit(login, "attach_doc_notfound", w.id, `${type} ${num}`); return small(`<p>${esc(t(lang, "attach_doc_none"))}</p>`, 404); }
 
@@ -1381,25 +1454,20 @@ app.post("/item/:id/attach-doc", async (req, res) => {
   } else {
     const opts = resolved.candidates.map((c) => `
       <form method="post" action="${BASE.path}/item/${w.id}/attach-doc" style="margin:4px 0">
-        <input type="hidden" name="doctype" value="${esc(type)}"><input type="hidden" name="docnum" value="${esc(num)}"><input type="hidden" name="docentry" value="${c.docEntry}">
+        <input type="hidden" name="doctype" value="${esc(type)}"><input type="hidden" name="docnum" value="${esc(String(c.docNum))}"><input type="hidden" name="docentry" value="${c.docEntry}">
         <button class="mini">${esc(c.type)} ${esc(String(c.docNum))} &middot; ${esc(c.cardCode || "")} ${esc(c.cardName || "")} &middot; ${esc(String(c.docTotal))} ${esc(c.docCur || "")} &middot; ${esc(c.docDate ? new Date(c.docDate).toISOString().slice(0, 10) : "")}</button>
       </form>`).join("");
     return small(`<p>${esc(t(lang, "attach_doc_ambiguous"))}</p>${opts}`, 200);
   }
 
-  // Customer-scope guard: attach straight away only when the document's customer matches the
-  // email's resolved customer; otherwise hold for an explicit confirm.
-  // The email's customer, to scope the document against. For compose it's the resolved compose
-  // customer; for an inbound reply it's the sender resolved to a SINGLE active SAP customer (else
-  // "", which forces the explicit show-and-confirm below).
-  let cc = null; try { cc = JSON.parse(w.compose_customer || "null"); } catch (e) { cc = null; }
-  let itemCard = (cc && cc.cardCode) || "";
-  let itemName = (cc && cc.name) || "";
-  if (w.origin !== "compose" && !itemCard && w.sender_email) {
-    try { const m = await SAPDOC.customerByEmail(w.sender_email); if (m && m.cardCode) { itemCard = m.cardCode; itemName = m.cardName || ""; } }
-    catch (e) { audit(login, "attach_doc_scope_lookup_failed", w.id, e.message.slice(0, 120)); }
-  }
-  if ((!itemCard || itemCard !== doc.cardCode) && req.body.confirm !== "1") {
+  // Customer-scope guard: attach straight away only when the document's customer is one of the
+  // email's own customer cards (itemScope); otherwise hold for an explicit confirm.
+  let scope = { cards: [], name: "" };
+  try { scope = await itemScope(w); }
+  catch (e) { audit(login, "attach_doc_scope_lookup_failed", w.id, e.message.slice(0, 120)); }
+  const inScope = scope.cards.includes(doc.cardCode);
+  const itemCard = scope.cards.join(", "), itemName = scope.name;
+  if (!inScope && req.body.confirm !== "1") {
     audit(login, "attach_doc_scope_warn", w.id, `doc ${doc.cardCode || "?"} vs item ${itemCard || "?"}`);
     return small(`<p>${esc(t(lang, "attach_doc_scope_warn"))}</p>
       <p class="muted">${esc(t(lang, "attach_doc_doc_cust"))}: ${esc(doc.cardCode || "")} ${esc(doc.cardName || "")}<br>
@@ -1411,16 +1479,8 @@ app.post("/item/:id/attach-doc", async (req, res) => {
   }
 
   // Render (READ-ONLY) + stage in draft_attachments (capped, base64) - just like a hand-attached file.
-  let r;
-  try { r = await SAPDOC.renderPdf(doc.objectId, doc.docEntry); }
-  catch (e) { audit(login, "attach_doc_error", w.id, e.message.slice(0, 180)); return small(`<p>${esc(t(lang, "attach_doc_render_failed"))}</p>`, 502); }
-  if (!r.ok) { audit(login, "attach_doc_render_failed", w.id, String(r.error).slice(0, 180)); return small(`<p>${esc(t(lang, "attach_doc_render_failed"))}</p>`, 502); }
-
-  const filename = SAPDOC.docTypeInfo(type).prefix + "-" + doc.docNum + ".pdf";
-  const ares = addAttachment(w, { data: r.buffer.toString("base64"), name: filename, ctype: "application/pdf" }, login, lang);
-  if (ares.error) return small(`<p>${esc(ares.error)}</p>`, 413);
-  const override = !(itemCard && itemCard === doc.cardCode);
-  audit(login, "doc_pdf_attached", w.id, `${doc.type} ${doc.docNum} DocEntry ${doc.docEntry} cust ${doc.cardCode || "?"} ${r.bytes}b${override ? " SCOPE-OVERRIDE" : ""}`);
+  const out = await stageDocPdf(w, doc, login, lang, inScope);
+  if (out.error) return small(`<p>${esc(out.error)}</p>`, out.code);
   res.redirect(BASE.url("/item/" + w.id));
 });
 
@@ -1463,13 +1523,9 @@ app.get("/item/:id/preview-doc", async (req, res) => {
 
   // Scope is recorded for the audit only - preview never crosses the attach boundary, so it does
   // not block on customer scope (attach still does, via /attach-doc's scope-warn + confirm).
-  let cc = null; try { cc = JSON.parse(w.compose_customer || "null"); } catch (e) { cc = null; }
-  let itemCard = (cc && cc.cardCode) || "";
-  if (w.origin !== "compose" && !itemCard && w.sender_email) {
-    try { const m = await SAPDOC.customerByEmail(w.sender_email); if (m && m.cardCode) itemCard = m.cardCode; }
-    catch (e) { /* scope note best-effort */ }
-  }
-  const offScope = !(itemCard && itemCard === doc.cardCode);
+  let scope = { cards: [] };
+  try { scope = await itemScope(w); } catch (e) { /* scope note best-effort */ }
+  const offScope = !scope.cards.includes(doc.cardCode);
 
   let r;
   try { r = await SAPDOC.renderPdf(doc.objectId, doc.docEntry); }

@@ -192,10 +192,12 @@ async function runRedraft(itemId, login) {
         const claimScope = await runClaim(itemId, {
           senderAddress: w.sender_email, subject: w.subject, text: w.email_text || "",
         }, result.language);
+        const sopts = { extraRefs: result.referenced_documents || [], intent: w.intent };
         const sugg = claimScope
-          ? await DOCSUGGEST.buildSuggestions(w.email_text || "", claimScope, { extraRefs: result.referenced_documents || [] })
-          : await DOCSUGGEST.suggestForEmail(w.sender_email, w.email_text || "", { extraRefs: result.referenced_documents || [] });
+          ? await DOCSUGGEST.buildSuggestions(w.email_text || "", claimScope, sopts)
+          : await DOCSUGGEST.suggestForEmail(w.sender_email, w.email_text || "", sopts);
         db.prepare("UPDATE work_items SET doc_suggestions_json = ? WHERE id = ?").run(JSON.stringify(sugg), itemId);
+        await stageWantedDocs(itemId, sugg);
       } else {
         db.prepare("UPDATE work_items SET doc_suggestions_json = NULL WHERE id = ?").run(itemId);
       }
@@ -380,9 +382,53 @@ async function runClaim(itemId, email, lang) {
   return ord && ord.card_code ? { cardCode: ord.card_code, cardName: ord.card_name } : null;
 }
 
+// ---------------------------------------------------------------- requested invoices
+// Stage the documents doc-suggest marked auto:true (the customer's own invoices, on an item filed
+// as an invoice request) on the draft, so "Bijgevoegd vindt u de facturen" is true when the
+// salesperson opens the item. Called by BOTH ingest and redraft, right after the suggestions are
+// stored. Staging is not sending: each PDF sits in draft_attachments with a Remove button, behind
+// the same Send approval as a hand-attached file. Read-only against SAP.
+//
+// GATED like the carrier-claim staging. AXLE_ACTION_DOC_AUTOATTACH in C:\Axle\secrets\.env:
+//     unset / anything else - off.   dry - audit what WOULD be staged.   on - stage.
+//
+// A document is staged once per item: one already on the draft is skipped, and so is one staged
+// here before (the audit row), so a human's Remove survives the next redraft. Never throws.
+function docAutoMode() {
+  const v = String(process.env.AXLE_ACTION_DOC_AUTOATTACH || "").trim().toLowerCase();
+  return v === "on" ? "on" : v === "dry" ? "dry" : "off";
+}
+async function stageWantedDocs(itemId, suggestions) {
+  const mode = docAutoMode();
+  if (mode === "off") return;
+  try {
+    const item = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
+    if (!item || item.injection_flag) return;
+    const onDraft = new Set(db.prepare("SELECT name FROM draft_attachments WHERE work_item_id = ?").all(itemId).map((r) => r.name));
+    const stagedBefore = db.prepare("SELECT 1 FROM audit_log WHERE work_item_id = ? AND action = 'doc_auto_attached' AND detail LIKE ?");
+    for (const s of suggestions.filter((x) => x.auto)) {
+      const d = s.docs[0];
+      const type = Object.keys(SAPDOC.DOC_TYPES).find((k) => SAPDOC.DOC_TYPES[k].objectId === d.objectId);
+      const name = SAPDOC.DOC_TYPES[type].prefix + "-" + d.docNum + ".pdf";
+      if (onDraft.has(name) || stagedBefore.get(itemId, name + " %")) continue;
+      if (mode === "dry") { audit("system", "doc_auto_dry", itemId, `${name} cust ${d.cardCode}`); continue; }
+      // Re-resolve from the document NUMBER and check SAP's own answer is the document that was
+      // scope-checked, rather than rendering a DocEntry carried over from the suggestion.
+      const r = await SAPDOC.buildDocumentPdf(type, String(d.docNum));
+      if (!r.ok || r.doc.docEntry !== d.docEntry || r.doc.cardCode !== d.cardCode) {
+        audit("system", "doc_auto_error", itemId, `${name}: ${String(r.error || (r.ambiguous ? "ambiguous number" : "document changed")).slice(0, 120)}`);
+        continue;
+      }
+      const a = addAttachment(item, { data: r.buffer.toString("base64"), name, ctype: "application/pdf" }, "system", "en");
+      if (a.error) { audit("system", "doc_auto_error", itemId, `${name}: ${a.error}`.slice(0, 150)); continue; }
+      audit("system", "doc_auto_attached", itemId, `${name} DocEntry ${d.docEntry} cust ${d.cardCode} ${r.bytes}b`);
+    }
+  } catch (e) { audit("system", "doc_auto_error", itemId, String(e.message || e).slice(0, 150)); }
+}
+
 module.exports = {
   MAILBOX_OF, anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL,
   persistResult, runRedraft, markReadSafe, defaultMailbox,
   isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
-  claimDeps, runClaim, latestWithdrawn, latestDraftVersion,
+  claimDeps, runClaim, stageWantedDocs, latestWithdrawn, latestDraftVersion,
 };

@@ -692,11 +692,10 @@ app.get("/item/:id", async (req, res) => {
   // (grouped on the right alongside the overflow, which keeps the rarer closes). Posts to the
   // same /status route as the old menu item — no route or safety change.
   const markDoneBtn = `<form method="post" action="${BASE.path}/item/${w.id}/status"><button name="to" value="done" title="${esc(t(lang, "done_tip"))}">${esc(t(lang, "mark_done"))}</button></form>`;
-  // Ratchet handoff (2026-10-05): one click takes the inbound e-mail (sender, subject, body) into
-  // Ratchet's order builder, pre-parsed. Client-side: fetch /ratchet-intake.json, park the text in
-  // sessionStorage (same origin as the Workbench shell, same tab) and send the TOP window to
-  // #/ratchet/new. Nothing is created in SAP here; the rep reviews in the builder. Inbound items only.
-  const ratchetBtn = isCompose ? "" : `<button type="button" class="ratchet-order" title="${esc(t(lang, "new_order_ratchet_tip"))}" onclick="ratchetOrder(this)">${esc(t(lang, "new_order_ratchet"))}</button>`;
+  // Ratchet handoff (2026-10-05): opens Ratchet's order builder in a NEW tab (this e-mail stays open)
+  // with the Axle item id in the hash; Ratchet fetches /item/:id/ratchet-intake.json itself and parses
+  // it. Nothing is created in SAP here; the rep reviews in the builder. Inbound items only.
+  const ratchetBtn = isCompose ? "" : `<a class="ratchet-order" href="/#/ratchet/new?axle=${w.id}" target="_blank" rel="noopener" title="${esc(t(lang, "new_order_ratchet_tip"))}">${esc(t(lang, "new_order_ratchet"))}</a>`;
   // M-31 / M-32: phone-only mirror rows lead the overflow sheet; same forms, routes and confirm text
   const closeMenu = `<details class="menu"><summary class="btn" title="${esc(t(lang, "more_actions"))}">&#8943;&nbsp;${esc(t(lang, "more_actions"))}</summary><div class="menu-list">
       <button class="m-only" form="workform" name="action" value="redraft"><b>${esc(t(lang, "save_redraft"))}</b><span>${esc(t(lang, "redraft_hint"))}</span></button>
@@ -927,18 +926,6 @@ app.get("/item/:id", async (req, res) => {
       var show = el.style.display === "none";
       el.style.display = show ? "block" : "none";
       b.textContent = show ? ${JSON.stringify(t(lang, "hide_translation"))} : ${JSON.stringify(t(lang, "show_translation"))};
-    }
-    // Hand this e-mail to Ratchet's order builder (see ratchetBtn above).
-    function ratchetOrder(btn) {
-      btn.disabled = true;
-      fetch("${BASE.path}/item/${w.id}/ratchet-intake.json")
-        .then(function (x) { return x.json(); })
-        .then(function (d) {
-          if (!d.text) throw new Error(d.error || "empty");
-          window.sessionStorage.setItem("wb.ratchet.intake", d.text);
-          window.top.location.href = "/#/ratchet/new";
-        })
-        .catch(function () { btn.disabled = false; alert(${JSON.stringify(t(lang, "new_order_ratchet_err"))}); });
     }
     // On-demand translation of the CURRENT (possibly edited) reply - now a toggle.
     function translateReply() {

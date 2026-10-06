@@ -59,8 +59,7 @@ const STRINGS = {
     save: "Save", save_redraft: "Save & redraft",
     redraft_hint: "redraft regenerates the reply with your input — runs in the background",
     actions: "Actions", mark_done: "Mark done", archive: "Archive", reopen: "Reopen",
-    new_order_ratchet: "New order in Ratchet", new_order_ratchet_tip: "Open Ratchet's order builder with this e-mail already read in; you review before anything is created",
-    new_order_ratchet_err: "Couldn't hand this e-mail to Ratchet",
+    new_order_ratchet: "Create order", new_order_ratchet_tip: "Open Ratchet's order builder with this e-mail already read in; you review before anything is created",
     mark_phone: "Resolved by phone",
     done_tip: "The work is completed (close the item)",
     phone_tip: "Completed without an email - e.g. you called the customer",
@@ -264,8 +263,7 @@ const STRINGS = {
     save: "Opslaan", save_redraft: "Opslaan & opnieuw opstellen",
     redraft_hint: "opnieuw opstellen genereert het antwoord met jouw invoer — draait op de achtergrond",
     actions: "Acties", mark_done: "Markeer afgehandeld", archive: "Archiveer", reopen: "Heropen",
-    new_order_ratchet: "Nieuwe order in Ratchet", new_order_ratchet_tip: "Opent de orderbouwer van Ratchet met deze e-mail al ingelezen; je controleert alles voordat er iets wordt aangemaakt",
-    new_order_ratchet_err: "Kon deze e-mail niet aan Ratchet doorgeven",
+    new_order_ratchet: "Order aanmaken", new_order_ratchet_tip: "Opent de orderbouwer van Ratchet met deze e-mail al ingelezen; je controleert alles voordat er iets wordt aangemaakt",
     mark_phone: "Telefonisch afgehandeld",
     done_tip: "Het werk is afgerond (item sluiten)",
     phone_tip: "Afgerond zonder e-mail - bv. de klant gebeld",
@@ -681,7 +679,7 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "polaris26";   // 2026-10-05: Workbench home link in the header and phone menu
+const ASSET_V = "polaris27";   // 2026-10-06: Create order link in the item action bar
 
 // page(): the layout shell. opts.shell renders the full-width three-pane workspace
 // (body becomes a fixed-height flex column; the panes scroll individually). htmx is

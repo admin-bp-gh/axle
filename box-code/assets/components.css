@@ -205,6 +205,9 @@ a.preview-doc:hover { background: var(--surface-2); }
 .actionbar { position: sticky; bottom: 10px; z-index: 30; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-card); padding: var(--s3) var(--s4); margin-top: var(--s4); box-shadow: var(--shadow-bar); }
 .actionbar .spacer { flex: 1 1 auto; }
 .actionbar .note { font-size: var(--fs-sm); color: var(--muted); }
+/* "Create order" (2026-10-06): an anchor styled as a bar button; opens Ratchet in a new tab. */
+.actionbar a.ratchet-order { display: inline-block; font-size: var(--fs-base); padding: 8px 14px; border-radius: var(--r-ctl); border: 1px solid var(--border-2); background: var(--surface); color: var(--ink); text-decoration: none; }
+.actionbar a.ratchet-order:hover { border-color: var(--faint); background: var(--surface-2); }
 .actions form { display: inline; margin-right: var(--s2); }   /* legacy actions box (blocks page etc.) */
 
 /* overflow "more actions" menu, opens upward from the bar */

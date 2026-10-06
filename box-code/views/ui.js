@@ -570,13 +570,22 @@ const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : n > 1024
 
 // Attachment links for the detail page. Index-based URLs; the route resolves the
 // index against the stored metadata, so only attachments Axle ingested are fetchable.
+// Inbound attachments under the email. Browser-renderable images show as thumbnails (click opens
+// full size); everything else stays a download chip. Both go through /item/:id/attachment/:idx.
+const SHOWABLE_IMAGE = /^image\/(png|jpe?g|gif|webp)$/i;
 function renderAttachments(w) {
   let atts = [];
   try { atts = JSON.parse(w.attachments_json || "[]"); } catch (e) { /* ignore bad json */ }
   if (!atts.length) return "";
-  const links = atts.map((a, i) =>
-    `<a class="att" href="${B}/item/${w.id}/attachment/${i}" target="_blank" rel="noopener">&#128206; ${esc(a.name)} <span class="muted">(${fmtSize(a.size)})</span></a>`);
-  return `<p class="attrow">${links.join(" ")}</p>`;
+  const href = (i) => `${B}/item/${w.id}/attachment/${i}`;
+  const imgs = [], files = [];
+  atts.forEach((a, i) => {
+    if (SHOWABLE_IMAGE.test(a.contentType || ""))
+      imgs.push(`<a class="attimg" href="${href(i)}" target="_blank" rel="noopener" title="${esc(a.name)} (${fmtSize(a.size)})"><img src="${href(i)}" alt="${esc(a.name)}" loading="lazy"></a>`);
+    else
+      files.push(`<a class="att" href="${href(i)}" target="_blank" rel="noopener">&#128206; ${esc(a.name)} <span class="muted">(${fmtSize(a.size)})</span></a>`);
+  });
+  return `<div class="attrow">${imgs.length ? `<div class="attimgs">${imgs.join("")}</div>` : ""}${files.join(" ")}</div>`;
 }
 
 function renderMail(text, lang) {

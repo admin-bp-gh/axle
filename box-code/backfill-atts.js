@@ -1,5 +1,6 @@
 // backfill-atts.js - one-off: fetch attachment metadata for existing open work
-// items (ingest only does this for new/changed conversations). READ-ONLY on
+// items (ingest only does this for new/changed conversations). Also rescans '[]' items so inline
+// photos missed before 2026-10-06 (hasAttachments=false on inline-only mail) show up. READ-ONLY on
 // Graph; writes only attachments_json in Axle's own SQLite DB. Re-run safe.
 // Usage: node backfill-atts.js
 require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
@@ -14,7 +15,7 @@ const MAILBOX_OF = {
 
 (async () => {
   const items = db.prepare(
-    "SELECT id, mailbox, latest_message_id FROM work_items WHERE status NOT IN ('done','archived') AND latest_message_id IS NOT NULL AND attachments_json IS NULL"
+    "SELECT id, mailbox, latest_message_id FROM work_items WHERE status NOT IN ('done','archived') AND latest_message_id IS NOT NULL AND (attachments_json IS NULL OR attachments_json = '[]')"
   ).all();
   console.log(`Backfilling attachment metadata for ${items.length} item(s)...`);
   for (const w of items) {

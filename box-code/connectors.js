@@ -97,6 +97,9 @@ function mapMessage(m) {
     received: m.receivedDateTime,
     categories: m.categories || [],
     hasAttachments: Boolean(m.hasAttachments),
+    // Graph reports hasAttachments=false for inline-only mail (a phone/Gmail photo pasted into the
+    // body as <img src="cid:...">), so ingest also checks this to fetch the attachment list.
+    hasInlineImages: /src\s*=\s*["']?cid:/i.test((m.body && m.body.content) || ""),
     text: bodyText(m.body).slice(0, 4000),
   };
 }
@@ -210,7 +213,16 @@ async function getMessages(mailbox, opts = {}) {
   return out;
 }
 
-// Attachment metadata for one message (real file attachments only, inline images skipped).
+// Attachment metadata for one message: every real file attachment, plus inline images big enough
+// to be a customer's photo or screenshot (signature logos and tracking pixels fall under the floor).
+const INLINE_IMAGE_MIN_BYTES = 15 * 1024;
+function pickAttachments(values) {
+  return (values || [])
+    .filter((a) => a["@odata.type"] === "#microsoft.graph.fileAttachment")
+    .filter((a) => !a.isInline || (/^image\//i.test(a.contentType || "") && (a.size || 0) >= INLINE_IMAGE_MIN_BYTES))
+    .map((a) => ({ id: a.id, name: a.name || "attachment", contentType: a.contentType || "", size: a.size || 0, inline: Boolean(a.isInline) }));
+}
+
 async function listAttachments(mailbox, messageId) {
   const token = await graphToken();
   const r = await fetch(
@@ -219,9 +231,7 @@ async function listAttachments(mailbox, messageId) {
   );
   const data = await r.json();
   if (data.error) throw new Error(data.error.message);
-  return (data.value || [])
-    .filter((a) => a["@odata.type"] === "#microsoft.graph.fileAttachment" && !a.isInline)
-    .map((a) => ({ id: a.id, name: a.name || "attachment", contentType: a.contentType || "", size: a.size || 0 }));
+  return pickAttachments(data.value);
 }
 
 // Fetch one attachment's content (base64). Only plain file attachments are supported.
@@ -1740,7 +1750,7 @@ function extractEntities(text) {
 }
 
 module.exports = {
-  htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, getAttachment,
+  htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, pickAttachments, getAttachment,
   getMessageStates, folderIds, folderName,
   getPool, closePool, sapCustomerContext, sapStockPrice,
   partDossier, customerCode, assembleDossier, availabilityOf,

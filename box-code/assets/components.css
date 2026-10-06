@@ -149,6 +149,9 @@ details.fold > summary:hover { color: var(--ink-2); }
 .attrow { margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--border); }
 a.att { margin-right: var(--s4); text-decoration: none; }
 a.att:hover { text-decoration: underline; }
+.attimgs { display: flex; flex-wrap: wrap; gap: var(--s3); margin-bottom: var(--s2); }
+a.attimg { display: block; border: 1px solid var(--border); border-radius: var(--r-ctl); overflow: hidden; background: var(--surface-2); }
+a.attimg img { display: block; max-width: min(320px, 100%); max-height: 240px; object-fit: contain; }
 
 /* ---------- questions / feedback ---------- */
 ul.qs { margin: 0; padding-left: 0; list-style: none; }

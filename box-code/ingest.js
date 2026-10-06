@@ -138,7 +138,7 @@ async function processThread(anthropic, key, msgs, ctx) {
 
   // Attachment metadata for the newest inbound email (failure here never blocks the item).
   let atts = [];
-  if (email.hasAttachments) {
+  if (email.hasAttachments || email.hasInlineImages) {
     try { atts = await C.listAttachments(MAILBOX, email.id); }
     catch (e) { audit("system", "attachments_error", existing ? existing.id : null, e.message.slice(0, 150)); }
   }

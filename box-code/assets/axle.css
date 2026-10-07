@@ -1,0 +1,380 @@
+/* Axle layout (ax-), redesign v1, 7 Oct 2026. Linked after tokens.css and vocabulary.css, which it
+   never restyles: panes, columns and the spacing between vocabulary parts only, tokens only.
+   Cut points as the vocabulary: phone under 640, tablet 640 to 1023, laptop 1024 to 1279, desk 1280
+   and up. --ax-top is the height of Axle's own top bar above the panes (0 when framed). */
+
+/* ---------- Page ---------- */
+.ax-doc { margin: 0; min-height: 100vh; background: var(--bg); }
+.ax-doc [hidden] { display: none !important; }
+:where(.ax-doc) :where(h1, h2, h3, h4, p, ol, ul) { margin: 0; }
+:where(.ax-doc) :where(*, *::before, *::after) { box-sizing: border-box; }
+
+/* Top bars. Standalone (not framed) Axle draws one slim bar: .ax-top across the page from 640 up,
+   and on a phone each pane's own .ax-ptop (the list: home, Axle, the queue's icons; an email: back,
+   sender, status). Framed in Workbench, Axle draws no bar at all. */
+.ax-ptop { display: none; }
+.ax-top__t { margin: 0 0 0 4px; font-size: var(--fs-md); font-weight: 600; letter-spacing: -.01em; color: inherit; text-decoration: none; }
+.ax-top > .wb-btn + .ax-top__t { margin-left: 0; }
+.is-framed .ax-top { display: none; }
+@media (min-width: 640px) { .ax-doc:not(.is-framed):has(> .ax-top) { --ax-top: var(--bar-h); } }
+
+/* ---------- Panes: queue and work area ---------- */
+.ax { display: grid; grid-template-columns: 320px minmax(0, 1fr); align-items: start; min-height: calc(100vh - var(--ax-top, 0px)); }
+.ax-queue {
+  position: sticky; top: var(--ax-top, 0px); display: flex; flex-direction: column;
+  height: calc(100vh - var(--ax-top, 0px)); overflow: auto; overscroll-behavior: contain;
+  background: var(--surface); border-right: 1px solid var(--border);
+}
+.ax-main { min-width: 0; }
+.ax-main :where(pre) { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ax-main :where(textarea) { max-width: 100%; }
+.ax-email { display: flex; flex-direction: column; min-height: calc(100vh - var(--ax-top, 0px)); }
+.ax-email > .ax-col { flex: 1 0 auto; }
+.ax-dockwrap { position: sticky; bottom: var(--s3); z-index: var(--z-dock); display: flex; flex-direction: column; gap: var(--s2); margin-top: auto; }
+.ax-dockwrap > .wb-dock { position: static; }
+.ax-dockwrap > [data-ax-banner]:empty { display: none; }
+.ax-dockwrap .wb-banner { box-shadow: var(--shadow-pop); }
+
+/* ---------- Queue ---------- */
+.ax-qhd { display: flex; align-items: center; gap: var(--s1); min-height: 56px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--border-sub); }
+.ax-qhd > .wb-seg { margin-right: auto; }
+.ax-qt { flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: 600; }
+.ax-qhd > .ax-qback { margin-left: -8px; }
+.ax-qsearch { display: none; flex: 1; }
+.ax-qhd.is-search > * { display: none; }
+.ax-qhd.is-search > .ax-qsearch { display: flex; }
+.ax-qclose { display: none; }
+.ax-qhd.is-search > .ax-qclose { display: inline-flex; }
+.ax-qfind { padding: 10px 14px; border-bottom: 1px solid var(--border-sub); }
+.ax-queue input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+.ax-icons { display: flex; gap: 2px; }
+.ax-queue .wb-row { padding: 12px 14px; color: inherit; text-decoration: none; }
+.ax-queue .wb-row[aria-busy="true"] { background: var(--surface-2); }
+.ax-clip { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; font-size: var(--fs-xs); color: var(--ink-2); vertical-align: -1px; }
+.ax-clip > .wb-i { width: 12px; height: 12px; }
+.ax-new { animation: ax-flash 3s ease-out; }
+@keyframes ax-flash { from { background: var(--info-bg); } }
+.ax-skelrow { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-bottom: 1px solid var(--border-sub); }
+.ax-qmore { display: flex; justify-content: center; padding: var(--s3); }
+.ax-live {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  background: var(--surface); font-size: var(--fs-xs); color: var(--ink-2);
+}
+.ax-live::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--live); }
+.ax-live[data-running]::before { animation: ax-pulse 1.2s ease-in-out infinite; }
+@keyframes ax-pulse { 50% { opacity: .25; } }
+.ax-live > .wb-pillbtn { margin-left: auto; }
+.ax-flash { margin: 10px 14px 0; }
+/* Pull to refresh (phone): the indicator rides down with the finger */
+.ax-pull { display: flex; justify-content: center; height: 0; overflow: visible; position: relative; z-index: var(--z-sticky); }
+.ax-pull > span { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: var(--r-round); background: var(--surface); box-shadow: var(--shadow-pop); font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-pull.is-snap > span { transition: transform var(--dur) ease-out; }
+
+/* ---------- Email ---------- */
+.ax-col { display: flex; flex-direction: column; gap: var(--s4); width: 100%; max-width: 860px; margin: 0 auto; padding: var(--s5) var(--s5) var(--s3); }
+.ax-back { display: none; align-self: flex-start; align-items: center; gap: 2px; margin: -4px 0 -8px -3px; font-size: var(--fs-base); }
+.ax-back > .wb-i { width: 14px; height: 14px; }
+.ax-head { display: flex; flex-direction: column; gap: var(--s2); }
+.ax-title { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; line-height: 1.35; }
+.ax-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.ax-cust { font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-pair, .ax-replycol { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
+.ax-from { display: flex; align-items: center; gap: var(--s2); margin: -4px 0 var(--s3); }
+.ax-from > span { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-from b { font-size: var(--fs-base); font-weight: 600; color: var(--ink); }
+.ax-from > .wb-btn { margin: -4px 0; }
+.ax-from > .wb-btn--ghost { margin-right: -8px; }
+.ax-msg { overflow-wrap: anywhere; }
+.ax-msg p { margin: 0 0 10px; }
+.ax-msg > :last-child { margin-bottom: 0; }
+.ax-thumbs { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 2px 0 12px; }
+.ax-thumb { display: grid; place-items: center; width: 112px; height: 84px; border-radius: var(--r-cell); background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-micro); color: var(--ink-2); overflow: hidden; }
+.ax-to { display: flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 6px 16px; border-bottom: 1px solid var(--border-sub); }
+.ax-to > .wb-label { width: 22px; }
+.ax-to .wb-input { width: 260px; }
+.ax-text { margin: 8px 5px 0; }
+.ax-text > textarea { min-height: 9em; }
+.ax-atts { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px 0; }
+.ax-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 5px 10px; }
+.ax-sugg { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-sub); }
+.ax-sugg > .wb-label { margin-right: 4px; }
+.ax-sugg > .wb-btn { margin-left: -4px; }
+.ax-sugg > .wb-btn:first-child { margin-left: -11px; }
+.ax-sentline { display: flex; align-items: center; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--border-sub); font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-sentline > .wb-i { width: 12px; height: 12px; color: var(--ok-fg); }
+.ax-reply > .ax-msg, .ax-reply > .ax-wait { padding: 14px 16px 16px; }
+.ax-wait { display: flex; flex-direction: column; gap: var(--s4); }
+.ax-reply { scroll-margin-top: calc(var(--ax-top, 0px) + 16px); }
+.ax-reply > .wb-banner { margin: 12px 12px 0; }
+.ax-qs { margin: 8px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
+.ax-qs > li { padding-left: 2px; }
+.ax-qs .wb-pill { margin-left: 6px; }
+.ax-redraft { display: flex; gap: var(--s2); }
+.ax-redraft > .wb-input { flex: 1; }
+.ax-link { display: block; margin-top: 4px; font: var(--fs-xs)/1.4 var(--mono); overflow-wrap: anywhere; }
+/* The email's text: paragraphs keep the customer's line breaks */
+.ax-msg p { white-space: pre-wrap; }
+.ax-fold { margin-top: 12px; }
+.ax-fold > .ax-msg { margin-top: 8px; }
+.ax-quiet { font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-quoted { padding-left: 12px; border-left: 2px solid var(--border); color: var(--ink-2); }
+.ax-quoted + .ax-quoted { margin-top: 12px; }
+.ax-more { display: inline-flex; align-items: center; gap: 4px; margin: 6px 0 0; padding: 0; border: 0; background: none; font: 500 var(--fs-base)/1.4 var(--font); color: var(--link); cursor: pointer; }
+.ax-more > .wb-i { width: 14px; height: 14px; }
+.ax-more[aria-expanded="true"] > .wb-i { rotate: 180deg; }
+.ax-tr { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--surface-2); }
+.ax-tr > .wb-hint { margin-bottom: 6px; }
+.ax-caller { margin-top: 10px; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-thumb > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ax-mail .ax-thumbs { margin: 14px 0 0; }
+.ax-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ax-files > .wb-pillbtn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The customer line's pills and the voicemail's people */
+.ax-cust > .wb-pill { vertical-align: 1px; }
+.ax-people { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-people ul { margin: 0; padding-left: 16px; }
+.ax-people b { color: var(--ink); font-weight: 600; }
+/* The information card of a compose, contact-form or return item: quiet, above the reply */
+.ax-info { background: var(--surface-2); box-shadow: none; }
+.ax-info .wb-card__bd { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ax-info .wb-label + * { margin-top: -2px; }
+.ax-info .wb-label:not(:first-child) { margin-top: 6px; }
+.ax-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ax-notes { margin: 0; padding-left: 16px; font-size: var(--fs-xs); color: var(--ink-2); }
+/* The reply card: subject, the typed address, attachment chips, drop target, translation */
+.ax-subj { padding: 12px 16px 0; }
+.ax-to { flex-wrap: wrap; row-gap: 6px; }
+.ax-to > .wb-pillbtn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+.ax-reply > .ax-tr { margin: 8px 16px 0; }
+.ax-reply.is-drop { outline: 2px dashed var(--ring); outline-offset: 2px; }
+.ax-chip { max-width: 100%; }
+.ax-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-chipact { margin: 0 2px 0 4px; padding: 0 4px; border: 0; border-radius: var(--r-cell); background: none; font: 500 var(--fs-xs)/1.6 var(--font); color: var(--link); cursor: pointer; }
+.ax-chipact:hover { background: var(--surface); }
+/* Touch: the text toggles (Insert in text, Show full message, the folds) and the Inbox back link get
+   a 44 px hit area; the padding is taken back by negative margins, so nothing around them moves.
+   The redraft field is at least the touch control height. */
+@media (pointer: coarse) {
+  .ax-fold > summary, :is(.ax-reply, .ax-flagform) .wb-details > summary { padding: 14px 0; margin: -14px 0; }
+  .ax-back { padding: 12px 0; margin-top: -16px; margin-bottom: -20px; }
+  .ax-fb { min-height: var(--h-ctl); }
+  .ax-more { padding: 13px 0; margin: -7px 0 -13px; }
+  .ax-chipact { padding-top: 12.5px; padding-bottom: 12.5px; margin-top: -12.5px; margin-bottom: -12.5px; }
+}
+.ax-tools .wb-count { margin-left: 2px; }
+.ax-wait > .wb-banner { margin: 0; }
+/* The redraft line: one field that grows from one line */
+.ax-redraft { align-items: flex-start; }
+.ax-fb { padding: 5px 10px; }
+.ax-fb > textarea { min-height: 1.5em; }
+.ax-redraft > .wb-btn { flex: none; }
+.ax-prev > div { display: flex; flex-direction: column; gap: 8px; }
+/* Dialog bodies: choices, the language list, earlier Teach flags, What Axle checked */
+.ax-choices { display: flex; flex-direction: column; margin: 0 -8px; }
+.ax-choices > form { display: contents; }
+.ax-result { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); }
+.ax-result .ax-choices { align-self: stretch; margin: 0; }
+.ax-flags { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ax-flags > li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.ax-flags > li > span:nth-child(2) { flex: 1 1 60%; }
+.ax-flags .wb-btn { margin-left: auto; }
+.ax-brief { margin: 0; font: var(--fs-xs)/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+/* The dock's quiet autosave note */
+.ax-saved { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-saved > .wb-i { width: 12px; height: 12px; }
+/* Saved and Not saved share one slot (a one-cell grid), so neither moves anything when it shows */
+.ax-savemark { display: inline-grid; align-items: center; }
+.ax-savemark > * { grid-area: 1 / 1; justify-self: end; }
+.ax-savemark > .ax-savefail { color: var(--bad-fg); }
+.ax-savemark > [hidden] { display: inline-flex !important; visibility: hidden; }
+.ax-tools > .ax-savemark { margin-left: auto; padding-right: 6px; }
+/* On the phone's tool row only Saved keeps its room; the rare Not saved takes what it needs */
+.ax-tools > .ax-savemark > .ax-savefail[hidden] { display: none !important; }
+@media (min-width: 640px) { .ax-tools > .ax-savemark { display: none; } }
+/* Phone bar with two actions: Mark done at its own width, Send taking the rest (the wider, main
+   action), More fixed. Either text button may shrink; its label then ends in an ellipsis inside the
+   button and the icon stays whole */
+.ax-bar > .wb-btn:first-child { flex: 0 1 auto; min-width: 0; }
+.ax-bar > .wb-btn--commit, .ax-bar > .wb-btn--primary { flex: 1 1 0; min-width: 0; }
+.ax-bar > .wb-btn--icon { flex: none; }
+.ax-bar > .wb-btn > .wb-i { flex: none; }
+.ax-bar > .wb-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Framed, the Workbench shell floats Sprocket (56 px) in the bottom right corner: wherever the
+   email column reaches the right edge, it stops 76 px short so the dock and the reply stay clear */
+@media (min-width: 640px) and (max-width: 1279.98px) { .is-framed .ax-col { padding-right: 76px; } }
+@media (min-width: 1280px) { .is-framed .ax-col--split { padding-right: 76px; } }
+/* The toast centres on the work area wherever the queue sits beside it */
+@media (min-width: 1024px) { .ax ~ .wb-toaster { left: 300px; } }
+@media (min-width: 1280px) { .ax ~ .wb-toaster { left: 320px; } }
+/* Nothing open: one sentence (the empty inbox one when the list is empty) */
+.ax-void { display: grid; place-items: center; min-height: calc(100vh - var(--ax-top, 0px)); padding: var(--s6); text-align: center; color: var(--ink-2); }
+.ax-void__empty, .ax[data-empty] .ax-void__pick { display: none; }
+.ax[data-empty] .ax-void__empty { display: block; }
+
+/* ---------- Overlays: one markup, drawn as the vocabulary's dialog, drawer, page or sheet ---------- */
+.ax-ov__x, .ax-ov__back { flex: none; }
+:is(.wb-dialog, .wb-drawer) .ax-ov__back, .wb-page .ax-ov__x, .wb-page .ax-ov-desk { display: none; }
+.wb-sheet > .ax-ov__hd { display: contents; }
+.wb-sheet .ax-ov__back, .wb-sheet .ax-ov__x { display: none; }
+.wb-page > form.wb-page__bd, .wb-drawer > form.wb-ov__bd, .wb-dialog > form.wb-ov__bd { margin: 0; }
+
+/* ---------- Compose ---------- */
+.ax-cmp-write { display: none !important; }
+.is-write .ax-cmp-write { display: flex !important; }
+.is-write button.ax-cmp-write { display: inline-flex !important; }
+.is-write .ax-cmp-draft { display: none !important; }
+.ax-cmp-to { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.ax-cmp-res { display: flex; flex-direction: column; gap: 6px; }
+.ax-cmp-res:empty { display: none; }
+/* The customer candidates: vocabulary list rows (a divider each, hover and selected states), as buttons */
+.ax-cmp-list { border: 1px solid var(--border); border-radius: var(--r-ctl); overflow: hidden; }
+.ax-cmp-list > .wb-row { width: 100%; min-height: 44px; margin: 0; border: 0; border-bottom: 1px solid var(--border-sub); background: none; font: inherit; color: inherit; }
+.ax-cmp-list > .wb-row:last-child { border-bottom: 0; }
+.ax-cmp-list > .wb-row:active { background: var(--surface-2); }
+.ax-cmp-list > .wb-row[aria-selected="true"] { background: var(--surface-2); }
+.ax-cmp-msg > textarea { min-height: 9em; }
+.ax-cmp-att { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ax-cmp-att.is-drop { outline: 2px dashed var(--ring); outline-offset: 4px; border-radius: var(--r-ctl); }
+.ax-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ax-ov-btn { align-self: flex-start; margin-left: -12px; }
+.ax-row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
+
+/* ---------- Dialog text ---------- */
+.ax-addr { font-weight: 600; overflow-wrap: anywhere; }
+.ax-note { display: flex; align-items: center; gap: 6px; font-size: var(--fs-base); }
+.ax-note > .wb-i { width: 14px; height: 14px; }
+.ax-note[data-tone="ok"] { color: var(--ok-fg); }
+.ax-note[data-tone="warn"] { color: var(--warn-fg); }
+.ax-note:not([data-tone]) { color: var(--ink-2); }
+.ax-who { display: flex; flex-direction: column; gap: 2px; }
+.ax-confirm { white-space: pre-line; }
+
+/* ---------- Rare pages: blocked senders, teach, audit, adoption ---------- */
+.ax-page { display: flex; flex-direction: column; gap: var(--s4); max-width: 1100px; margin: 0 auto; padding: var(--s5) var(--s5) var(--s6); }
+.ax-page > .ax-back { display: inline-flex; }
+.ax-h1 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.3; }
+.ax-h1 > .wb-count { margin-left: 6px; font-size: var(--fs-md); }
+.ax-h2 { margin-top: var(--s2); font-size: var(--fs-md); font-weight: 600; letter-spacing: -.005em; }
+.ax-sub { margin-top: -8px; color: var(--ink-2); }
+.ax-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 140px; gap: var(--s3); }
+.ax-tablecard { overflow: hidden; }
+.ax-tablecard td.ax-wrap { white-space: normal; min-width: 320px; }
+.ax-cards { display: none; }
+.ax-cards .wb-lcard__title { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.ax-cards .wb-lcard__meta .ax-meter { margin-top: 6px; }
+.ax-lcard-act { grid-column: 2; grid-row: 2; align-self: center; margin: -4px 0 -2px; }
+.ax-cards .wb-lcard__title + .wb-lcard__meta { align-self: center; }
+.ax-lcard-text { grid-column: 1 / -1; color: var(--ink); }
+.ax-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.ax-stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 16px; }
+.ax-stat > .wb-label { white-space: normal; }
+.ax-stat > b { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; font-variant-numeric: tabular-nums; }
+.ax-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); align-items: start; }
+.ax-meter { display: flex; align-items: center; gap: 10px; }
+.ax-meter > span { flex: 1; height: 6px; min-width: 60px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.ax-meter > span > i { display: block; height: 100%; background: var(--ink); }
+.ax-meter > b { width: 46px; white-space: nowrap; font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; }
+.ax-stack { display: flex; height: 12px; border-radius: 4px; overflow: hidden; gap: 2px; }
+.ax-stack > i { display: block; height: 100%; }
+.ax-legend { display: flex; flex-direction: column; gap: 8px; margin-top: var(--s4); }
+.ax-legend > div { display: flex; align-items: center; gap: 8px; }
+.ax-legend > div > i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.ax-legend > div > b { margin-left: auto; font-weight: 400; font-variant-numeric: tabular-nums; }
+.ax-c1 { background: var(--info-fg); }
+.ax-c2 { background: var(--ink); }
+.ax-c3 { background: var(--ink-2); }
+.ax-c4 { background: var(--faint); }
+.ax-c5 { background: var(--border-2); }
+.ax-c6 { background: var(--warn-fg); }
+.ax-c7 { background: var(--ok-fg); }
+/* Shared parts of the rare pages: action rows, a sideways-scrolling table, the audit count line */
+.ax-acts { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.ax-nowrap { white-space: nowrap; }
+.ax-scroll { overflow-x: auto; }
+.ax-scroll td.ax-wrap { min-width: 240px; }
+.ax-countline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: -4px; }
+.ax-flagform { display: flex; flex-direction: column; align-items: stretch; gap: var(--s3); }
+.ax-flagform > .wb-details { margin: 0; }
+.ax-flagform .ax-pre { margin-top: 8px; }
+.ax-cards .ax-lcard-end { grid-column: 1 / -1; grid-row: auto; justify-self: start; margin-top: 6px; }
+/* Adoption: tone fills (ax-fill-, never a card class) for the edit mix, the daily pairs of bars, legends in a row */
+.ax-fill-ok { background: var(--ok-fg); }
+.ax-fill-info { background: var(--info-fg); }
+.ax-fill-warn { background: var(--warn-fg); }
+.ax-fill-bad { background: var(--bad-fg); }
+.ax-fill-in { background: var(--border-2); }
+.ax-stack--thin { height: 8px; min-width: 140px; }
+.ax-mixcell { min-width: 160px; }
+.ax-days { display: flex; align-items: flex-end; gap: 1px; height: 120px; }
+.ax-days > span { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
+.ax-days > span > i { flex: 1; background: var(--border-2); border-radius: 1px 1px 0 0; }
+.ax-days > span > i.ax-fill-info { background: var(--info-fg); }
+.ax-daysax { display: flex; justify-content: space-between; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-legend--row { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-legend--row > div > b { margin-left: 2px; color: var(--ink); }
+.wb-card > .ax-legend--row { margin: 0; padding: 12px 16px; border-top: 1px solid var(--border-sub); }
+
+/* ---------- Desk: the email and the reply side by side ---------- */
+@media (min-width: 1280px) {
+  .ax-col--split { max-width: none; }
+  .ax-col--split .ax-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: var(--s4) 20px; }
+}
+
+/* ---------- Laptop ---------- */
+@media (max-width: 1279.98px) {
+  .ax { grid-template-columns: 300px minmax(0, 1fr); }
+  .ax-col { max-width: none; }
+}
+
+/* ---------- Tablet: one pane at a time ---------- */
+@media (max-width: 1023.98px) {
+  .ax { display: block; }
+  .ax-queue { position: static; height: auto; min-height: calc(100vh - var(--ax-top, 0px)); overflow: visible; border-right: 0; }
+  .ax-main, .ax-detail .ax-queue { display: none; }
+  .ax-detail .ax-main { display: block; }
+  .ax-back { display: inline-flex; }
+  .ax-queue .wb-row[aria-selected="true"] { background: none; }
+  .ax-queue .wb-row[aria-selected="true"]::before { display: none; }
+}
+
+/* ---------- Phone: Axle standalone, its own top bar, pages and sheets ---------- */
+@media (max-width: 639.98px) {
+  .ax-doc:not(.is-framed) .ax-ptop { display: flex; }
+  .ax-doc:has(.ax-ptop) > .ax-top { display: none; }
+  .ax-ptop > .wb-pill { margin: 0 8px 0 auto; }
+  .ax-ptop .ax-icons { margin-left: auto; }
+  .ax-ptop .wb-page__t { min-width: 0; }
+  .ax-doc:not(.is-framed) :is(.ax-back, .ax-qhd > .ax-icons, .ax-st) { display: none !important; }
+  .ax-qhd { padding: 8px 16px; min-height: 0; }
+  .ax-qhd > .wb-seg { flex: 1; margin: 0; }
+  .ax-qfind { padding: 10px 16px; }
+  .ax-queue .wb-row { padding: 14px 16px; }
+  .ax-queue .wb-row__title, .ax-queue .wb-row__line { font-size: var(--fs-md); }
+  .ax-queue .wb-row__meta, .ax-queue .wb-row__sum { font-size: var(--fs-base); }
+  .ax-live { padding-left: 16px; padding-right: 16px; }
+  .ax-col { padding: var(--s4) var(--s4) var(--s5); }
+  .ax-from { align-items: flex-start; }
+  .ax-from > .wb-btn--ghost { margin: -10px -12px 0 0; }
+  .ax-to .wb-input { width: auto; flex: 1; }
+  .ax-to { scroll-margin: calc(var(--bar-h) + 16px) 0 calc(var(--h-ctl) + 40px + env(safe-area-inset-bottom)); }
+  .ax-thumb { width: 96px; height: 72px; }
+  .ax-dockwrap { position: static; }
+  .ax-dockwrap .wb-banner { scroll-margin-bottom: 80px; }
+  .ax-msg[data-clamp]:not(.is-open) { max-height: 18em; overflow: hidden; }
+  .ax-msg.is-clamped:not(.is-open) { -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  .ax-to > .wb-pillbtn > span { max-width: 190px; }
+  .ax-page { padding: var(--s4) var(--s4) var(--s5); }
+  .ax-page > .ax-back, .ax-page > .ax-h1 { display: none; }
+  .ax-sub { margin-top: 0; }
+  .ax-tablecard { display: none; }
+  .ax-cards { display: flex; }
+  .ax-row2 { grid-template-columns: minmax(0, 1fr); }
+  .ax-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ax-filters > :first-child { grid-column: 1 / -1; }
+  .ax-stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ax-grid2 { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ax-new, .ax-live[data-running]::before { animation: none; }
+}

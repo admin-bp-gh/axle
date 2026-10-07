@@ -1,31 +1,26 @@
-// routes/inbox.js - the work-queue pane (GET / inline + GET /queue fragment), the
-// per-browser language toggle (/setlang) and the manual Sync (/sync). The compose
-// modal now renders once per full page outside #queuepane via app.locals.composeUi
-// (read by routes/item.js for deep links). Extracted from server.js in UI rework
-// Step 0; reshaped into the three-pane shell's queue in Step 2 (2026-06-10):
-// card-rows + action-state chips (F1/F2), "Live · updated" indicator (F3) and the
-// collapsed toolbar (F4). Query semantics and audit calls are unchanged from the
-// old inbox; summary translations render from cache and fill in asynchronously
-// (UX round, 2026-06-11 - see buildQueuePane). ACTION_COMPOSE_SEND is passed in by
-// server.js so the allow-list env check stays defined in exactly one place.
-// 2026-09-26, mobile Phase 3, C3: compose modal moved out of buildQueuePane into composeUi(req).
-// 2026-09-26, mobile Phase 3, C1/C2/M-54: done and all paginate (Load more), status tabs swap
-// only #queuepane, and the poll skips while the user is reading (chip #qupd offers the refresh).
-// 2026-10-04, live queue: the pane probes GET /queue/stamp every 10 s on every device and
-// re-renders only when the stamp changed, so new mail appears without a reload (desktop used
-// to refresh only while a sync was running at render time).
+// routes/inbox.js - the work queue (GET / inline, GET /queue fragment, GET /queue/stamp probe,
+// POST /queue/summaries), the per-browser language cookie (/setlang), the manual Sync (/sync) and
+// the compose drawer (composeUi, rendered once per full page; routes/item.js appends it to deep
+// links through app.locals.composeUi). Extracted from server.js in UI rework Step 0.
+// Redesign phase 1 (2026-10-07), Queue A: the open list only. Header: Mine | All, then search,
+// compose and More (History, Mailbox, Sync now, Blocked senders, the owner pages). History is the
+// done and archived emails with a server-side search (?show=history&q=). Every switch posts or
+// fetches in place through assets/axle.js; the markup carries data attributes, no inline script.
+// Query semantics, audit rows and the live probe are as before. ACTION_COMPOSE_SEND is passed in
+// by server.js so the allow-list env check stays defined in exactly one place.
 const INGEST = require("../ingest.js");
 const TR = require("../translate.js");
-const SCEN = require("../scenarios.js");
+const K = require("../knowledge.js");
 const { db, audit, acquireSync, releaseSync, syncStatus } = require("../db.js");
-const { esc, t, page, langOK, statusLabel, statusWithRes, suggestCloseChip, intentLabel, ownerLabel,
-        fmtDateTime, fmtTime, parseTS, shell, workPanes } = require("../views/ui.js");
+const { esc, t, page, langOK, statusLabel, statusWithRes, intentLabel, ownerLabel,
+        fmtDateTime, fmtTime, parseTS, shell, voidPane, icon, iconBtn, homeLink } = require("../views/ui.js");
 const { anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, defaultMailbox } = require("./shared.js");
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
 
 module.exports = function mountInbox(app, { ACTION_COMPOSE_SEND }) {
 
-// Language toggle: set the per-browser language cookie and return to the prior page.
+// Language cookie: set the per-browser language and return to the prior page. The control lives
+// on the Workbench home page now; the route stays for it and for old links.
 app.get("/setlang", (req, res) => {
   const l = langOK(req.query.lang);
   res.setHeader("Set-Cookie", `axle_lang=${l}; Path=${BASE.path || "/"}; Max-Age=31536000; SameSite=Lax`);
@@ -40,7 +35,8 @@ app.get("/setlang", (req, res) => {
 // path as the scheduled task -- it ingests every email new since the last sync. Holding the lock in
 // the server process (with a guaranteed release in finally) means the button and "last synced"
 // always update; a server restart mid-sync is healed by the startup reset above. Acquiring the same
-// lock as the scheduled task ensures no overlap.
+// lock as the scheduled task ensures no overlap. axle.js posts it in place and refreshes the queue;
+// the redirect is for a browser without script.
 function startSync(login) {
   if (!acquireSync("manual:" + login)) return false; // already running (scheduled or manual)
   audit(login, "manual_sync", null, "started");
@@ -61,93 +57,110 @@ app.post("/sync", (req, res) => {
   res.redirect(BASE.url("/?synced=1"));
 });
 
-// --- The work queue (Step 2: the shell's left pane) -----------------------------
-// One card-row per item (F1): sender + subject, the one-line summary, a single
-// action-state chip, time, small badges. Default order = "what needs me next"
-// (F2): flagged -> needs your answer -> ready to send -> new -> the rest, then
-// priority, then freshness. The WHERE semantics and audit detail string are
-// IDENTICAL to the pre-shell inbox; summary translations are cache-inline +
-// async-fill since the UX round (2026-06-11). Shared by GET / (inline) and
-// GET /queue (the lazy fragment item deep-links load), so both render the same DOM.
-// The queue's filter, resolved once from the request so the pane render and the cheap
-// change probe (GET /queue/stamp) agree on exactly the same rows.
+// --- The work queue ---------------------------------------------------------------------------
+// The queue's filter, resolved once from the request so the pane render and the cheap change probe
+// (GET /queue/stamp) agree on exactly the same rows.
+//  mailbox: sales see everything by default because their scope is already "mine"; admins land on
+//    Gouda (info@) and switch in the More menu. An explicit ?mailbox= always wins.
+//  show: "open" (the list) or "history" (done and archived). The old tab values done, archived and
+//    all are History now, so their links keep working.
+//  scope: "mine" (the user's owner label) or "all". Sales default to mine, admins to all. It applies
+//    to the open list only. Browsing History follows the mailbox; a History search (q) ignores both
+//    and searches every closed email, its rows naming their mailbox.
+//  q: History's server-side search over sender name and address, subject, summary and "#id".
 function queueFilter(req) {
-  // Mailbox filter. Sales see everything by default because their scope is already "mine" (their
-  // own owner label), which confines them to their own queue anyway. Admins are scope="all", and
-  // an unfiltered All is both mailboxes' entire traffic at once - so they land on Gouda (info@)
-  // and click through to Drachten or All. 'all' is one click away either way, and an explicit
-  // ?mailbox= in the URL always wins, so every existing link keeps working.
   const mb = ["info", "drachten", "all"].includes(req.query.mailbox) ? req.query.mailbox
     : (req.user.role === "admin" ? "info" : "all");
-  const show = ["open", "done", "archived", "all"].includes(req.query.show) ? req.query.show : "open";
-  // Scope: "mine" shows only items routed to this user (owner label); "all" shows everything.
-  // Sales default to their own queue; admins default to all for oversight. Either can toggle.
+  const show = ["history", "done", "archived", "all"].includes(req.query.show) ? "history" : "open";
   const scope = ["mine", "all"].includes(req.query.scope) ? req.query.scope
     : (req.user.role === "admin" ? "all" : "mine");
+  const q = show === "history" ? String(req.query.q || "").trim().slice(0, 100) : "";
   const myOwner = req.user.owner_label || req.user.display_name;
-  const statusCond = show === "open" ? "w.status NOT IN ('done','archived')"
-    : show === "done" ? "w.status = 'done'"
-    : show === "archived" ? "w.status = 'archived'"
-    : "1=1";
-  const conds = [statusCond];
+  const conds = [show === "open" ? "w.status NOT IN ('done','archived')" : "w.status IN ('done','archived')"];
   const params = [];
-  if (mb !== "all") { conds.push("w.mailbox = ?"); params.push(mb); }
-  if (scope === "mine") { conds.push("w.owner = ?"); params.push(myOwner); }
-  // Status-tab counts under the current mailbox + scope (the status filter itself excluded).
+  const mineOnly = scope === "mine" && show === "open";
+  const oneBox = mb !== "all" && !q;
+  if (oneBox) { conds.push("w.mailbox = ?"); params.push(mb); }
+  if (mineOnly) { conds.push("w.owner = ?"); params.push(myOwner); }
+  if (q) {
+    const like = "%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
+    conds.push("(w.sender_name LIKE ? ESCAPE '\\' OR w.sender_email LIKE ? ESCAPE '\\' OR w.subject LIKE ? ESCAPE '\\' OR w.summary LIKE ? ESCAPE '\\' OR ('#' || w.id) LIKE ? ESCAPE '\\')");
+    params.push(like, like, like, like, like);
+  }
+  // Counts under the current mailbox + scope (status and search excluded), for the change stamp.
   const cConds = [], cParams = [];
-  if (mb !== "all") { cConds.push("w.mailbox = ?"); cParams.push(mb); }
-  if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(myOwner); }
-  return { mb, show, scope, conds, params, cConds, cParams };
+  if (oneBox) { cConds.push("w.mailbox = ?"); cParams.push(mb); }
+  if (mineOnly) { cConds.push("w.owner = ?"); cParams.push(myOwner); }
+  return { mb, show, scope, q, conds, params, cConds, cParams };
 }
-function tabCounts(f) {
-  return db.prepare(
+// The filter as the query string the client sends back (refresh, probe, Load more).
+const filterQs = (f) => `mailbox=${f.mb}&scope=${f.scope}&show=${f.show}${f.q ? "&q=" + encodeURIComponent(f.q) : ""}`;
+
+// Change stamp for the queue as filtered: row count + newest updated_at of the matching rows +
+// the open, done, archived and total counts. Any ingest, status change, reassignment or edit moves
+// at least one of these, so a differing stamp means "the pane you are looking at is stale". Two
+// trivial indexed aggregates; safe to probe every few seconds from every open browser.
+function queueStamp(f) {
+  const r = db.prepare(`SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM work_items w WHERE ${f.conds.join(" AND ")}`).get(...f.params);
+  const c = db.prepare(
     `SELECT SUM(CASE WHEN w.status NOT IN ('done','archived') THEN 1 ELSE 0 END) AS open_n,
             SUM(CASE WHEN w.status = 'done' THEN 1 ELSE 0 END) AS done_n,
             SUM(CASE WHEN w.status = 'archived' THEN 1 ELSE 0 END) AS arch_n,
             COUNT(*) AS all_n
      FROM work_items w ${f.cConds.length ? "WHERE " + f.cConds.join(" AND ") : ""}`
   ).get(...f.cParams);
-}
-// Change stamp for the queue as filtered: row count + newest updated_at of the matching rows
-// + the four tab counts. Any ingest, status change, reassignment or edit moves at least one of
-// these, so a differing stamp means "the pane you are looking at is stale". Two trivial
-// indexed aggregates; safe to probe every few seconds from every open browser.
-function queueStamp(f, counts) {
-  const r = db.prepare(`SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM work_items w WHERE ${f.conds.join(" AND ")}`).get(...f.params);
-  const c = counts || tabCounts(f);
   return [r.n, r.u || "", c.open_n || 0, c.done_n || 0, c.arch_n || 0, c.all_n || 0].join("|");
+}
+
+// One list row (the vocabulary list row): sender and time; subject with the suggested-document
+// count; one line of summary; a status pill only when the email is not simply ready to send (New,
+// Needs your answer, Drafting, Check, or the closed status in History) and a P1 pill.
+function rowHtml(w, ctx) {
+  const { lang, sel, sumOf, sumPending, boxes } = ctx;
+  const closed = w.status === "done" || w.status === "archived";
+  let clip = 0;
+  if (!closed && w.doc_suggestions_json && !w.injection_flag) {
+    try { clip = (JSON.parse(w.doc_suggestions_json) || []).filter((s) => s.status === "in_scope" || s.status === "ambiguous").length; }
+    catch (e) { clip = 0; }
+  }
+  const pill = (text, tone, dot) => `<span class="wb-pill" data-tone="${tone}">${dot ? '<i class="wb-dot" aria-hidden="true"></i>' : ""}${esc(text)}</span>`;
+  const tone = { new: "neutral", awaiting_input: "warn", investigating: "info" }[w.status];
+  const end = (w.injection_flag && !closed ? pill(t(lang, "check"), "bad", true)
+      : closed ? pill(statusWithRes(lang, w), "neutral")
+      : tone ? pill(statusLabel(lang, w.status), tone, true) : "")
+    + ((w.priority || 2) === 1 && !w.injection_flag && !closed ? pill("P1", "bad") : "")
+    + (boxes ? pill(t(lang, w.mailbox), "neutral") : "");
+  const searchable = [
+    "#" + w.id, statusLabel(lang, w.status), w.mailbox, w.sender_name, w.sender_email, w.subject,
+    sumOf(w), w.summary, intentLabel(lang, w.intent), ownerLabel(w), w.rule_id, w.email_text,
+  ].filter(Boolean).join(" ").toLowerCase();
+  const sum = esc(sumOf(w)) + (w.caller_info ? `${sumOf(w) ? " · " : ""}${esc(w.caller_info)}` : "");
+  return `<a class="wb-row" role="option" href="${BASE.path}/item/${w.id}" hx-get="${BASE.path}/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true" data-id="${w.id}" aria-selected="${sel === w.id}" data-search="${esc(searchable)}">
+<span class="wb-row__title">${esc(w.sender_name || w.sender_email)}</span><span class="wb-row__meta">${esc(fmtDateTime(w.updated_at, lang))}</span>
+<span class="wb-row__line">${clip ? `<span class="ax-clip" aria-label="${esc(t(lang, "sugg_title"))}: ${clip}">${icon("clip")}${clip}</span>` : ""}${w.origin === "compose" ? `<span class="ax-clip" aria-label="${esc(t(lang, "compose_new"))}">${icon("edit")}</span>` : ""}${esc(w.subject || t(lang, "no_subject"))}</span>
+<span class="wb-row__sum"${sumPending.has(w.id) ? ` data-trs="${w.id}"` : ""}>${sum}</span>${end ? `<span class="wb-row__end">${end}</span>` : ""}</a>`;
 }
 
 async function buildQueuePane(req, opts) {
   const lang = req.user.lang;
   const sel = (opts && opts.sel) || 0;
-  // C1 pagination: done and all load PAGE_SIZE cards at a time; open and archived stay whole.
-  const PAGE_SIZE = 50;
-  const page = Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1);
   const f = queueFilter(req);
-  const { mb, show, scope, conds, params } = f;
-  // F2 default order, open view: what needs me next. Completed views stay newest-first.
-  const order = show === "open"
-    ? " ORDER BY w.injection_flag DESC, CASE WHEN w.status = 'awaiting_input' THEN 0 WHEN w.status = 'ready' THEN 1 WHEN w.status = 'new' THEN 2 ELSE 3 END, w.priority ASC, w.updated_at DESC"
-    : " ORDER BY w.updated_at DESC";
-  const paged = show === "done" || show === "all";
-  // Unpaged tabs ignore ?page and always render the whole pane.
-  const frag = paged && page > 1;
-  const offset = paged ? (page - 1) * PAGE_SIZE : 0;
-  const items = db.prepare(
-    `SELECT w.*, (SELECT COUNT(*) FROM questions q WHERE q.work_item_id = w.id AND q.answer IS NULL) AS open_q
-     FROM work_items w WHERE ${conds.join(" AND ")}${order}${paged ? " LIMIT ? OFFSET ?" : ""}`
-  ).all(...params, ...(paged ? [PAGE_SIZE, offset] : []));
-  const counts = tabCounts(f);
-  const stamp = queueStamp(f, counts);
-  // The tab's full matching count: the page itself for unpaged tabs, the counts query otherwise.
-  const total = show === "done" ? (counts.done_n || 0) : show === "all" ? (counts.all_n || 0) : items.length;
+  const { mb, show, scope, q, conds, params } = f;
+  const hist = show === "history";
+  // History loads PAGE_SIZE rows at a time (Load more); the open list is always whole.
+  const PAGE_SIZE = 50;
+  const pageNo = hist ? Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1) : 1;
+  const offset = (pageNo - 1) * PAGE_SIZE;
+  // The open list: what needs me next. History: newest first.
+  const order = hist ? " ORDER BY w.updated_at DESC"
+    : " ORDER BY w.injection_flag DESC, CASE WHEN w.status = 'awaiting_input' THEN 0 WHEN w.status = 'ready' THEN 1 WHEN w.status = 'new' THEN 2 ELSE 3 END, w.priority ASC, w.updated_at DESC";
+  const items = db.prepare(`SELECT w.* FROM work_items w WHERE ${conds.join(" AND ")}${order}${hist ? " LIMIT ? OFFSET ?" : ""}`)
+    .all(...params, ...(hist ? [PAGE_SIZE, offset] : []));
+  const total = hist ? db.prepare(`SELECT COUNT(*) AS n FROM work_items w WHERE ${conds.join(" AND ")}`).get(...params).n : items.length;
   audit(req.user.tailscale_login, "view_inbox", null, `mailbox=${mb} scope=${scope} show=${show} items=${total} lang=${lang}`);
-  const sync = syncStatus();
-  // Axle authors summaries in English; CACHED translations render inline (sync DB
-  // hit), uncached ones show English first and fill in via POST /queue/summaries in
-  // the background (UX round, 2026-06-11 - a cold NL queue used to stall the render
-  // on one API call per item).
+  const qs = filterQs(f);
+  // Axle authors summaries in English; CACHED translations render inline, uncached ones show
+  // English first and axle.js fills them in through POST /queue/summaries ([data-trs]).
   const sumTr = {};
   const sumPending = new Set();
   if (lang !== "en") for (const w of items) {
@@ -156,622 +169,112 @@ async function buildQueuePane(req, opts) {
     if (c) sumTr[w.id] = c; else sumPending.add(w.id);
   }
   const sumOf = (w) => (lang !== "en" && sumTr[w.id]) || w.summary || "";
-  // Auto-attach hint: a paperclip when the item has attachable (in-scope/ambiguous) suggested
-  // documents. Out-of-scope-only items show nothing here (they need an explicit confirm anyway).
-  const suggHint = (w) => {
-    if (!w.doc_suggestions_json || w.injection_flag) return "";
-    let n = 0;
-    try { n = (JSON.parse(w.doc_suggestions_json) || []).filter((s) => s.status === "in_scope" || s.status === "ambiguous").length; }
-    catch (e) { return ""; }
-    return n ? ` <span class="chip sugg" title="${esc(t(lang, "sugg_title"))}">&#128206;${n}</span>` : "";
-  };
-  const mbLink = (v, label) => `<a class="mitem${mb === v ? " on" : ""}" href="${BASE.path}/?mailbox=${v}&show=${show}&scope=${scope}">${label}</a>`;
-  const showTab = (v, label, n) => `<a class="qtab${show === v ? " on" : ""}" href="${BASE.path}/?mailbox=${mb}&show=${v}&scope=${scope}" hx-get="${BASE.path}/queue?mailbox=${mb}&show=${v}&scope=${scope}" hx-target="#queuepane" hx-swap="innerHTML" hx-push-url="${BASE.path}/?mailbox=${mb}&show=${v}&scope=${scope}">${label}<span class="n">${n || 0}</span></a>`;
-  const scopeLink = (v, label) => `<a class="seg${scope === v ? " on" : ""}" href="${BASE.path}/?mailbox=${mb}&show=${show}&scope=${v}">${label}</a>`;
-  const searchable = (w) => [
-    "#" + w.id, statusLabel(lang, w.status), w.mailbox, w.sender_name, w.sender_email, w.subject,
-    sumOf(w), w.summary, intentLabel(lang, w.intent), ownerLabel(w), w.rule_id, w.email_text,
-  ].filter(Boolean).join(" ").toLowerCase();
-  // The single action-state chip (F2). A flagged item's one job is the careful check,
-  // so the red Check chip replaces the state there.
-  const stateChip = (w) => w.injection_flag
-    ? `<span class="chip inj">${esc(t(lang, "check"))}</span>`
-    : `<span class="chip s-${esc(w.status)}">${esc(statusWithRes(lang, w))}</span>`
-      + (suggestCloseChip(lang, w) ? " " + suggestCloseChip(lang, w) : "");
-  const sumLine = (w) => `<span${sumPending.has(w.id) ? ` data-trs="${w.id}"` : ""}>${esc(sumOf(w))}</span>`
-    + (w.caller_info ? `${sumOf(w) ? " &middot; " : ""}&#128222; ${esc(w.caller_info)}` : "");
-  // Card-rows: plain links (work without JS); htmx upgrades a click to swap the
-  // work panes in place so the queue never reloads while browsing. data-* feeds
-  // the client-side search filter and sort, exactly like the old table's columns.
-  const cards = items.map((w, i) => `
-    <a class="qcard${sel === w.id ? " sel" : ""}" href="${BASE.path}/item/${w.id}" hx-get="${BASE.path}/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true"
-       data-search="${esc(searchable(w))}" data-rank="${offset + i}" data-upd="${esc(w.updated_at || "")}" data-prio="${w.priority || 2}">
-      <span class="q-l1"><span class="q-from">${esc(w.sender_name || w.sender_email)}</span><span class="q-time muted">${esc(fmtDateTime(w.updated_at, lang))}</span></span>
-      <span class="q-l2"><span class="q-subj">${w.origin === "compose" ? "&#9998; " : ""}${esc(w.subject || t(lang, "no_subject"))}</span><span class="q-badges">${suggHint(w)}${(w.priority || 2) === 1 && !w.injection_flag ? ` <span class="badge prio1">P1</span>` : ""}</span></span>
-      <span class="q-l3"><span class="q-sum muted">${sumLine(w)}</span>${stateChip(w)}</span>
-    </a>`).join("");
-  const lastT = sync.finished_at ? fmtTime(parseTS(sync.finished_at), lang) : t(lang, "never");
-  // C1 Load more: a sibling after #qlist; its button appends the next page into #qlist and
-  // each page response replaces this row out of band (or deletes it on the last page).
-  const hasMore = paged && offset + items.length < total;
-  const moreBtn = `<button type="button" class="qmore" id="qmore" hx-get="${BASE.path}/queue?mailbox=${mb}&show=${show}&scope=${scope}&page=${page + 1}" hx-target="#qlist" hx-swap="beforeend" data-page="${page}" data-total="${total}">${esc(t(lang, "load_more").replace("{n}", total))}</button>`;
-  const trScript = `<script>
-    (function () {
-      // Background summary-translation fill (UX round): cards rendered instantly with
-      // the English summary; one batched call translates the uncached ones and swaps
-      // the text in (textContent - escaped by construction). The translated text is
-      // also appended to the card's data-search so search finds it, like before.
-      // Server-cached, so the next queue render emits no pending markers at all.
-      var pend = document.querySelectorAll("#qlist [data-trs]");
-      if (!pend.length) return;
-      var ids = Array.prototype.map.call(pend, function (el) { return el.getAttribute("data-trs"); });
-      fetch("${BASE.path}/queue/summaries", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "ids=" + ids.join(",") })
-        .then(function (x) { return x.json(); })
-        .then(function (d) {
-          Array.prototype.forEach.call(pend, function (el) {
-            var v = d[el.getAttribute("data-trs")];
-            if (!v) return;
-            el.textContent = v;
-            el.removeAttribute("data-trs");
-            var card = el.closest ? el.closest("a.qcard") : null;
-            if (card) card.setAttribute("data-search", (card.getAttribute("data-search") || "") + " " + v.toLowerCase());
-          });
-        })
-        .catch(function () { /* English summaries stay - harmless */ });
-    })();
-    </script>`;
-  // Page 2 and later: only the new cards, the out-of-band Load more row and the fill script.
-  if (frag) {
-    const row = hasMore
-      ? `<div class="qmore-row" id="qmoreRow" hx-swap-oob="true">${moreBtn}</div>`
-      : `<div id="qmoreRow" hx-swap-oob="delete"></div>`;
-    return { html: `${cards}\n    ${row}\n    ${trScript}`, sync, lang };
-  }
+  // A History search spans both mailboxes: each row names its own (Gouda, Drachten).
+  const boxes = !!f.q;
+  const rows = items.map((w) => rowHtml(w, { lang, sel, sumOf, sumPending, boxes })).join("\n");
+  const hasMore = hist && offset + items.length < total;
+  const moreRow = `<div class="ax-qmore" id="qmoreRow"${pageNo > 1 ? ' hx-swap-oob="true"' : ""}><button type="button" class="wb-btn wb-btn--sm" hx-get="${BASE.path}/queue?${esc(qs)}&page=${pageNo + 1}" hx-target="#qlist" hx-swap="beforeend">${esc(t(lang, "load_more"))}</button></div>`;
+  // Page 2 and later of History: only the new rows and the out-of-band Load more row.
+  if (pageNo > 1) return { html: `${rows}\n${hasMore ? moreRow : `<div id="qmoreRow" hx-swap-oob="delete"></div>`}`, lang, empty: false };
 
-  const paneHtml = `
-    ${opts && opts.syncedBanner ? `<div class="banner mini">${esc(t(lang, "sync_started"))}</div>` : ""}
-    <div class="queue-head">
-      <div class="qbar">
-        <button type="button" class="seg compose-open" id="composeBtn">&#43; ${esc(t(lang, "compose_new"))}</button>
-        <span class="seg-group">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</span>
-        <span class="spacer"></span>
-        <details class="menu down qfilter"><summary class="btn mini" title="${esc(t(lang, "mailbox"))}">&#9776; ${esc(t(lang, "filter_btn"))}</summary>
-          <div class="menu-list"><div class="mlabel">${esc(t(lang, "mailbox"))}</div>${mbLink("all", esc(t(lang, "all")))}${mbLink("info", esc(t(lang, "info")))}${mbLink("drachten", esc(t(lang, "drachten")))}
-            <div class="sheet-title m-only">${esc(t(lang, "filters"))}</div>
-            <div class="m-only mrows">
-              <div class="mlabel">${esc(t(lang, "scope_label"))}</div><div class="segrow">${scopeLink("mine", esc(t(lang, "scope_mine")))}${scopeLink("all", esc(t(lang, "all")))}</div>
-              <div class="mlabel">${esc(t(lang, "sort"))}</div>
-              <select id="qsortm" aria-label="${esc(t(lang, "sort_label"))}">
-                <option value="rank">${esc(t(lang, "sort_needs"))}</option>
-                <option value="new">${esc(t(lang, "sort_new"))}</option>
-                <option value="old">${esc(t(lang, "sort_old"))}</option>
-                <option value="prio">${esc(t(lang, "sort_prio"))}</option>
-              </select>
-              <div class="mlabel">${esc(t(lang, "sync"))}</div>
-              <form method="post" action="${BASE.path}/sync"><button ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button></form>
-              <button type="button" data-close>${esc(t(lang, "cancel"))}</button>
-            </div></div>
-        </details>
-      </div>
-      <div class="qtabs">${showTab("open", esc(t(lang, "open")), counts.open_n)}${showTab("done", esc(t(lang, "done")), counts.done_n)}${showTab("archived", esc(t(lang, "archived")), counts.arch_n)}${showTab("all", esc(t(lang, "all")), counts.all_n)}<button type="button" class="m-only qsearch-btn" aria-label="${esc(t(lang, "search_open"))}" aria-expanded="false">&#9906;</button></div>
-      <div class="qbar qsearchrow">
-        <input id="q" type="search" placeholder="${esc(t(lang, "search_emails"))}" autocomplete="off">
-        <select id="qsort" title="${esc(t(lang, "sort_label"))}">
-          <option value="rank">${esc(t(lang, "sort_needs"))}</option>
-          <option value="new">${esc(t(lang, "sort_new"))}</option>
-          <option value="old">${esc(t(lang, "sort_old"))}</option>
-          <option value="prio">${esc(t(lang, "sort_prio"))}</option>
-        </select>
-        <span class="qcount" id="qcount"></span>
-      </div>
-      <form method="post" action="${BASE.path}/sync" class="qlive">
-        <span class="livedot${sync.running ? " busy" : ""}"></span>
-        <span class="muted" id="qlivet">${sync.running ? esc(t(lang, "syncing")) : esc(t(lang, "live_updated").replace("{t}", lastT))}</span>
-        <button type="button" class="qupd" id="qupd" hidden>${esc(t(lang, "updates_waiting"))}</button>
-        <span class="spacer"></span>
-        <button class="mini" ${sync.running ? "disabled" : ""}>&#8635; ${esc(t(lang, "sync_now"))}</button>
-      </form>
-    </div>
-    <div class="qlist" id="qlist" data-page="${paged ? page : 1}"${paged ? ` data-paged="1"` : ""}>${cards || `<div class="qempty muted">${esc(t(lang, "no_items"))}${mb === "all" ? "" : " — " + esc(mb) + "@"}</div>`}<div class="qempty-search m-only" id="qemptySearch" hidden><p></p><p class="muted qsearched"></p><button type="button" id="qclear">${esc(t(lang, "clear_search"))}</button></div></div>${hasMore ? `
-    <div class="qmore-row" id="qmoreRow">${moreBtn}</div>` : ""}
-    <script>
-    (function () {
-      var q = document.getElementById("q"), c = document.getElementById("qcount"), list = document.getElementById("qlist");
-      if (!q || !list) return;
-      // C1: Load more appends cards, so the total is always the live card count.
-      function total() { return list.querySelectorAll(".qcard").length; }
-      var paged = list.getAttribute("data-page") != null && list.getAttribute("data-paged") === "1";
-      function apply() {
-        var v = q.value.trim().toLowerCase(), n = 0, all = total();
-        list.querySelectorAll(".qcard").forEach(function (el) {
-          var show = !v || (el.getAttribute("data-search") || "").indexOf(v) >= 0;
-          el.style.display = show ? "" : "none";
-          if (show) n++;
-        });
-        c.textContent = v ? n + " ${t(lang, "of")} " + all : "";
-        // M-15: phone empty state for a search with no hits; on a paged tab a second
-        // line says only the loaded emails were searched (Load more stays below).
-        var es = document.getElementById("qemptySearch");
-        if (es) {
-          es.hidden = !(v && n === 0);
-          var ps = es.querySelectorAll("p");
-          if (!es.hidden) ps[0].textContent = ${JSON.stringify(t(lang, "no_matches"))}.replace("{q}", q.value.trim());
-          if (ps[1]) {
-            var sl = paged && !es.hidden;
-            ps[1].textContent = sl ? ${JSON.stringify(t(lang, "searching_loaded"))}.replace("{n}", all) : "";
-            ps[1].hidden = !sl;
-          }
-        }
-        sessionStorage.setItem("axle_q", q.value);
-      }
-      q.addEventListener("input", apply);
-      q.value = sessionStorage.getItem("axle_q") || "";
-      if (q.value) apply();
-      // M-13: phone search toggle and Clear
-      var head = document.querySelector(".queue-head"), sb = document.querySelector(".qsearch-btn"), qc = document.getElementById("qclear");
-      if (sb && head) sb.addEventListener("click", function () {
-        var open = head.classList.toggle("search-open");
-        sb.setAttribute("aria-expanded", open ? "true" : "false");
-        if (open) q.focus();
-      });
-      if (qc) qc.addEventListener("click", function () { q.value = ""; apply(); q.focus(); });
-      // Sort (client-side, persisted per tab). "rank" = the server's needs-me-next order.
-      var sel = document.getElementById("qsort");
-      function key(el, k) { return el.getAttribute("data-" + k) || ""; }
-      function applySort(mode) {
-        var cards = Array.prototype.slice.call(list.querySelectorAll(".qcard"));
-        cards.sort(function (a, b) {
-          if (mode === "new") return key(a, "upd") > key(b, "upd") ? -1 : key(a, "upd") < key(b, "upd") ? 1 : 0;
-          if (mode === "old") return key(a, "upd") < key(b, "upd") ? -1 : key(a, "upd") > key(b, "upd") ? 1 : 0;
-          if (mode === "prio") return (+key(a, "prio") - +key(b, "prio")) || (key(a, "upd") > key(b, "upd") ? -1 : 1);
-          return +key(a, "rank") - +key(b, "rank");
-        });
-        cards.forEach(function (x) { list.appendChild(x); });
-        sessionStorage.setItem("axle_qsort", mode);
-      }
-      sel.addEventListener("change", function () { applySort(sel.value); });
-      var saved = sessionStorage.getItem("axle_qsort");
-      if (saved && saved !== "rank") { sel.value = saved; applySort(saved); }
-      // M-14: the Filters sheet sort mirrors #qsort
-      var selm = document.getElementById("qsortm");
-      if (selm) {
-        selm.value = sel.value;
-        selm.addEventListener("change", function () { sel.value = selm.value; sel.dispatchEvent(new Event("change")); });
-      }
-      // C1: after a Load more page lands in #qlist, bump data-page and re-apply sort and search.
-      list.addEventListener("htmx:afterSwap", function (e) {
-        if (e.detail && e.detail.target === list) {
-          list.setAttribute("data-page", String((+list.getAttribute("data-page") || 1) + 1));
-          applySort(sel.value);
-          apply();
-        }
-      });
-      // Keep the highlighted card in step with htmx centre-pane swaps.
-      list.addEventListener("click", function (e) {
-        var a = e.target && e.target.closest ? e.target.closest("a.qcard") : null;
-        if (!a) return;
-        list.querySelectorAll(".qcard.sel").forEach(function (x) { x.classList.remove("sel"); });
-        a.classList.add("sel");
-      });
-    })();
-    </script>
-    ${trScript}
-    <script>
-    (function () {
-      // Live queue (2026-10-04). Every open browser probes GET /queue/stamp every 10 s: a tiny
-      // JSON {stamp, running} computed from the same filter as this pane. Only when the stamp
-      // differs from the one this pane was rendered with does the queue pane re-render (htmx
-      // swap of #queuepane ONLY; the centre/context panes and any half-typed reply are never
-      // touched). The old design polled the full pane on a cadence the SERVER chose at render
-      // time (8 s during a sync, otherwise never on desktop), so new mail from the scheduled
-      // ingest sat invisible until the user reloaded. Now the list refreshes itself whenever
-      // anything changed, and is otherwise never redrawn. Singleton timer; each fresh pane
-      // fragment replaces the config (stamp, filter, strings).
-      // Skip rules, so the list is never yanked out from under the user: a field in the pane
-      // has focus, a menu in it is open, the list is paged past page 1, or it is scrolled away
-      // from the top (desktop: #queuepane scrollTop; phone: the page scroll or a touch in the
-      // last 10 s). In those cases the #qupd chip ("Updates waiting") appears instead and the
-      // user takes the refresh when ready. A hidden tab pauses the probe; coming back probes
-      // at once.
-      window.__axQPoll = {
-        qs: ${JSON.stringify(`mailbox=${mb}&show=${show}&scope=${scope}`)},
-        stamp: ${JSON.stringify(stamp)},
-        running: ${sync.running ? "true" : "false"},
-        L: ${JSON.stringify({ syncing: t(lang, "syncing"), live: t(lang, "live_updated") })},
-        nl: ${lang === "nl" ? "true" : "false"},
-        inflight: 0,
-      };
-      // Mark cards that were not in the previous render (the probe sets __axQPrev before the swap).
-      var prev = window.__axQPrev; window.__axQPrev = null;
-      if (prev) document.querySelectorAll("#qlist a.qcard").forEach(function (a) {
-        if (!prev[a.getAttribute("href")]) a.classList.add("qnew");
-      });
-      // The refresh itself, shared by the tick, the #qupd chip and the phone's pull/return paths.
-      window.__axQFetch = function () {
-        var c = window.__axQPoll;
-        if (!c || !window.htmx) return;
-        c.inflight = Date.now();
-        var ids = {};
-        document.querySelectorAll("#qlist a.qcard").forEach(function (a) { ids[a.getAttribute("href")] = 1; });
-        window.__axQPrev = ids;
-        var parts = location.pathname.slice(${BASE.path.length}).split("/");
-        var sel = parts[1] === "item" ? (parseInt(parts[2], 10) || 0) : 0;
-        htmx.ajax("GET", "${BASE.path}/queue?" + c.qs + "&sel=" + sel, { target: "#queuepane", swap: "innerHTML" });
-      };
-      // M-54: remember the last touch on the list (registered once per page).
-      if (!window.__axQTouchWired) {
-        window.__axQTouchWired = true;
-        document.addEventListener("touchstart", function (e) {
-          if (e.target && e.target.closest && e.target.closest("#qlist")) window.__axQTouch = Date.now();
-        }, { capture: true, passive: true });
-      }
-      var upd = document.getElementById("qupd");
-      if (upd) upd.addEventListener("click", function () {
-        upd.hidden = true;
-        var qp = document.getElementById("queuepane");
-        if (qp) qp.scrollTop = 0;
-        window.scrollTo(0, 0);
-        window.__axQFetch();
-      });
-      if (!window.__axQPollTimer) {
-        // Sync indicator without a re-render: the dot pulses while the ingest runs; when it ends
-        // the line shows the finish time (the pane re-renders anyway if the run brought changes).
-        var setLive = function (running) {
-          var c = window.__axQPoll, dot = document.querySelector(".qlive .livedot"), tx = document.getElementById("qlivet");
-          if (!c || c.running === running || !dot || !tx) return;
-          c.running = running;
-          dot.classList.toggle("busy", running);
-          if (running) { tx.textContent = c.L.syncing; return; }
-          var d = new Date(), tm = c.nl
-            ? d.toLocaleTimeString("nl-NL", { timeZone: "Europe/Amsterdam", hour: "numeric", minute: "2-digit", hour12: false })
-            : d.toLocaleTimeString("en-US", { timeZone: "Europe/Amsterdam", hour: "numeric", minute: "2-digit", hour12: true }).replace(" ", "").toLowerCase();
-          tx.textContent = c.L.live.replace("{t}", tm);
-        };
-        var tick = function () {
-          var c = window.__axQPoll;
-          if (!c || !window.htmx || document.hidden) return;
-          if (c.inflight && Date.now() - c.inflight < 15000) return;   // a swap is on its way
-          fetch("${BASE.path}/queue/stamp?" + c.qs, { headers: { Accept: "application/json" }, cache: "no-store" })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (d) {
-              var c2 = window.__axQPoll;
-              if (!d || !c2 || c2.qs !== c.qs) return;   // the pane moved to another filter meanwhile
-              setLive(!!d.running);
-              if (d.stamp === c2.stamp) return;
-              var qp = document.getElementById("queuepane");
-              if (!qp) return;
-              var phone = !!(window.__axPhone && window.__axPhone.matches);
-              if (phone && getComputedStyle(qp).display === "none") return;   // list not on screen: next tick
-              var chip = function () { var up = document.getElementById("qupd"); if (up) up.hidden = false; };
-              var a = document.activeElement;
-              if (a && a !== document.body && qp.contains(a)) return chip();
-              if (qp.querySelector("details[open]")) return chip();
-              var ql = document.getElementById("qlist");
-              if (ql && +ql.getAttribute("data-page") > 1) return chip();
-              if (phone) {
-                if (Date.now() - (window.__axQTouch || 0) < 10000) return chip();
-                if (window.scrollY > 0) return chip();
-              } else if (qp.scrollTop > 0) return chip();
-              window.__axQFetch();
-            })
-            .catch(function () { /* offline or restarting: try again next tick */ });
-        };
-        window.__axQPollTimer = setInterval(tick, 10000);
-        document.addEventListener("visibilitychange", function () { if (!document.hidden) tick(); });
-      }
-    })();
-    </script>`;
-  return { html: paneHtml, sync, lang };
+  const sync = syncStatus();
+  const L = (k) => esc(t(lang, k));
+  const admin = req.user.role === "admin";
+  const teachN = admin ? K.pendingCount(db) : 0;
+  const mbItem = (v, label) => `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${mb === v}" data-q="mailbox=${v}"><span>${label}</span>${mb === v ? icon("check", "wb-menu__mark") : ""}</button>`;
+  const link = (href, label, extra) => `<a class="wb-menu__item" role="menuitem" href="${BASE.path}${href}"><span>${label}</span>${extra || ""}</a>`;
+  const menu = `<template id="m-qmore" data-title="${L("more")}" data-align="end">`
+    + (hist ? "" : `<button type="button" class="wb-menu__item" role="menuitem" data-q="show=history"><span>${L("history")}<small>${L("history_detail")}</small></span></button><div class="wb-menu__sep" role="separator"></div>`)
+    + `<span class="wb-menu__label">${L("mailbox")}</span>${mbItem("all", L("all"))}${mbItem("info", L("info"))}${mbItem("drachten", L("drachten"))}`
+    + `<div class="wb-menu__sep" role="separator"></div><button type="button" class="wb-menu__item" role="menuitem" data-sync${sync.running ? " disabled" : ""}><span>${L("sync_now")}</span></button>`
+    + `<div class="wb-menu__sep" role="separator"></div>${link("/blocks", L("blocks_title"))}`
+    + (admin ? link("/teach", L("teach_review"), teachN ? `<span class="wb-count">${teachN}</span>` : "") + link("/audit", L("audit_log")) + link("/adoption", L("adoption")) : "")
+    + `</template>`;
+  const btnSearch = iconBtn(t(lang, "search"), "search", "data-qsearch");
+  const btnCompose = iconBtn(t(lang, "compose_new"), "edit", "data-compose");
+  const btnMore = iconBtn(t(lang, "more"), "dots", 'data-menu="qmore" aria-haspopup="menu" aria-expanded="false"');
+  const icons = `<span class="ax-icons">${hist ? "" : btnSearch}${btnCompose}${btnMore}</span>`;
+  const head = hist
+    ? `<div class="ax-qhd">${iconBtn(t(lang, "history_back"), "back", 'data-q="show=open"', "ax-qback")}<h2 class="ax-qt">${L("history")}</h2>${icons}</div>
+<div class="ax-qfind"><div class="wb-input"><span class="wb-adorn">${icon("search")}</span><input type="search" id="qh" value="${esc(q)}" placeholder="${L("history_search")}" aria-label="${L("history_search")}" autocomplete="off" enterkeyhint="search"><button type="button" class="wb-clear" data-qh-clear aria-label="${L("clear_search")}" title="${L("clear_search")}"${q ? "" : " hidden"}>${icon("x")}</button></div></div>`
+    : `<div class="ax-qhd"><div class="wb-seg" role="radiogroup" aria-label="${L("show_label")}"><button type="button" role="radio" aria-checked="${scope === "mine"}" data-q="scope=mine">${L("mine")}</button><button type="button" role="radio" aria-checked="${scope === "all"}" data-q="scope=all">${L("all")}</button></div>${icons}
+<div class="wb-input ax-qsearch"><span class="wb-adorn">${icon("search")}</span><input type="search" id="q" placeholder="${L("search_emails")}" aria-label="${L("search_emails")}" autocomplete="off"></div>${iconBtn(t(lang, "close_search"), "x", "data-qsearch-close", "ax-qclose")}</div>`;
+  const empty = hist ? (q ? t(lang, "history_no_match").replace("{q}", q) : t(lang, "history_none")) : t(lang, "no_open");
+  const lastT = sync.finished_at ? fmtTime(parseTS(sync.finished_at), lang) : t(lang, "never");
+  const html = `<div class="ax-q" data-qs="${esc(qs)}" data-stamp="${esc(queueStamp(f))}" data-show="${show}">
+<header class="wb-page__hd ax-ptop">${homeLink(lang)}<h1 class="wb-page__t">Axle</h1>${icons}</header>
+${head}
+<div data-ax-banner>${opts && opts.syncedBanner ? `<div class="wb-banner ax-flash" data-tone="info">${icon("info")}<div class="wb-banner__body">${L("sync_started")}</div></div>` : ""}</div>
+<div class="wb-list" role="listbox" id="qlist" data-page="${pageNo}" aria-label="${L(hist ? "history" : "inbox")}">${rows || `<div class="wb-empty">${esc(empty)}</div>`}</div>
+${hasMore ? moreRow : ""}
+${menu}
+</div>
+<p class="ax-live"${sync.running ? " data-running" : ""}><span id="qlivet">${sync.running ? L("syncing") : esc(t(lang, "updated").replace("{t}", lastT))}</span><button type="button" class="wb-pillbtn" id="qupd" hidden>${L("updates_waiting")}</button></p>`;
+  return { html, lang, empty: !hist && !items.length };
 }
 
-// --- Compose modal (C3, 2026-09-26) ---------------------------------------------
-// Rendered once per full page, after the shell and outside #queuepane, so queue
-// fragment swaps never re-create it. Registered as app.locals.composeUi so
-// routes/item.js appends it to deep-link pages the same way GET / does.
+// --- Compose (Compose A) ----------------------------------------------------------------------
+// A drawer from 640 up, a page on the phone (axle.js draws the one markup either way). Customer
+// (the resolver, read-only), What should it say, Attach; Cancel, Write it myself (reveals Subject,
+// the main button becomes Send; only while allow-list #3 is on), Draft with Axle. Language is
+// automatic and Send from follows the person, as the old selects defaulted. Posts exactly the
+// fields POST /compose reads; the recipient is re-resolved and re-validated there.
 function composeUi(req) {
   const lang = req.user.lang;
-  const defMb = defaultMailbox(req.user);
-  const scenList = SCEN.chips(lang);                       // [{key,label,skeleton}]
-  const scenChipsHtml = scenList.map((s) => `<button type="button" class="schip" data-key="${esc(s.key)}">${esc(s.label)}</button>`).join("");
-  const scenSkeletons = {}; scenList.forEach((s) => { scenSkeletons[s.key] = s.skeleton; });
-  // UI strings the client script needs — JSON-encoded so quotes/encoding can never break the JS.
-  const L = JSON.stringify({
-    to: t(lang, "compose_to"), pick_address: t(lang, "compose_pick_address"), pick_customer: t(lang, "compose_pick_customer"),
-    not_found: t(lang, "compose_not_found"), guest: t(lang, "compose_guest"), frozen: t(lang, "compose_frozen"),
-    finding: t(lang, "compose_finding"), need_instr: t(lang, "compose_need_who_instr"), need_pick: t(lang, "compose_need_pick"),
-    no_att: t(lang, "no_attachments"), remove: t(lang, "remove"), file_big: t(lang, "file_too_big"),
-    att_total: t(lang, "attach_total"), creating: t(lang, "compose_creating"), sending: t(lang, "compose_sending"),
-    need_subject: t(lang, "compose_need_subject"),
-  });
+  const L = (k) => esc(t(lang, k));
+  const send = !!ACTION_COMPOSE_SEND;
   return `
-    <div id="composeModal" class="modal" style="display:none" role="dialog" aria-modal="true">
-      <div class="modal-card">
-        <div class="modal-head"><h2>${esc(t(lang, "compose_title"))}</h2>
-          <button type="button" class="modal-x" id="composeClose" aria-label="Close">&times;</button></div>
-        <form method="post" action="${BASE.path}/compose" id="composeForm" autocomplete="off">
-          <label class="fld"><span>${esc(t(lang, "compose_who"))}</span>
-            <div class="whorow">
-              <input type="text" name="who" id="who" placeholder="${esc(t(lang, "compose_who_ph"))}">
-              <button type="button" class="mini" id="findBtn">${esc(t(lang, "compose_find"))}</button>
-            </div></label>
-          <div id="resolveBox" class="resolvebox" style="display:none"></div>
-          <input type="hidden" name="pick_card" id="pick_card">
-          <input type="hidden" name="pick_addr" id="pick_addr">
-          <label class="fld"><span>${esc(t(lang, "compose_scenario"))}</span>
-            <div class="chips" id="scenchips">${scenChipsHtml}</div></label>
-          <input type="hidden" name="scenario" id="scenario">
-          <label class="fld"><span>${esc(t(lang, "compose_subject"))}</span>
-            <input type="text" name="subject" id="csubject" placeholder="${esc(t(lang, "compose_subject_ph"))}"></label>
-          <label class="fld"><span>${esc(t(lang, "compose_instruction"))}</span>
-            <div id="instrEditor" class="instr-editor" contenteditable="true" role="textbox" aria-multiline="true" data-ph="${esc(t(lang, "compose_instruction_ph"))}"></div>
-            <textarea name="instruction" id="instruction" style="display:none"></textarea></label>
-          <div class="fldrow">
-            <label class="fld"><span>${esc(t(lang, "compose_language"))}</span>
-              <select name="language" id="clang">
-                <option value="auto">${esc(t(lang, "compose_lang_auto"))}</option>
-                <option value="en">EN</option><option value="nl">NL</option>
-                <option value="de">DE</option><option value="fr">FR</option><option value="es">ES</option>
-              </select></label>
-            <label class="fld"><span>${esc(t(lang, "compose_from"))}</span>
-              <select name="mailbox" id="cmailbox">
-                <option value="info"${defMb === "info" ? " selected" : ""}>info@</option>
-                <option value="drachten"${defMb === "drachten" ? " selected" : ""}>drachten@</option>
-              </select></label>
-          </div>
-          <label class="fld"><span>${esc(t(lang, "attachments"))}</span>
-            <div class="attzone" id="cmpAttzone">
-              <div id="cmpAttlist" class="muted">${esc(t(lang, "no_attachments"))}</div>
-              <p class="muted attnote">${esc(t(lang, "attach_hint"))} ${esc(t(lang, "drop_hint"))}. ${esc(t(lang, "paste_hint"))}</p>
-              <input type="file" id="cmpFile" multiple>
-            </div></label>
-          <div id="cmpAttHidden"></div>
-          <input type="hidden" name="mode" id="composeMode" value="draft">
-          <div class="modal-foot">${!ACTION_COMPOSE_SEND ? `<span class="muted">${esc(t(lang, "compose_draft_only"))}</span>` : ""}
-            <span class="spacer"></span>
-            <button type="button" id="composeCancel">${esc(t(lang, "compose_cancel"))}</button>
-            <button type="submit" class="${ACTION_COMPOSE_SEND ? "" : "primary"}" id="composeSubmit">${esc(t(lang, "compose_create"))}</button>
-            ${ACTION_COMPOSE_SEND ? `<button type="submit" class="send" id="composeSendBtn">${esc(t(lang, "compose_send_now"))}</button>` : ""}
-          </div>
-        </form>
-      </div>
+<div class="ax-ov" id="compose" data-kind="drawer" data-form role="dialog" aria-modal="true" aria-labelledby="compose-t" data-max="${MAX_ATTACH_BYTES}" data-max-total="${MAX_ATTACH_TOTAL}" hidden>
+  <div class="ax-ov__hd">${iconBtn(t(lang, "back"), "back", "data-close", "ax-ov__back")}<h2 class="ax-ov__t" id="compose-t">${L("compose_new")}</h2>${iconBtn(t(lang, "close"), "x", "data-close", "ax-ov__x")}</div>
+  <form class="ax-ov__bd" id="composeForm" method="post" action="${BASE.path}/compose" autocomplete="off" novalidate data-compose-form>
+    <div data-ax-banner></div>
+    <div class="wb-field">
+      <label class="wb-label" for="cmp-who">${L("compose_customer_label")}</label>
+      <div class="wb-input"><span class="wb-adorn" data-cmp-adorn>${icon("search")}</span><input type="text" id="cmp-who" role="combobox" aria-autocomplete="none" aria-expanded="false" aria-controls="cmp-res" placeholder="${L("compose_who_ph")}" enterkeyhint="search"><button type="button" class="wb-clear" data-cmp-clear aria-label="${L("close")}" hidden>${icon("x")}</button></div>
+      <p class="wb-msg" data-msg="who" hidden></p>
+      <div class="ax-cmp-res" id="cmp-res" aria-live="polite"></div>
     </div>
-    <script>
-    (function () {
-      var modal = document.getElementById("composeModal");
-      if (!modal) return;
-      var L = ${L}, SKEL = ${JSON.stringify(scenSkeletons)};
-      var SKELSET = Object.keys(SKEL).map(function (k) { return SKEL[k]; });
-      var MAX = ${MAX_ATTACH_BYTES}, MAXTOT = ${MAX_ATTACH_TOTAL}, staged = [];
-      var $ = function (id) { return document.getElementById(id); };
-      function openM() { modal.style.display = "flex"; if (!(window.__axPhone && window.__axPhone.matches)) $("who").focus(); }
-      function closeM() { modal.style.display = "none"; }
-      // #composeBtn lives in the queue pane, which htmx re-renders (tabs, poll), so the
-      // click is delegated on document and registered once per page (C3).
-      if (!window.__axComposeWired) {
-        window.__axComposeWired = true;
-        document.addEventListener("click", function (e) { var b = e.target.closest ? e.target.closest("#composeBtn") : null; if (b) openM(); });
-      }
-      $("composeClose").addEventListener("click", closeM);
-      $("composeCancel").addEventListener("click", closeM);
-      // Close only on an explicit action (X / Cancel / Esc). Deliberately NOT on a backdrop/outside
-      // click - a drag-to-select inside the form that releases outside the card must never dismiss it.
-      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && modal.style.display !== "none") closeM(); });
-      function esc2(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
-
-      // Rich instruction editor: render the scenario skeleton with bold frame labels ("Situation:")
-      // and subtle italic guidance, so a paragraph reads as a fill-in-the-blanks form. The submitted
-      // value is always the plain text (innerText) mirrored into the hidden #instruction field.
-      function fmtSkeleton(sk) {
-        var NL = String.fromCharCode(10);
-        return String(sk).split(NL).map(function (line) {
-          var i = line.indexOf(":");
-          if (i > 0 && i <= 22) return '<div><span class="lbl">' + esc2(line.slice(0, i + 1)) + '</span><span class="hint">' + esc2(line.slice(i + 1)) + "</span></div>";
-          return "<div>" + (line ? esc2(line) : "<br>") + "</div>";
-        }).join("");
-      }
-      function syncInstr() { var ed = $("instrEditor"); if (ed) $("instruction").value = ed.innerText; }
-      (function () {
-        var ed = $("instrEditor"); if (!ed) return;
-        ed.addEventListener("input", syncInstr);
-        ed.addEventListener("paste", function (e) { e.preventDefault(); var t = ((e.clipboardData || window.clipboardData).getData("text") || ""); document.execCommand("insertText", false, t); });
-      })();
-
-      // Scenario chips: select tags the scenario + fills the instruction with a starter (only
-      // when the box is empty or still holds another starter — never clobbers typed text).
-      var chips = modal.querySelectorAll(".schip");
-      chips.forEach(function (ch) {
-        ch.addEventListener("click", function () {
-          var wasOn = ch.classList.contains("on");
-          chips.forEach(function (c) { c.classList.remove("on"); });
-          var instr = $("instruction");
-          if (wasOn) { $("scenario").value = ""; return; }
-          ch.classList.add("on");
-          $("scenario").value = ch.getAttribute("data-key");
-          var sk = SKEL[ch.getAttribute("data-key")] || "";
-          if (sk && (!instr.value.trim() || SKELSET.indexOf(instr.value) >= 0)) { $("instrEditor").innerHTML = fmtSkeleton(sk); syncInstr(); }
-        });
-      });
-
-      // Recipient resolution (read-only). pick_addr is only ever set from a resolver address.
-      function clearPick() { $("pick_card").value = ""; $("pick_addr").value = ""; }
-      function setPick(card, addr) { $("pick_card").value = card || ""; $("pick_addr").value = addr || ""; }
-      function addrRadios(name, addrs, card) {
-        return addrs.map(function (a) {
-          return '<label><input type="radio" name="' + name + '"' + (addrs.length === 1 ? " checked" : "") +
-            ' value="' + esc2(a) + '" data-card="' + esc2(card || "") + '"> ' + esc2(a) + "</label>";
-        }).join("");
-      }
-      function wirePicks() {
-        modal.querySelectorAll('#resolveBox input[name=raddr]').forEach(function (r) {
-          r.addEventListener("change", function () { setPick($("pick_card").value, r.value); });
-        });
-        modal.querySelectorAll('#resolveBox input[name=rcand]').forEach(function (r) {
-          r.addEventListener("change", function () {
-            setPick(r.getAttribute("data-card"), "");
-            modal.querySelectorAll(".candaddr").forEach(function (b) { b.style.display = "none"; });
-            var sub = $("cand_" + r.value);
-            if (sub) { sub.style.display = "block"; var one = sub.querySelector("input[type=radio]"); if (one && sub.querySelectorAll("input").length === 1) { one.checked = true; setPick(r.getAttribute("data-card"), one.value); } }
-          });
-        });
-        modal.querySelectorAll('#resolveBox input[name=caddr]').forEach(function (r) {
-          r.addEventListener("change", function () { setPick(r.getAttribute("data-card"), r.value); });
-        });
-      }
-      function renderResolve(d) {
-        var box = $("resolveBox"); box.style.display = "block"; clearPick();
-        if (d.error) { box.innerHTML = '<span class="rbad">' + esc2(d.error) + "</span>"; return; }
-        if (d.resolved && d.customer) {
-          var c = d.customer;
-          var who = esc2(c.name || c.contactName || "") + (c.cardCode ? " (" + esc2(c.cardCode) + ")" : "") + (c.country ? " &middot; " + esc2(c.country) : "") + (c.contactName && c.contactName !== c.name ? " &middot; " + esc2(c.contactName) : "");
-          var h = "";
-          if (c.addresses.length <= 1) {
-            setPick(c.cardCode, c.addresses[0] || "");
-            h += '<div class="rok">&#10003; ' + esc2(L.to) + ": " + esc2(c.addresses[0] || "—") + "</div><div class=\\"muted\\">" + who + "</div>";
-          } else {
-            h += "<div>" + who + "</div><div class=\\"muted\\">" + esc2(L.pick_address) + "</div>" + addrRadios("raddr", c.addresses, c.cardCode);
-            setPick(c.cardCode, "");
-          }
-          if (!c.knownAccount) h += '<div class="rwarn">' + esc2(L.guest) + "</div>";
-          if (c.frozen) h += '<div class="rwarn">' + esc2(L.frozen) + "</div>";
-          box.innerHTML = h; wirePicks(); return;
-        }
-        if (d.candidates && d.candidates.length) {
-          var html = '<div class="muted">' + esc2(d.message || L.pick_customer) + "</div>";
-          d.candidates.forEach(function (c, i) {
-            var meta = esc2(c.cardCode || "") + (c.country ? " &middot; " + esc2(c.country) : "") + (c.frozen ? ' &middot; <span class="rwarn">frozen</span>' : "");
-            var det = [];
-            if (c.contactName && c.contactName !== c.name) det.push(esc2(c.contactName));
-            if (c.email) det.push(esc2(c.email));
-            html += '<label class="cand"><input type="radio" name="rcand" value="' + i + '" data-card="' + esc2(c.cardCode) + '">' +
-              '<span class="cand-body">' +
-                '<span class="cand-l1"><b>' + esc2(c.name || "—") + '</b> <span class="muted">&middot; ' + meta + "</span></span>" +
-                (det.length ? '<span class="cand-l2 muted">' + det.join(" &middot; ") + "</span>" : "") +
-                (c.reason ? '<span class="cand-r muted">— ' + esc2(c.reason) + "</span>" : "") +
-              "</span></label>";
-            html += '<div class="candaddr" id="cand_' + i + '" style="display:none;margin-left:26px">' +
-              (c.addresses || []).map(function (a) { return '<label><input type="radio" name="caddr" value="' + esc2(a) + '" data-card="' + esc2(c.cardCode) + '"> ' + esc2(a) + "</label>"; }).join("") + "</div>";
-          });
-          box.innerHTML = html; wirePicks(); return;
-        }
-        box.innerHTML = '<span class="rwarn">' + esc2(d.message || L.not_found) + "</span>";
-      }
-      function doFind() {
-        var who = $("who").value.trim(); if (!who) return;
-        var box = $("resolveBox"); box.style.display = "block"; box.innerHTML = '<span class="spin"></span> <span class="muted">' + esc2(L.finding) + "</span>";
-        fetch("${BASE.path}/compose/resolve", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "who=" + encodeURIComponent(who) })
-          .then(function (x) { return x.json(); }).then(renderResolve)
-          .catch(function () { box.innerHTML = '<span class="rbad">(error)</span>'; });
-      }
-      $("findBtn").addEventListener("click", doFind);
-      $("who").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); doFind(); } });
-      $("who").addEventListener("input", clearPick);
-
-      // Attachments staged client-side (base64), injected as hidden inputs on submit.
-      function renderAtts() {
-        var list = $("cmpAttlist");
-        if (!staged.length) { list.className = "muted"; list.textContent = L.no_att; return; }
-        list.className = "";
-        list.innerHTML = staged.map(function (f, i) {
-          return '<div class="cmpatt">&#128206; ' + esc2(f.name) + ' <span class="muted">(' + Math.round(f.size / 1024) + ' KB)</span> <button type="button" class="mini" data-i="' + i + '">' + esc2(L.remove) + "</button></div>";
-        }).join("");
-        list.querySelectorAll("button[data-i]").forEach(function (b) {
-          b.addEventListener("click", function () { staged.splice(+b.getAttribute("data-i"), 1); renderAtts(); });
-        });
-      }
-      function addFiles(files) {
-        var arr = [].slice.call(files);
-        (function next(i) {
-          if (i >= arr.length) { renderAtts(); return; }
-          var f = arr[i];
-          if (f.size > MAX) { alert(L.file_big); return next(i + 1); }
-          var tot = staged.reduce(function (s, x) { return s + x.size; }, 0);
-          if (tot + f.size > MAXTOT) { alert(L.att_total); return next(i + 1); }
-          var rd = new FileReader();
-          rd.onload = function () { staged.push({ name: f.name, ctype: f.type || "application/octet-stream", b64: String(rd.result).split(",")[1] || "", size: f.size }); next(i + 1); };
-          rd.readAsDataURL(f);
-        })(0);
-      }
-      $("cmpFile").addEventListener("change", function () { addFiles(this.files); this.value = ""; });
-      var zone = $("cmpAttzone");
-      ["dragenter", "dragover"].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add("drag"); }); });
-      zone.addEventListener("dragleave", function (e) { if (e.target === zone) zone.classList.remove("drag"); });
-      zone.addEventListener("drop", function (e) { e.preventDefault(); zone.classList.remove("drag"); addFiles(e.dataTransfer.files); });
-
-      // Paste-to-attach in the modal: an image on the clipboard (Win+Shift+S) is staged with
-      // a single Ctrl+V anywhere in the modal. A paste that carries TEXT into a field stays a
-      // text paste (the instruction editor's own handler above already inserts it).
-      function pextOf(type) { var m = /^image\\/(png|jpe?g|gif|webp)/i.exec(type || ""); return m ? m[1].replace("jpeg", "jpg") : "png"; }
-      modal.addEventListener("paste", function (e) {
-        if (!e.clipboardData) return;
-        var items = e.clipboardData.items || [], imgs = [];
-        for (var i = 0; i < items.length; i++) {
-          if (items[i].kind === "file" && /^image\\//i.test(items[i].type)) { var f = items[i].getAsFile(); if (f) imgs.push(f); }
-        }
-        if (!imgs.length) return;
-        var tg = e.target, inField = tg && (tg.tagName === "TEXTAREA" || tg.tagName === "INPUT" || tg.isContentEditable);
-        if (inField && (e.clipboardData.getData("text/plain") || "").length) return;
-        e.preventDefault();
-        var stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-        addFiles(imgs.map(function (f, i2) {
-          return new File([f], "snippet-" + stamp + (imgs.length > 1 ? "-" + (i2 + 1) : "") + "." + pextOf(f.type), { type: f.type || "image/png" });
-        }));
-      });
-
-      // Two ways to submit: "Draft" hands the box to Axle to research + write; "Send now" treats
-      // the box as the finished email and sends it verbatim. The clicked button sets the mode the
-      // server branches on (the server re-validates and re-applies every send guardrail regardless).
-      var submitMode = "draft";
-      $("composeSubmit").addEventListener("click", function () { submitMode = "draft"; $("composeMode").value = "draft"; });
-      var sendNowBtn = $("composeSendBtn");
-      if (sendNowBtn) sendNowBtn.addEventListener("click", function () { submitMode = "send"; $("composeMode").value = "send"; });
-
-      // Submit: always need a body and a picked recipient; "Send now" also needs a subject. No
-      // confirm dialog: the picked address sits in the form the person is looking at, and the
-      // button locks to "Sending…" on the first click. Inject staged attachments.
-      $("composeForm").addEventListener("submit", function (e) {
-        syncInstr();
-        if (!$("instruction").value.trim()) { e.preventDefault(); alert(L.need_instr); return; }
-        if (!$("pick_addr").value) { e.preventDefault(); alert(L.need_pick); return; }
-        if (submitMode === "send") {
-          if (!$("csubject").value.trim()) { e.preventDefault(); $("csubject").focus(); alert(L.need_subject); return; }
-        }
-        var hid = $("cmpAttHidden"); hid.innerHTML = "";
-        staged.forEach(function (f) {
-          function add(n, v) { var i = document.createElement("input"); i.type = "hidden"; i.name = n; i.value = v; hid.appendChild(i); }
-          add("att_name", f.name); add("att_ctype", f.ctype); add("att_data", f.b64);
-        });
-        if (submitMode === "send" && sendNowBtn) sendNowBtn.textContent = L.sending;
-        else $("composeSubmit").textContent = L.creating;
-      });
-    })();
-    </script>`;
+    <input type="hidden" name="who"><input type="hidden" name="pick_card"><input type="hidden" name="pick_addr">
+    <input type="hidden" name="scenario" value=""><input type="hidden" name="language" value="auto"><input type="hidden" name="mailbox" value="${defaultMailbox(req.user)}">
+    ${send ? `<div class="wb-field ax-cmp-write"><label class="wb-label" for="cmp-subject">${L("compose_subject")}</label><div class="wb-input"><input type="text" id="cmp-subject" name="subject" maxlength="200"></div><p class="wb-msg" data-msg="subject" hidden></p></div>` : ""}
+    <div class="wb-field"><label class="wb-label" for="cmp-msg">${L("compose_instruction")}</label><div class="wb-input wb-input--area ax-cmp-msg"><textarea id="cmp-msg" name="instruction" placeholder="${L("compose_instruction_ph")}"></textarea></div><p class="wb-msg" data-msg="instruction" hidden></p></div>
+    <div class="ax-cmp-att" data-cmp-drop>
+      <button type="button" class="wb-btn wb-btn--ghost ax-ov-btn" data-cmp-attach>${icon("clip")}<span>${L("attach")}</span></button>
+      <input type="file" id="cmp-file" multiple hidden>
+      <div class="ax-chips" id="cmp-atts"></div>
+      <p class="wb-msg" data-msg="att" hidden></p>
+    </div>
+    ${send ? "" : `<p class="wb-hint">${L("compose_draft_only")}</p>`}
+  </form>
+  <div class="ax-ov__ft">
+    <button type="button" class="wb-btn wb-btn--ghost ax-ov-desk" data-close>${L("compose_cancel")}</button>
+    ${send ? `<button type="button" class="wb-btn ax-cmp-draft" data-cmp-write>${L("compose_write")}</button><button type="button" class="wb-btn ax-cmp-write" data-cmp-write>${L("compose_draft_ai")}</button>` : ""}
+    <button type="submit" form="composeForm" class="wb-btn wb-btn--primary ax-cmp-draft" name="mode" value="draft">${L("compose_draft_ai")}</button>
+    ${send ? `<button type="submit" form="composeForm" class="wb-btn wb-btn--commit ax-cmp-write" name="mode" value="send" data-send>${icon("send")}<span>${L("send")}</span></button>` : ""}
+  </div>
+</div>`;
 }
 app.locals.composeUi = composeUi;
 
-// Inbox: the full three-pane shell. The queue renders INLINE here (audit +
-// translation side effects identical to the old inbox page); the centre pane is
-// an empty state until an item is picked; the context pane fills per item.
+// Inbox: the queue beside the work area. The queue renders INLINE here (audit + translation side
+// effects as the old inbox page); the work area says what to do until an email is picked.
 app.get("/", async (req, res) => {
   const q = await buildQueuePane(req, { sel: 0, syncedBanner: !!req.query.synced, page: 1 });
-  const empty = `<div class="empty-state"><p class="muted">${esc(t(q.lang, "shell_select"))}</p></div>`;
-  const body = shell(q.html, workPanes(empty, "")) + composeUi(req);
-  // No <meta> refresh on the shell (it navigated back to "/" and closed the open
-  // item) — the queue pane self-polls via the singleton in buildQueuePane instead.
+  const body = shell(q.html, voidPane(q.lang), q.empty) + composeUi(req);
   res.send(page("Inbox", req.user, body, 0, { shell: true }));
 });
 
-// Queue fragment: lazy-loaded into the shell by item deep links (htmx GET), so a
-// plain GET /item/:id keeps exactly its old side effects. Same data path, audit
-// and translations as GET /; ?sel highlights the open item's card.
+// Queue fragment: the live refresh, every in-place switch (Mine | All, Mailbox, History and its
+// search), Load more, and the lazy queue of item deep links. Same data path, audit and
+// translations as GET /; ?sel marks the open email's row.
 app.get("/queue", async (req, res) => {
   const q = await buildQueuePane(req, { sel: parseInt(req.query.sel, 10) || 0 });
   res.send(q.html);
 });
 
-// Change probe for the live queue (see the poll script in buildQueuePane): the stamp of the
-// queue as the caller has it filtered, plus whether an ingest is running. Deliberately NOT
-// audited and translation-free: it fires every 10 s from every open browser and must stay
-// a pair of indexed aggregates.
+// Change probe for the live queue (see assets/axle.js): the stamp of the queue as the caller has it
+// filtered, plus whether an ingest is running. Deliberately NOT audited and translation-free: it
+// fires every 10 s from every open browser and must stay a pair of indexed aggregates.
 app.get("/queue/stamp", (req, res) => {
   const f = queueFilter(req);
   res.set("Cache-Control", "no-store");
@@ -780,7 +283,7 @@ app.get("/queue/stamp", (req, res) => {
 
 // Background queue-summary translations (see buildQueuePane). SECURITY: ids only -
 // the translated text is loaded from the DB, never taken from the client; failures
-// are skipped so the card silently keeps its English summary. Bounded concurrency:
+// are skipped so the row silently keeps its English summary. Bounded concurrency:
 // a cold NL queue can hold a few hundred uncached summaries.
 app.post("/queue/summaries", async (req, res) => {
   const lang = req.user.lang;
@@ -793,7 +296,7 @@ app.post("/queue/summaries", async (req, res) => {
       const row = db.prepare("SELECT summary FROM work_items WHERE id = ?").get(id);
       if (!row || !row.summary) return;
       try { const x = await TR.translate(anthropic, lang, row.summary); if (x) out[id] = x; }
-      catch (e) { /* keep English on this card */ }
+      catch (e) { /* keep English on this row */ }
     }));
   }
   res.json(out);

@@ -1,61 +1,120 @@
-/* tokens.css - Axle design tokens. Polaris retheme (2026-06-16).
-   Single source of truth for colour, spacing, type, radii and borders.
-   Shopify-Polaris-derived: cool neutral greys, near-black brand for primary
-   actions, deep-green as an ACCENT only (brand mark + success tone) — never a
-   primary button. Light theme. Spacing on an 8px grid. NL strings run ~20%
-   longer than EN; the 13px body buys back some room. */
-
+/* Workbench tokens (vocabulary v1, decided 6 Oct 2026). One plain CSS file of custom properties,
+   read unchanged by Workbench (through index.css) and by Axle. Light only. Quiet neutrals with a
+   faint cool bias, hairline borders, near-flat shadows. Near-black is the only strong colour; green
+   is status and focus only, except the webshop brand green on commit actions (send, post). */
 :root {
-  /* -- neutrals (Polaris cool grey) -- */
-  --bg: #f1f1f1;            /* page background */
-  --surface: #ffffff;       /* cards, table rows */
-  --surface-2: #fafafa;     /* table heads, subtle fills, hover/selected */
-  --ink: #303030;           /* primary text */
-  --ink-2: #616161;         /* secondary text */
-  --muted: #616161;         /* muted text */
-  --faint: #8a8a8a;         /* placeholders, disabled */
-  --border: #e3e3e3;        /* hairlines (cards, rows) */
-  --border-2: #d4d4d4;      /* control borders (kept a touch stronger for affordance) */
-  --border-sub: #ebebeb;    /* subtle inner dividers (card heads, separators) */
+  /* Neutrals */
+  --bg: #f7f7f9;
+  --surface: #ffffff;
+  --surface-2: #f3f3f6;
+  --ink: #1d1d1f;
+  --ink-2: #6e6e73;
+  --muted: #6e6e73;
+  --faint: #aeaeb2;
+  --border: rgba(0, 0, 0, .06);
+  --border-2: rgba(0, 0, 0, .11);
+  --border-sub: rgba(0, 0, 0, .05);
 
-  /* -- brand: near-black (Shopify primary buttons) -- */
-  --brand: #303030;
-  --brand-hover: #1a1a1a;   /* hover / active */
+  /* Brand, commit, accent and helpers */
+  --brand: #1d1d1f;
+  --brand-hover: #000000;
+  --on-brand: #ffffff;
+  --commit: #25581a;        /* RoverParts.eu brand green: Send now, Invoice, Post only */
+  --commit-hover: #1d4614;
+  --accent: #2e7d5b;
+  --accent-strong: #256849;
+  --accent-soft: #e8f3ed;
+  --accent-ring: #3478f6;
+  --ring: #3478f6;
+  --link: #2a5db0;
+  --mark: #ffe066;
+  --scrim: rgba(0, 0, 0, .30);
+  --live: #34a853;          /* the shell health dot */
+  --ok-on-ink: #8fd3ae;     /* the check on the near-black toast */
+  --skel: #ededf1;
+  --skel-hi: #e3e3e8;
 
-  /* -- accent: deep green — ACCENT ONLY (brand mark + success). Never a primary button. -- */
-  --accent: #008060;
-  --accent-strong: #006e52; /* accent hover / active */
-  --accent-soft: #e3f9ec;   /* soft success fills */
-  --accent-ring: #005bd3;   /* focus ring — Polaris focus indicator (high contrast everywhere) */
+  /* Tones: wash and text. --new-* and --off-* are older names for neutral, kept for existing code and Axle. */
+  --neutral-bg: #f3f3f6; --neutral-fg: #6e6e73;
+  --new-bg: #f3f3f6;     --new-fg: #6e6e73;
+  --off-bg: #f3f3f6;     --off-fg: #6e6e73;
+  --info-bg: #eaf0fb;    --info-fg: #2a4f8f;
+  --ok-bg: #e8f3ed;      --ok-fg: #1f5c42;
+  --warn-bg: #fbf1e6;    --warn-fg: #7a4a12;
+  --bad-bg: #fbeae8;     --bad-fg: #8e1f0b;
+  --hold-bg: #efedf9;    --hold-fg: #4a3d9a;
 
-  /* -- status hues (chips, banners) — Polaris badge tones -- */
-  --ok-bg: #e3f9ec;    --ok-fg: #0c5132;    /* ready / success */
-  --warn-bg: #ffeaba;  --warn-fg: #5a4200;  /* needs answer / attention */
-  --info-bg: #e1eeff;  --info-fg: #00405e;  /* investigating / info */
-  --new-bg: #ededed;   --new-fg: #616161;   /* new / neutral */
-  --off-bg: #f1f1f1;   --off-fg: #616161;   /* done / archived (AA-legible) */
-  --bad-bg: #ffe9e8;   --bad-fg: #8e1f0b;   /* injection / critical */
-  --mark: #ffe066;                          /* search hits */
+  /* App hues: a coloured glyph (--t-*) on a pale wash (--w-*), never a solid block */
+  --t-axle: #3b6fd4;      --w-axle: #eaf0fb;
+  --t-ratchet: #c9741f;   --w-ratchet: #fbf1e6;
+  --t-winch: #6b5bc4;     --w-winch: #efedf9;
+  --t-booth: #c2497f;     --w-booth: #faedf3;
+  --t-rover: #2e7d5b;     --w-rover: #e8f3ed;
+  --t-roversync: #2a8c99; --w-roversync: #e7f3f5;
 
-  /* -- spacing (8px grid) -- */
-  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  /* Type: six sizes, three weights (400, 500, 600) */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --fs-micro: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-input: 16px;         /* phone inputs: iOS never zooms */
+  --lh: 1.54;
 
-  /* -- type (Polaris system stack, 13px/20px body) -- */
-  --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --fs-xs: 12px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 20px;
-  --lh: 1.54;   /* 13px body -> ~20px line */
+  /* Spacing: six steps, nothing else */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --gap-tap: 8px;
 
-  /* -- shape (Polaris radii) -- */
-  --r-ctl: 8px;    /* buttons, inputs */
-  --r-card: 12px;  /* cards, modals */
-  --r-chip: 8px;   /* badges — Polaris rounded rect, not a full pill */
+  /* Radii */
+  --r-cell: 6px;            /* cells, checkbox, pills */
+  --r-chip: 6px;
+  --r-ctl: 10px;
+  --r-card: 14px;           /* cards, dialogs, drawers, menus */
+  --r-sheet: 16px;
+  --r-round: 999px;
 
-  /* -- elevation (calm: a hairline + a faint card lift; floating layers lift more) -- */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, .04); /* subtle Polaris card shadow */
-  --shadow-pop: 0 4px 16px rgba(0, 0, 0, .10);
-  --shadow-modal: 0 10px 40px rgba(0, 0, 0, .3);
-  --shadow-bar: 0 -2px 10px rgba(0, 0, 0, .06);
+  /* Control sizes: 32 at the desk, 28 small; touch lifts both to 44 (below) */
+  --h-ctl: 32px;
+  --h-sm: 28px;
+  --tap: 44px;
+  --icon: 16px;
+  --bar-h: 52px;            /* the shell header, the only top bar */
+  --kb: 0px;                /* on-screen keyboard height, set by script where needed */
 
-  /* -- phone primitives: read only inside the 1100px phone block in components.css -- */
-  --tap: 44px; --gap-tap: 8px; --fs-input: 16px; --scrim: rgba(48, 48, 48, .5); --bar-h: 48px; --kb: 0px;
+  /* Shadows */
+  --shadow-card: 0 1px 1px rgba(0, 0, 0, .03), 0 1px 3px rgba(0, 0, 0, .03);
+  --shadow-pop: 0 10px 36px -10px rgba(0, 0, 0, .18), 0 0 0 1px rgba(0, 0, 0, .05);
+  --shadow-modal: 0 24px 60px -20px rgba(0, 0, 0, .28), 0 0 0 1px rgba(0, 0, 0, .05);
+  --shadow-bar: 0 -2px 10px rgba(0, 0, 0, .05);
+
+  /* Layers: one ladder */
+  --z-sticky: 10;
+  --z-dock: 20;
+  --z-header: 30;
+  --z-menu: 40;
+  --z-drawer: 50;
+  --z-dialog: 60;
+  --z-toast: 70;
+  --z-top: 80;
+
+  /* Motion: 120 to 200 ms ease-out */
+  --dur: 160ms;
+}
+
+/* Touch follows the pointer, not the width: phones and iPads get 44 px controls and 20 px icons. */
+@media (pointer: coarse) {
+  :root {
+    --h-ctl: 44px;
+    --h-sm: 44px;
+    --icon: 20px;
+  }
 }

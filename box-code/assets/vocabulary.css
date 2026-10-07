@@ -1,0 +1,442 @@
+/* Workbench vocabulary v1: the wb- classes, decided 6 Oct 2026. Plain CSS on the tokens in
+   tokens.css, read unchanged by Workbench and by Axle (no Tailwind, no preflight assumed).
+   Every rule starts with a wb- class. Phone: max-width 639.98px. Touch: pointer coarse, which
+   tokens.css turns into 44 px controls. */
+
+/* ---------- Base ---------- */
+.wb-app { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-base); line-height: var(--lh); -webkit-font-smoothing: antialiased; }
+.wb-i { width: var(--icon); height: var(--icon); flex: none; display: block; }
+.wb-mono { font-family: var(--mono); }
+.wb-num { text-align: right; font-variant-numeric: tabular-nums; }
+.wb-muted { color: var(--ink-2); }
+.wb-hint { font-size: var(--fs-xs); color: var(--ink-2); }
+.wb-msg { font-size: var(--fs-xs); color: var(--bad-fg); }
+.wb-kbd { font-family: var(--mono); font-size: var(--fs-micro); line-height: 16px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--border-2); color: var(--ink-2); background: var(--surface); }
+.wb-link { color: var(--link); text-decoration: none; }
+.wb-link:hover { text-decoration: underline; }
+.wb-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* A hidden attribute always hides a part, whatever display its class sets. */
+:where([class*="wb-"])[hidden] { display: none !important; }
+
+/* Clickable parts reset themselves, so a page without a CSS reset (Axle) renders them the same. */
+.wb-btn, .wb-pillbtn, .wb-chip, .wb-seg > button, .wb-tab, .wb-menu__item, .wb-clear, .wb-stepper > button,
+.wb-home__go, .wb-home__jump {
+  box-sizing: border-box; margin: 0; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-align: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+
+/* One focus ring everywhere: 2 px ring colour, 1 px gap. */
+.wb-btn:focus-visible, .wb-pillbtn:focus-visible, .wb-chip:focus-visible, .wb-seg > button:focus-visible,
+.wb-tab:focus-visible, .wb-check:focus-visible, .wb-radio:focus-visible, .wb-switch:focus-visible,
+.wb-clear:focus-visible, .wb-stepper > button:focus-visible, .wb-row:focus-visible, .wb-link:focus-visible,
+.wb-details > summary:focus-visible, .wb-disclosure > summary:focus-visible, .wb-home__go:focus-visible,
+.wb-home__jump:focus-visible {
+  outline: 2px solid var(--ring); outline-offset: 1px;
+}
+.wb-row:focus-visible { outline-offset: -2px; }
+
+/* ---------- Buttons ---------- */
+.wb-btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: var(--h-ctl); min-height: 0; padding: 0 12px; border-radius: var(--r-ctl);
+  border: 1px solid var(--border-2); background: var(--surface); color: var(--ink);
+  font: 500 var(--fs-base)/1 var(--font); white-space: nowrap; text-decoration: none;
+  transition: background-color var(--dur) ease-out, border-color var(--dur) ease-out, color var(--dur) ease-out;
+}
+.wb-btn:not(:disabled):hover { background: var(--surface-2); }
+.wb-btn .wb-i { color: var(--ink-2); }
+.wb-btn--primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.wb-btn--primary .wb-i { color: inherit; }
+.wb-btn--primary:not(:disabled):hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+.wb-btn--commit { background: var(--commit); border-color: var(--commit); color: var(--on-brand); }
+.wb-btn--commit .wb-i { color: inherit; }
+.wb-btn--commit:not(:disabled):hover { background: var(--commit-hover); border-color: var(--commit-hover); }
+.wb-btn--ghost { background: transparent; border-color: transparent; }
+.wb-btn--danger { color: var(--bad-fg); }
+.wb-btn--danger .wb-i { color: inherit; }
+.wb-btn--danger:not(:disabled):hover { background: var(--bad-bg); }
+.wb-btn--sm { height: var(--h-sm); padding: 0 10px; }
+.wb-btn--icon { width: var(--h-ctl); padding: 0; }
+.wb-btn--icon.wb-btn--sm { width: var(--h-sm); }
+.wb-btn--block { width: 100%; }
+.wb-btn:disabled { opacity: .45; cursor: not-allowed; }
+/* Locked: the action needs approval. A small trailing lock. */
+.wb-btn .wb-lock { width: 12px; height: 12px; margin-left: 2px; color: var(--ink-2); }
+.wb-btn:is(.wb-btn--primary, .wb-btn--commit) .wb-lock { color: inherit; opacity: .7; }
+/* Busy: a spinner in the icon slot; the label and the width stay. */
+.wb-btn[aria-busy="true"] { cursor: progress; }
+.wb-spin { flex: none; width: var(--icon); height: var(--icon); border: 1.75px solid currentColor; border-right-color: transparent; border-radius: 50%; scale: .8; animation: wb-spin .7s linear infinite; }
+.wb-btn:not(:is(.wb-btn--primary, .wb-btn--commit, .wb-btn--danger)) .wb-spin { color: var(--ink-2); }
+/* Label plus detail (Send now with the recipient): one line at the desk, two lines on touch. */
+.wb-btn__lbl { display: flex; align-items: baseline; gap: 6px; min-width: 0; text-align: left; }
+.wb-btn__lbl small { display: block; min-width: 0; max-width: 300px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-base); font-weight: 400; opacity: .75; }
+/* Split button: main action plus caret menu */
+.wb-split { display: inline-flex; min-width: 0; }
+.wb-split > .wb-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; min-width: 0; }
+.wb-split > .wb-btn + .wb-btn { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; width: calc(var(--h-ctl) - 4px); padding: 0; border-left-color: var(--border-2); }
+.wb-split > :is(.wb-btn--primary, .wb-btn--commit) + .wb-btn { border-left-color: rgba(255, 255, 255, .22); }
+.wb-split > .wb-btn + .wb-btn .wb-i { width: 14px; height: 14px; }
+@keyframes wb-spin { to { rotate: 1turn; } }
+
+/* ---------- Choosers ---------- */
+.wb-seg { box-sizing: border-box; display: inline-flex; gap: 2px; padding: 2px; height: var(--h-ctl); background: var(--surface-2); border-radius: var(--r-ctl); }
+.wb-seg > button { flex: 1; min-height: 0; padding: 0 10px; text-align: center; border: 1px solid transparent; border-radius: calc(var(--r-ctl) - 2px); color: var(--ink-2); font-size: var(--fs-base); font-weight: 500; white-space: nowrap; transition: color var(--dur) ease-out; }
+.wb-seg > button:hover { color: var(--ink); }
+.wb-seg > button[aria-checked="true"] { background: var(--surface); border-color: var(--border-2); color: var(--ink); box-shadow: var(--shadow-card); }
+
+.wb-tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; } /* never wraps; scrolls when tight */
+.wb-tabs::-webkit-scrollbar { display: none; }
+.wb-tab { display: inline-flex; align-items: center; gap: 5px; height: var(--h-ctl); color: var(--ink-2); font-size: var(--fs-base); font-weight: 500; white-space: nowrap; box-shadow: inset 0 -2px 0 transparent; margin-bottom: -1px; transition: color var(--dur) ease-out; }
+.wb-tab:hover { color: var(--ink); }
+.wb-tab[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); }
+
+.wb-chip { display: inline-flex; align-items: center; gap: 6px; height: var(--h-sm); padding: 0 10px; border: 1px solid var(--border-2); border-radius: var(--r-cell); font-size: var(--fs-xs); font-weight: 500; color: var(--ink); background: var(--surface); }
+.wb-chip:hover { background: var(--surface-2); }
+.wb-chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+
+/* ---------- Fields: one chrome for text, number, date, select and textarea ---------- */
+.wb-field { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.wb-label { font-size: var(--fs-micro); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); line-height: 1.4; white-space: nowrap; }
+.wb-input {
+  box-sizing: border-box; position: relative; display: flex; align-items: center; gap: 6px; min-width: 0;
+  height: var(--h-ctl); padding: 0 10px; background: var(--surface);
+  border: 1px solid var(--border-2); border-radius: var(--r-ctl);
+  transition: border-color var(--dur) ease-out;
+}
+.wb-input > input, .wb-input > select, .wb-input > textarea {
+  flex: 1; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; outline: 0; background: none;
+  font-family: inherit; font-size: var(--fs-base); line-height: inherit; color: var(--ink); text-overflow: ellipsis;
+}
+.wb-input ::placeholder { color: var(--faint); opacity: 1; }
+.wb-input:hover { border-color: rgba(0, 0, 0, .18); }
+.wb-input--sm { height: var(--h-sm); }
+.wb-input:focus-within { border-color: var(--ring); outline: 2px solid var(--ring); outline-offset: 1px; }
+.wb-input:has([aria-invalid="true"]) { border-color: var(--bad-fg); }
+.wb-input:has(:disabled) { opacity: .45; }
+.wb-input--num > input { text-align: right; font-variant-numeric: tabular-nums; }
+.wb-readonly { display: flex; align-items: center; min-height: var(--h-ctl); font-size: var(--fs-base); font-variant-numeric: tabular-nums; }
+/* Adornments: muted, inside the field */
+.wb-adorn { flex: none; display: inline-flex; align-items: center; color: var(--faint); font-size: var(--fs-base); font-variant-numeric: tabular-nums; }
+.wb-adorn > .wb-i { width: 14px; height: 14px; }
+.wb-clear { flex: none; display: grid; place-items: center; width: 18px; height: 18px; min-height: 0; border-radius: 50%; background: var(--surface-2); color: var(--ink-2); }
+.wb-clear > .wb-i { width: 10px; height: 10px; }
+/* Quiet: inline-edit cells. No border until hover or focus. */
+.wb-input--quiet { height: var(--h-sm); padding: 0 8px; border-color: transparent; border-radius: var(--r-cell); background: transparent; }
+.wb-input--quiet:hover { border-color: var(--border-2); background: var(--surface); }
+.wb-input--quiet:focus-within { background: var(--surface); }
+/* Textarea: grows with its content (script), three lines minimum, no handle */
+.wb-input--area { height: auto; align-items: stretch; padding: 7px 10px; }
+.wb-input--area > textarea { height: auto; min-height: 4.5em; resize: none; line-height: 1.5; overflow: hidden; }
+/* Select: the native select (keeps the iOS wheel) with one chevron */
+.wb-input--select { padding: 0; }
+.wb-input--select > select { appearance: none; -webkit-appearance: none; padding: 0 30px 0 10px; cursor: pointer; }
+.wb-input--select > .wb-i { position: absolute; right: 9px; width: 14px; height: 14px; color: var(--ink-2); pointer-events: none; }
+.wb-input--quiet.wb-input--select > select { padding: 0 24px 0 8px; }
+.wb-input--quiet.wb-input--select > .wb-i { right: 6px; opacity: 0; transition: opacity var(--dur) ease-out; }
+.wb-input--quiet.wb-input--select:is(:hover, :focus-within) > .wb-i { opacity: 1; }
+/* Phone: body 15, inputs 16 so iOS never zooms. */
+@media (max-width: 639.98px) {
+  .wb-app { font-size: var(--fs-md); }
+  .wb-input > input, .wb-input > select, .wb-input > textarea { font-size: var(--fs-input); }
+}
+
+/* Checkbox, radio, switch: one each. On is near-black. */
+.wb-check, .wb-radio, .wb-switch { appearance: none; -webkit-appearance: none; box-sizing: border-box; margin: 0; flex: none; display: inline-grid; place-content: center; background: var(--surface); border: 1px solid rgba(0, 0, 0, .2); cursor: pointer; transition: background-color var(--dur) ease-out, border-color var(--dur) ease-out; }
+.wb-check { width: 16px; height: 16px; border-radius: var(--r-cell); }
+.wb-check::after { content: ""; width: 4px; height: 8px; margin-top: -2px; border: solid var(--on-brand); border-width: 0 1.75px 1.75px 0; rotate: 45deg; scale: 0; transition: scale var(--dur) ease-out; }
+.wb-check:checked { background: var(--brand); border-color: var(--brand); }
+.wb-check:checked::after { scale: 1; }
+.wb-radio { width: 16px; height: 16px; border-radius: 50%; }
+.wb-radio:checked { border: 5px solid var(--brand); }
+.wb-switch { width: 30px; height: 18px; border-radius: 9px; border: 0; background: rgba(0, 0, 0, .14); place-content: center start; padding: 2px; }
+.wb-switch::after { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, .2); transition: translate var(--dur) ease-out; }
+.wb-switch:checked { background: var(--brand); }
+.wb-switch:checked::after { translate: 12px 0; }
+.wb-check:disabled, .wb-radio:disabled, .wb-switch:disabled { opacity: .45; cursor: not-allowed; }
+.wb-choice { display: inline-flex; align-items: center; gap: 8px; min-height: var(--h-sm); font-size: var(--fs-base); cursor: pointer; }
+/* Stepper: minus, value, plus in one field */
+.wb-stepper { padding: 0; width: calc(var(--h-ctl) * 3); }
+.wb-stepper > button { display: grid; place-items: center; flex: none; width: var(--h-ctl); height: 100%; min-height: 0; color: var(--ink-2); }
+.wb-stepper > button:hover { color: var(--ink); }
+.wb-stepper > button:disabled { opacity: .45; cursor: not-allowed; }
+.wb-stepper > input { text-align: center; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+/* ---------- Pills, pill buttons, counts, banners ---------- */
+.wb-pill, .wb-pillbtn, .wb-banner { --tone-bg: var(--neutral-bg); --tone-fg: var(--neutral-fg); }
+:is(.wb-pill, .wb-pillbtn, .wb-banner)[data-tone="info"] { --tone-bg: var(--info-bg); --tone-fg: var(--info-fg); }
+:is(.wb-pill, .wb-pillbtn, .wb-banner)[data-tone="ok"]   { --tone-bg: var(--ok-bg);   --tone-fg: var(--ok-fg); }
+:is(.wb-pill, .wb-pillbtn, .wb-banner)[data-tone="warn"] { --tone-bg: var(--warn-bg); --tone-fg: var(--warn-fg); }
+:is(.wb-pill, .wb-pillbtn, .wb-banner)[data-tone="bad"]  { --tone-bg: var(--bad-bg);  --tone-fg: var(--bad-fg); }
+:is(.wb-pill, .wb-pillbtn, .wb-banner)[data-tone="hold"] { --tone-bg: var(--hold-bg); --tone-fg: var(--hold-fg); }
+
+.wb-pill, .wb-pillbtn {
+  box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; height: 22px; min-height: 0; padding: 0 8px;
+  border-radius: var(--r-cell); font: 500 var(--fs-xs)/1 var(--font); white-space: nowrap;
+  font-variant-numeric: tabular-nums; vertical-align: middle;
+}
+/* Pill: status. Wash and text, no border. */
+.wb-pill { background: var(--tone-bg); color: var(--tone-fg); }
+.wb-pill > .wb-i { width: 12px; height: 12px; }
+/* Removable pill: a small clear button at the end (an attachment, a picked value). */
+.wb-pill:has(> .wb-clear) { padding-right: 3px; }
+.wb-pill > .wb-clear { width: 16px; height: 16px; }
+.wb-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* Pill button: a pill you can click. Always a border. */
+.wb-pillbtn { border: 1px solid var(--border-2); background: var(--surface); color: var(--ink); transition: border-color var(--dur) ease-out, background-color var(--dur) ease-out; }
+.wb-pillbtn[data-tone] { background: var(--tone-bg); color: var(--tone-fg); border-color: color-mix(in srgb, var(--tone-fg) 22%, transparent); }
+.wb-pillbtn:hover { border-color: rgba(0, 0, 0, .24); }
+.wb-pillbtn[data-tone]:hover { border-color: color-mix(in srgb, var(--tone-fg) 45%, transparent); }
+.wb-pillbtn > .wb-i { width: 12px; height: 12px; margin-right: -2px; opacity: .7; }
+.wb-pillbtn[aria-pressed="false"] { background: var(--surface); color: var(--ink-2); border-color: var(--border-2); }
+.wb-pillbtn[aria-pressed="false"] > .wb-dot { background: var(--faint); }
+@media (pointer: coarse) { .wb-pillbtn { height: 32px; padding: 0 12px; } }
+.wb-count { color: var(--ink-2); font-variant-numeric: tabular-nums; font-weight: 400; }
+/* Banner: one inline notice, four tones, at most one action */
+.wb-banner { --tone-bg: var(--info-bg); --tone-fg: var(--info-fg); box-sizing: border-box; display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: var(--r-ctl); background: var(--tone-bg); color: var(--tone-fg); font-size: var(--fs-base); line-height: 1.45; }
+.wb-banner > .wb-i { width: 16px; height: 16px; margin-top: 1px; }
+.wb-banner__body { flex: 1; min-width: 0; }
+.wb-banner__body b { font-weight: 600; }
+.wb-banner > .wb-btn { margin: -4px -4px -4px 0; height: var(--h-sm); background: rgba(255, 255, 255, .7); border-color: color-mix(in srgb, var(--tone-fg) 20%, transparent); color: var(--tone-fg); }
+.wb-banner > .wb-btn .wb-i { color: inherit; }
+
+/* ---------- Tables, card lists, list rows, cards ---------- */
+.wb-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-base); }
+.wb-table th {
+  position: sticky; top: 0; z-index: var(--z-sticky); background: var(--surface);
+  height: 36px; padding: 0 12px; text-align: left; vertical-align: middle; white-space: nowrap;
+  font-size: var(--fs-micro); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2);
+  border-bottom: 1px solid var(--border);
+}
+.wb-table td { height: 40px; padding: 8px 12px; vertical-align: middle; border-bottom: 1px solid var(--border-sub); }
+.wb-table th.wb-num { text-align: right; }
+.wb-table .wb-num { white-space: nowrap; }
+.wb-table tbody tr:last-child td { border-bottom: 0; }
+.wb-table tbody tr { transition: background-color var(--dur) ease-out; }
+.wb-table tbody tr:hover { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+.wb-table tbody tr[aria-selected="true"] { background: var(--info-bg); }
+.wb-table tr[data-href] { cursor: pointer; }
+/* Cells holding a quiet field: the field's own padding lines its text up with the header. */
+.wb-table td.wb-cell-ctl { padding-left: 4px; padding-right: 4px; }
+.wb-table--dense th { height: 30px; }
+.wb-table--dense td { height: 32px; padding-top: 4px; padding-bottom: 4px; }
+/* Phone: a table becomes a card list */
+.wb-cardlist { display: flex; flex-direction: column; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
+.wb-lcard { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
+.wb-lcard__title { font-size: var(--fs-md); font-weight: 600; line-height: 1.35; }
+.wb-lcard__meta { grid-column: 1; font-size: var(--fs-base); color: var(--ink-2); }
+.wb-lcard__value { grid-column: 2; grid-row: 1; text-align: right; font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* List row: inbox and pick lists */
+.wb-list { display: flex; flex-direction: column; }
+.wb-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-sub); text-align: left; cursor: pointer; transition: background-color var(--dur) ease-out; }
+.wb-row:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+.wb-row[aria-selected="true"] { background: var(--surface-2); }
+.wb-row[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+.wb-row__title { font-size: var(--fs-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-row__meta { font-size: var(--fs-xs); color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wb-row__line { grid-column: 1 / -1; font-size: var(--fs-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-row__sum { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-row__end { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+/* Label and value rows inside a card */
+.wb-kv { margin: 0; display: flex; flex-direction: column; }
+.wb-kv > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; border-top: 1px solid var(--border-sub); }
+.wb-kv > div:last-child { border-bottom: 1px solid var(--border-sub); }
+.wb-kv dt { flex: none; }
+.wb-kv dd { margin: 0; min-width: 0; text-align: right; font-size: var(--fs-base); display: flex; justify-content: flex-end; }
+/* Card: the panel */
+.wb-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); min-width: 0; }
+.wb-card__hd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 48px; padding: 8px 16px; border-bottom: 1px solid var(--border-sub); }
+.wb-card__t { margin: 0 auto 0 0; font-size: var(--fs-base); font-weight: 600; white-space: nowrap; }
+.wb-card__t:has(+ .wb-hint) { margin-right: 0; }
+.wb-card__hd > .wb-hint { margin-right: auto; }
+.wb-card__bd { padding: var(--s4); }
+/* Disclosure row: a card that opens */
+.wb-disclosure { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
+.wb-disclosure > summary { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 16px; font-size: var(--fs-base); font-weight: 500; cursor: pointer; list-style: none; }
+.wb-disclosure > summary::-webkit-details-marker { display: none; }
+.wb-disclosure > summary .wb-i { margin-left: auto; width: 14px; height: 14px; color: var(--ink-2); transition: rotate var(--dur) ease-out; }
+.wb-disclosure[open] > summary .wb-i { rotate: 90deg; }
+.wb-disclosure > summary small { font-size: var(--fs-xs); font-weight: 400; color: var(--ink-2); }
+.wb-disclosure > div { padding: 0 16px 16px; }
+
+/* ---------- Action dock and phone bar ---------- */
+.wb-dock {
+  box-sizing: border-box; position: sticky; bottom: var(--s3); z-index: var(--z-dock);
+  display: flex; align-items: center; gap: var(--s2); padding: 8px 12px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-pop);
+}
+.wb-dock__group { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.wb-dock__group--end { margin-left: auto; }
+.wb-dock__more { flex: none; margin-left: auto; }
+.wb-dock__group--end ~ .wb-dock__more { margin-left: 0; }
+/* The dock measures its slots in a clipped, invisible row (the fold is computed, never scrolled). */
+.wb-dock__measure { position: absolute; top: 0; left: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; display: flex; gap: var(--s2); }
+.wb-dock__measure > * { flex: none; }
+/* Unsaved changes: the same bar, second mode */
+.wb-dock__dirty { display: flex; flex: 1; align-items: center; gap: var(--s2); }
+.wb-dock__dirty > span { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-weight: 500; }
+.wb-dock__dirty > span > .wb-dot { color: var(--warn-fg); }
+/* Phone bottom bar: the main action full width plus More, in the page flow above the home indicator */
+.wb-bar {
+  box-sizing: border-box; position: sticky; bottom: 0; z-index: var(--z-dock); display: none; gap: var(--s2);
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px);
+  border-top: 1px solid var(--border);
+}
+.wb-bar > :first-child { flex: 1; min-width: 0; }
+.wb-bar .wb-split > .wb-btn:first-child { flex: 1; justify-content: flex-start; }
+@media (max-width: 639.98px) {
+  .wb-dock { display: none; }
+  .wb-bar { display: flex; }
+}
+
+/* ---------- Shell header: the only top bar ---------- */
+.wb-shell {
+  box-sizing: border-box; position: sticky; top: 0; z-index: var(--z-header); display: flex; align-items: center; gap: var(--s3);
+  min-height: var(--bar-h); padding: 4px 14px;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.wb-shell__l, .wb-shell__r { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.wb-shell__c { flex: 1; display: flex; justify-content: center; min-width: 0; }
+.wb-shell__r { margin-left: auto; gap: var(--s2); }
+.wb-home { display: inline-flex; align-items: stretch; height: 34px; border-radius: 11px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; flex: none; }
+.wb-home:hover { border-color: var(--border-2); }
+.wb-home__go { display: flex; align-items: center; gap: 8px; min-height: 0; padding: 0 10px 0 5px; }
+.wb-home__go:hover, .wb-home__jump:hover { background: var(--border); }
+.wb-home__mark { width: 24px; height: 24px; border-radius: 7px; background: var(--ink); color: var(--bg); display: grid; place-items: center; }
+.wb-home__mark > .wb-i { width: 13px; height: 13px; }
+.wb-home__lbl { font-weight: 600; font-size: var(--fs-base); letter-spacing: -.01em; }
+.wb-home__sep { width: 1px; background: var(--border-2); margin: 7px 0; }
+.wb-home__jump { display: flex; align-items: center; min-height: 0; padding: 0 7px; color: var(--ink-2); }
+.wb-home__jump > .wb-i { width: 14px; height: 14px; }
+.wb-crumb { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-base); white-space: nowrap; }
+.wb-crumb__slash { color: var(--faint); }
+.wb-crumb b { font-weight: 600; letter-spacing: -.01em; }
+.wb-crumb__what { color: var(--ink-2); }
+@media (max-width: 1023.98px) { .wb-crumb__what { display: none; } }
+.wb-glyph { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: var(--r-cell); background: var(--wash); color: var(--hue); }
+.wb-glyph > .wb-i { width: 12px; height: 12px; }
+.wb-avatar { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-micro); font-weight: 600; letter-spacing: .02em; }
+.wb-health { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--ink-2); white-space: nowrap; }
+.wb-health::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 20%, transparent); }
+
+/* ---------- Overlays: dialog, drawer, sheet, page, menu, toast ---------- */
+.wb-scrim { position: fixed; inset: 0; z-index: var(--z-drawer); background: var(--scrim); animation: wb-fade var(--dur) ease-out; }
+.wb-scrim--dialog { z-index: var(--z-dialog); }
+.wb-dialog {
+  box-sizing: border-box; position: fixed; top: 12%; left: 50%; z-index: var(--z-dialog); translate: -50% 0;
+  width: min(440px, calc(100% - 32px)); max-height: 80%; display: flex; flex-direction: column;
+  background: var(--surface); color: var(--ink); border-radius: var(--r-card); box-shadow: var(--shadow-modal);
+  animation: wb-pop 180ms ease-out;
+}
+.wb-dialog--lg { width: min(600px, calc(100% - 32px)); }
+.wb-drawer {
+  box-sizing: border-box; position: fixed; top: 0; right: 0; bottom: 0; z-index: var(--z-drawer);
+  width: min(480px, 100%); display: flex; flex-direction: column;
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-modal);
+  animation: wb-slide 200ms ease-out;
+}
+.wb-dialog:focus, .wb-drawer:focus, .wb-sheet:focus, .wb-page:focus, .wb-menu:focus { outline: none; }
+.wb-ov__hd { display: flex; align-items: center; gap: var(--s2); min-height: 56px; padding: 0 12px 0 20px; }
+.wb-ov__t { margin: 0; font-size: var(--fs-md); font-weight: 600; flex: 1; min-width: 0; }
+.wb-ov__bd { flex: 1; overflow: auto; padding: 0 20px 20px; display: flex; flex-direction: column; gap: var(--s3); }
+.wb-ov__ft { display: flex; justify-content: flex-end; gap: var(--s2); padding: 12px 16px; border-top: 1px solid var(--border-sub); }
+.wb-drawer > .wb-ov__hd { border-bottom: 1px solid var(--border-sub); }
+.wb-drawer > .wb-ov__bd { padding-top: 16px; }
+/* Sheet: phone, anything without a text input. Auto height up to 85 %, grab handle, swipe down. */
+.wb-sheet {
+  box-sizing: border-box; position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-drawer);
+  max-height: 85vh; max-height: 85dvh; overflow: auto; overscroll-behavior: contain; padding: 0 8px calc(8px + env(safe-area-inset-bottom));
+  background: var(--surface); color: var(--ink); border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--shadow-modal);
+  animation: wb-rise 200ms ease-out;
+}
+.wb-sheet__grab { width: 36px; height: 5px; margin: 8px auto 4px; border-radius: 3px; background: rgba(0, 0, 0, .15); touch-action: none; }
+.wb-sheet__t { margin: 4px 12px 8px; font-size: var(--fs-md); font-weight: 600; }
+.wb-sheet__bd { display: flex; flex-direction: column; gap: var(--s3); padding: 0 12px 12px; }
+.wb-sheet > .wb-ov__ft { position: sticky; bottom: 0; margin: 0 -8px; padding: 12px 16px; background: var(--surface); }
+.wb-sheet > .wb-ov__ft > .wb-btn { flex: 1; }
+/* Page: phone, anything holding a text input. A page in the document flow with a sticky header and
+   footer; while it is open everything else in the body is hidden, so the window is the only scroll
+   container and iOS scrolls a focused field above the keyboard by itself. A fixed full-height box
+   would leave its lower half under the keyboard. */
+.wb-page { box-sizing: border-box; position: relative; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-md); line-height: var(--lh); }
+.wb-pgopen > :not(.wb-page, .wb-toaster, .wb-sheet, .wb-scrim, .wb-menu) { display: none !important; }
+.wb-page__hd {
+  box-sizing: border-box; position: sticky; top: 0; z-index: var(--z-header); display: flex; align-items: center; gap: var(--s2);
+  min-height: var(--bar-h); padding: calc(4px + env(safe-area-inset-top)) 8px 4px;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.wb-page__t { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-page__bd { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--s4); padding: var(--s4); }
+.wb-page > .wb-bar { display: flex; }
+.wb-page > .wb-bar > * { flex: 1; min-width: 0; }
+/* Menu: one popover for every dropdown, More, jump and typeahead */
+.wb-menu { box-sizing: border-box; position: fixed; z-index: var(--z-menu); min-width: 220px; max-height: 60vh; overflow: auto; padding: 4px; background: var(--surface); color: var(--ink); border-radius: var(--r-card); box-shadow: var(--shadow-pop); animation: wb-pop 140ms ease-out; }
+.wb-menu__item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--h-ctl); padding: 4px 8px; border-radius: var(--r-cell); font-size: var(--fs-base); text-align: left; color: var(--ink); text-decoration: none; }
+.wb-menu__item:is(:hover, :focus-visible) { background: var(--surface-2); outline: none; }
+.wb-menu__item .wb-i { color: var(--ink-2); }
+.wb-menu__item > span { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.wb-menu__item small { font-size: var(--fs-xs); color: var(--ink-2); }
+.wb-menu__item > .wb-lock { width: 12px; height: 12px; }
+.wb-menu__item > .wb-menu__mark { color: var(--ink); }
+.wb-menu__item:disabled { opacity: .45; cursor: not-allowed; background: none; }
+.wb-menu__item--danger, .wb-menu__item--danger .wb-i { color: var(--bad-fg); }
+.wb-menu__sep { height: 1px; margin: 4px 8px; background: var(--border-sub); }
+/* A group label inside a menu (Mailbox), the field label style. */
+.wb-menu__label { display: block; padding: 8px 8px 2px; font-size: var(--fs-micro); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.wb-sheet .wb-menu__item { min-height: var(--tap); font-size: var(--fs-md); padding: 4px 12px; }
+.wb-sheet .wb-menu__label { padding: 10px 12px 2px; }
+/* Toast: one. Bottom centre above the dock. */
+.wb-toaster { position: fixed; left: 0; right: 0; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: var(--z-toast); display: flex; justify-content: center; pointer-events: none; }
+.wb-toast {
+  display: inline-flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); min-height: 36px; padding: 0 6px 0 16px;
+  background: var(--ink); color: var(--on-brand); border-radius: var(--r-round); font-size: var(--fs-base); line-height: 1.3;
+  box-shadow: var(--shadow-pop); pointer-events: auto; animation: wb-rise 180ms ease-out;
+}
+.wb-toast:not(:has(.wb-btn)) { padding-right: 16px; }
+.wb-toast > .wb-i { width: 16px; height: 16px; color: var(--ok-on-ink); }
+.wb-toast > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-toast > .wb-btn { height: 28px; min-height: 0; border-radius: var(--r-round); background: transparent; border-color: transparent; color: var(--on-brand); }
+.wb-toast > .wb-btn:not(:disabled):hover { background: rgba(255, 255, 255, .12); }
+.wb-toast > .wb-btn .wb-i { color: inherit; }
+@keyframes wb-fade { from { opacity: 0; } }
+@keyframes wb-pop { from { opacity: 0; transform: scale(.97) translateY(-4px); } }
+@keyframes wb-slide { from { transform: translateX(24px); opacity: 0; } }
+@keyframes wb-rise { from { transform: translateY(12px); opacity: 0; } }
+
+/* ---------- States ---------- */
+.wb-skel { display: block; height: 10px; border-radius: var(--r-cell); background: linear-gradient(90deg, var(--skel) 25%, var(--skel-hi) 50%, var(--skel) 75%) 0 0 / 300% 100%; animation: wb-shimmer 1.6s ease-in-out infinite; }
+.wb-skel-rows { display: flex; flex-direction: column; gap: var(--s3); }
+@keyframes wb-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.wb-empty { padding: var(--s6); text-align: center; font-size: var(--fs-base); color: var(--ink-2); }
+.wb-empty > .wb-btn { margin-left: 4px; }
+.wb-details { margin-top: 6px; }
+.wb-details > summary { display: inline-flex; align-items: center; gap: 4px; min-height: 0; font-size: var(--fs-xs); cursor: pointer; list-style: none; opacity: .85; }
+.wb-details > summary::-webkit-details-marker { display: none; }
+.wb-details > summary > .wb-i { width: 12px; height: 12px; transition: rotate var(--dur) ease-out; }
+.wb-details[open] > summary > .wb-i { rotate: 90deg; }
+.wb-details pre { margin: 6px 0 0; padding: 8px 10px; border-radius: var(--r-cell); background: rgba(255, 255, 255, .6); font: var(--fs-micro)/1.5 var(--mono); white-space: pre-wrap; color: var(--ink); }
+
+/* ---------- Touch ---------- */
+@media (pointer: coarse) {
+  /* Label plus detail goes to two lines. */
+  .wb-btn__lbl { flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.2; }
+  .wb-btn__lbl small { font-size: var(--fs-micro); }
+  .wb-menu .wb-menu__item { min-height: var(--tap); }
+  /* A removable pill's cross: the tap area is the pill's full height and a little either side;
+     the cross and the pill look the same. */
+  .wb-pill > .wb-clear { position: relative; }
+  .wb-pill > .wb-clear::after { content: ""; position: absolute; inset: -3px -3px -3px -6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-spin, .wb-skel, .wb-scrim, .wb-dialog, .wb-drawer, .wb-sheet, .wb-menu, .wb-toast { animation: none; }
+  .wb-btn, .wb-seg > button, .wb-tab, .wb-input, .wb-check, .wb-check::after, .wb-radio, .wb-switch, .wb-switch::after,
+  .wb-pillbtn, .wb-row, .wb-table tbody tr, .wb-details > summary > .wb-i, .wb-disclosure > summary .wb-i,
+  .wb-input--quiet.wb-input--select > .wb-i { transition: none; }
+  .wb-spin { border-right-color: currentColor; opacity: .5; }
+}

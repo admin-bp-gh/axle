@@ -1,9 +1,9 @@
-// adoption-report.js — generates the Axle Adoption Dashboard (self-contained HTML).
+// adoption-report.js: the Axle Adoption Dashboard.
 //
-// Reads the Axle SQLite DB directly and writes a single static HTML file with all
-// metrics embedded as JSON and rendered client-side with Chart.js (CDN). No server,
-// no connectors — just open the file. Designed to run on the box against the LIVE DB
-// so the dashboard refreshes itself on a daily schedule.
+// Reads the Axle SQLite DB directly (computeFromDb) and draws the numbers as an Axle page in the
+// shared vocabulary, in plain HTML and CSS (renderHtml; no chart library, no external requests).
+// The server shows it to owners at /adoption; run from the command line it writes a single HTML
+// file that opens on its own (the stylesheets inline, no scripts).
 //
 // Usage:
 //   node adoption-report.js [outputPath]
@@ -19,15 +19,18 @@
 const fs = require("fs");
 const path = require("path");
 
+const UI = require("./views/ui.js");
+const BASE = require("./base-path.js");
+
 const DB_PATH = process.env.AXLE_DB || path.join(__dirname, "..", "data", "axle.db");
 
-function render() { return renderHtml(computeFromDb()); }
+function render(user) { return renderHtml(computeFromDb(), user); }
 
 if (require.main === module) {
   const OUT = process.argv[2] || path.join(__dirname, "..", "data", "adoption-dashboard.html");
   // AXLE_DATA_JSON: render from pre-computed metrics (for building the file without a sqlite binding).
   const DATA = process.env.AXLE_DATA_JSON ? JSON.parse(fs.readFileSync(process.env.AXLE_DATA_JSON, "utf8")) : computeFromDb();
-  fs.writeFileSync(OUT, renderHtml(DATA));
+  fs.writeFileSync(OUT, standalone(renderHtml(DATA, { lang: "en" })));
   console.log(`Wrote ${OUT}  (items=${DATA.meta.totalItems}, sends=${DATA.meta.totalSends}, window ${(DATA.meta.windowStart||'').slice(0,10)}..${(DATA.meta.windowEnd||'').slice(0,10)})`);
 }
 module.exports = { render, computeFromDb, renderHtml };
@@ -198,161 +201,101 @@ const digest = sendRows
 }
 
 // --- render ---------------------------------------------------------------
-function renderHtml(D) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Axle — Adoption Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<style>
-  :root{--bg:#0f1419;--card:#1a212b;--line:#2a3441;--ink:#e7edf3;--mut:#8b97a6;--accent:#4f9cf9;--good:#3ecf8e;--warn:#f5a623;--bad:#f56565;--purple:#a78bfa;}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 60px}
-  h1{font-size:22px;margin:0 0 2px} h2{font-size:15px;margin:30px 0 12px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
-  .sub{color:var(--mut);font-size:13px;margin-bottom:6px}
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:16px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
-  .kpi{font-size:28px;font-weight:700;line-height:1.1} .kpi small{font-size:14px;color:var(--mut);font-weight:500}
-  .lbl{color:var(--mut);font-size:12px;margin-top:4px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px} @media(max-width:840px){.grid2{grid-template-columns:1fr}}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
-  table{width:100%;border-collapse:collapse;font-size:13px} th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)} th{color:var(--mut);font-weight:600}
-  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
-  .pill.good{background:rgba(62,207,142,.15);color:var(--good)} .pill.warn{background:rgba(245,166,35,.15);color:var(--warn)} .pill.bad{background:rgba(245,101,101,.15);color:var(--bad)}
-  .bar{height:9px;border-radius:6px;background:var(--line);overflow:hidden;display:flex}
-  .bar i{display:block;height:100%}
-  canvas{max-height:300px} a{color:var(--accent)}
-  .foot{color:var(--mut);font-size:12px;margin-top:34px;border-top:1px solid var(--line);padding-top:14px}
-  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:6px 0 10px}
-  .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
-</style></head><body><div class="wrap">
-<h1>Axle — Adoption Dashboard</h1>
-<div class="sub" id="meta"></div>
-<div class="cards" id="kpis"></div>
+// D: computeFromDb()'s numbers, drawn as they are (the shares the old charts showed are worked out
+// here the same way). user: the reader (language, framed or not).
+function renderHtml(D, user) {
+  const { esc, pill, intentLabel, parseTS, TZ } = UI;
+  const lang = UI.langOK(user.lang);
+  const t = (k) => UI.t(lang, k);
+  const L = (k) => esc(t(k));
+  const loc = lang === "nl" ? "nl-NL" : "en-GB";
+  const date = (s, year) => s ? parseTS(s).toLocaleDateString(loc, { timeZone: TZ, day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) }).replace(".", "") : "";
+  const pc = (n) => `${n} %`;
+  const meter = (p) => `<span class="ax-meter"><span><i style="width:${p}%"></i></span><b>${pc(p)}</b></span>`;
+  const card = (title, body, hint) => `<section class="wb-card"><div class="wb-card__hd"><h2 class="wb-card__t">${title}</h2>${hint ? `<span class="wb-hint">${hint}</span>` : ""}</div>${body}</section>`;
+  const table = (head, rows) => `<div class="ax-scroll"><table class="wb-table"><thead><tr>${head.join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+  const th = (k, num) => `<th${num ? ' class="wb-num"' : ""}>${L(k)}</th>`;
+  const num = (v) => `<td class="wb-num">${v}</td>`;
 
-<h2>Adoption by user</h2>
-<div class="panel"><table id="userTable"><thead><tr>
-  <th>User</th><th class="num">Axle sends</th><th class="num">Verbatim</th><th>Draft acceptance</th><th class="num">Median match</th><th>Last Axle send</th>
-</tr></thead><tbody></tbody></table>
-<div class="legend" style="margin-top:12px">
-  <span><i class="dot" style="background:var(--good)"></i>Sent verbatim</span>
-  <span><i class="dot" style="background:var(--accent)"></i>Light edit</span>
-  <span><i class="dot" style="background:var(--warn)"></i>Moderate edit</span>
-  <span><i class="dot" style="background:var(--bad)"></i>Heavy rewrite</span>
-</div></div>
+  // The four tiles
+  const info = D.mailbox.find((m) => m.mailbox === "info") || {}, drach = D.mailbox.find((m) => m.mailbox === "drachten") || {};
+  const allGraded = D.perUser.reduce((a, u) => a + u.verbatim + u.light + u.moderate + u.heavy, 0);
+  const allVerb = D.perUser.reduce((a, u) => a + u.verbatim, 0);
+  const stats = [
+    [t("ad_sends"), D.meta.totalSends],
+    [t("ad_unchanged"), pc(allGraded ? Math.round(100 * allVerb / allGraded) : 0)],
+    [t("ad_box_replied").replace("{box}", "info@"), pc(info.sentPct)],
+    [t("ad_box_replied").replace("{box}", "drachten@"), pc(drach.sentPct)],
+  ];
 
-<h2>Daily activity — items in vs. replies sent through Axle</h2>
-<div class="grid2">
-  <div class="panel"><div class="sub">info@ (Jack)</div><canvas id="infoChart"></canvas></div>
-  <div class="panel"><div class="sub">drachten@ (Rob/Huub)</div><canvas id="drachChart"></canvas></div>
-</div>
+  // Adoption by user: sends, unchanged share, the edit mix as one thin bar, median match, last send
+  const BUCKETS = [["verbatim", "ax-fill-ok"], ["light", "ax-fill-info"], ["moderate", "ax-fill-warn"], ["heavy", "ax-fill-bad"]];
+  const mix = (u) => {
+    const n = u.verbatim + u.light + u.moderate + u.heavy || 1;
+    return `<span class="ax-stack ax-stack--thin">${BUCKETS.filter(([k]) => u[k]).map(([k, c]) => `<i class="${c}" style="width:${100 * u[k] / n}%" title="${L("ad_b_" + k)}: ${u[k]}"></i>`).join("")}</span>`;
+  };
+  const last = (s) => {
+    if (!s) return pill(t("ad_never"), "bad");
+    const a = Math.round((Date.now() - parseTS(s)) / 864e5);
+    return `${esc(date(s))} ${a >= 3 ? pill(t("ad_days").replace("{n}", a), "bad") : a >= 1 ? pill(a === 1 ? t("ad_day_1") : t("ad_days").replace("{n}", a), "warn") : pill(t("ad_today"), "ok")}`;
+  };
+  const users = card(L("ad_by_user"), table(
+    [th("col_user"), th("ad_col_sends", 1), th("ad_b_verbatim", 1), th("ad_col_accept"), th("ad_col_median", 1), th("ad_col_last")],
+    D.perUser.filter((u) => u.sends > 0 || u.user !== "admin").map((u) => `<tr><td>${esc(u.label)}</td>${num(u.sends)}${num(pc(u.verbatimPct))}<td class="ax-mixcell">${mix(u)}</td>${num(u.medianSim != null ? pc(Math.round(u.medianSim * 100)) : "")}<td class="ax-nowrap">${last(u.lastSend)}</td></tr>`))
+    + `<div class="ax-legend ax-legend--row">${BUCKETS.map(([k, c]) => `<div><i class="${c}"></i>${L("ad_b_" + k)}</div>`).join("")}</div>`);
 
-<h2>Where replies are resolved</h2>
-<div class="grid2"><div class="panel"><canvas id="resInfo"></canvas></div><div class="panel"><canvas id="resDrach"></canvas></div></div>
+  // Daily activity per mailbox: emails in beside sends through Axle, one thin pair of bars a day
+  const daily = (mb, ins, sent) => {
+    const max = Math.max(1, ...ins, ...sent);
+    const days = D.trend.days.map((d, i) => `<span title="${esc(date(d))}: ${ins[i]} ${L("ad_in").toLowerCase()}, ${sent[i]} ${L("ad_sent").toLowerCase()}"><i style="height:${100 * ins[i] / max}%"></i><i class="ax-fill-info" style="height:${100 * sent[i] / max}%"></i></span>`).join("");
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+    return card(esc(mb.label || mb.mailbox), `<div class="wb-card__bd"><div class="ax-days">${days}</div>
+      <div class="ax-daysax"><span>${esc(date(D.trend.days[0]))}</span><span>${esc(date(D.trend.days[D.trend.days.length - 1]))}</span></div>
+      <div class="ax-legend ax-legend--row"><div><i class="ax-fill-in"></i>${L("ad_in")}<b>${sum(ins)}</b></div><div><i class="ax-fill-info"></i>${L("ad_sent")}<b>${sum(sent)}</b></div></div></div>`);
+  };
 
-<h2>Draft acceptance by week</h2>
-<div class="panel"><canvas id="weekChart"></canvas>
-  <div class="sub" style="margin-top:10px">Graded Axle sends per ISO week. Style exemplars went live 4 Oct 2026 (week 40): verbatim should rise and moderate+heavy fall from week 41.</div></div>
+  // Where replies are resolved: one stacked bar a mailbox, a legend with count and share
+  const resolved = (mb) => {
+    const r = mb.resolution || {}, keys = Object.keys(r), n = keys.reduce((a, k) => a + r[k], 0) || 1;
+    const label = (k) => (UI.STRINGS.en["ad_r_" + k] ? L("ad_r_" + k) : esc(k));
+    return card(esc(mb.label), `<div class="wb-card__bd"><div class="ax-stack">${keys.map((k, i) => `<i class="ax-c${i + 1}" style="width:${100 * r[k] / n}%"></i>`).join("")}</div>
+      <div class="ax-legend">${keys.map((k, i) => `<div><i class="ax-c${i + 1}"></i>${label(k)}<b>${r[k]} · ${pc(Math.round(100 * r[k] / n))}</b></div>`).join("")}</div></div>`);
+  };
 
-<h2>Most-edited drafts, last 7 days</h2>
-<div class="panel"><table id="digestTable"><thead><tr>
-  <th>Topic</th><th>Item</th><th>Sent by</th><th>When</th><th class="num">Match</th><th>Edit</th><th class="num">Draft → sent (chars)</th>
-</tr></thead><tbody></tbody></table>
-<div class="sub" style="margin-top:10px">Sends under 80% match to the AI draft, grouped by topic, worst first. Open the item to compare the draft with what went out.</div></div>
+  // Draft acceptance by week, by topic, by confidence: rows with the shares as meters
+  const weekly = card(L("ad_weekly"), table([th("ad_col_week"), th("ad_col_sends", 1), th("ad_b_verbatim"), th("ad_col_heavy")],
+    D.weekly.map((w) => `<tr><td class="ax-nowrap">${esc(w.week)}</td>${num(w.n)}<td>${meter(w.verbatimPct)}</td><td>${meter(w.modHeavyPct)}</td></tr>`)), L("ad_weekly_hint"));
+  const topics = card(L("ad_topics"), table([th("ad_col_topic"), th("ad_col_sends", 1), th("ad_b_verbatim"), th("ad_col_heavy")],
+    D.intents.map((i) => `<tr><td>${esc(intentLabel(lang, i.intent))}</td>${num(i.n)}<td>${meter(i.verbatimPct)}</td><td>${meter(i.modHeavyPct)}</td></tr>`)));
+  const conf = card(L("ad_conf"), table([th("ad_col_conf"), th("ad_col_sends", 1), th("ad_b_verbatim")],
+    D.confidence.map((c) => `<tr><td>${L("ad_c_" + c.confidence)}</td>${num(c.n)}<td>${meter(c.pct)}</td></tr>`)), L("ad_conf_hint"));
 
-<div class="grid2">
-  <div><h2>Draft edited most by topic</h2><div class="panel"><canvas id="intentChart"></canvas></div></div>
-  <div><h2>Is Axle's confidence trustworthy?</h2><div class="panel"><canvas id="confChart"></canvas>
-    <div class="sub" style="margin-top:10px">% of sends left verbatim, by Axle's self-rated draft confidence. Bars near-equal = the badge carries little signal.</div></div></div>
-</div>
+  // Most-edited drafts, last 7 days
+  const tone = { light: "ok", moderate: "warn", heavy: "bad" };
+  const digest = card(L("ad_digest"), D.digest.length ? table(
+    [th("ad_col_topic"), th("col_email"), th("ad_col_by"), th("col_when_b"), th("ad_col_match", 1), th("ad_col_edit"), th("ad_col_chars", 1)],
+    D.digest.map((d) => `<tr><td>${esc(intentLabel(lang, d.intent))}</td><td><a class="wb-link" href="${BASE.path}/item/${d.item}">#${d.item}</a></td><td>${esc(d.user)}</td><td class="ax-nowrap">${esc(date(d.sent_at))}</td>${num(pc(d.sim))}<td>${pill(t("ad_b_" + d.bucket), tone[d.bucket])}</td>${num(`${d.aiLen} → ${d.sentLen}`)}</tr>`))
+    : `<div class="wb-empty">${L("ad_digest_none")}</div>`, L("ad_digest_hint"));
 
-<div class="foot" id="foot"></div>
-</div>
-<script>
-const D = ${JSON.stringify(D)};
-const C = {ink:'#e7edf3',mut:'#8b97a6',line:'#2a3441',accent:'#4f9cf9',good:'#3ecf8e',warn:'#f5a623',bad:'#f56565',purple:'#a78bfa'};
-Chart.defaults.color = C.mut; Chart.defaults.borderColor = C.line; Chart.defaults.font.family='-apple-system,Segoe UI,Roboto,sans-serif';
-const fmtDate = s => s ? new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
-const daysAgo = s => s ? Math.round((Date.now()-new Date(s))/864e5) : null;
-
-// meta + KPIs
-document.getElementById('meta').textContent =
-  'Window ' + fmtDate(D.meta.windowStart) + ' – ' + fmtDate(D.meta.windowEnd) +
-  ' · generated ' + new Date(D.meta.generatedAt).toLocaleString('en-GB') + ' · ' + D.meta.dbPath;
-const info = D.mailbox.find(m=>m.mailbox==='info')||{}, drach = D.mailbox.find(m=>m.mailbox==='drachten')||{};
-const allGraded = D.perUser.reduce((a,u)=>a+u.verbatim+u.light+u.moderate+u.heavy,0);
-const allVerb = D.perUser.reduce((a,u)=>a+u.verbatim,0);
-const kpis = [
-  {k:D.meta.totalSends, s:'', l:'Replies sent via Axle'},
-  {k:allGraded?Math.round(100*allVerb/allGraded):0, s:'%', l:'Sent verbatim (no edit)'},
-  {k:info.sentPct, s:'%', l:'info@ items replied via Axle'},
-  {k:drach.sentPct, s:'%', l:'drachten@ items replied via Axle'},
-];
-document.getElementById('kpis').innerHTML = kpis.map(x=>
-  '<div class="card"><div class="kpi">'+x.k+'<small>'+x.s+'</small></div><div class="lbl">'+x.l+'</div></div>').join('');
-
-// user table
-const acc = u => { const t=u.verbatim+u.light+u.moderate+u.heavy||1; const seg=(n,c)=>n?'<i style="width:'+(100*n/t)+'%;background:'+c+'"></i>':'';
-  return '<div class="bar">'+seg(u.verbatim,C.good)+seg(u.light,C.accent)+seg(u.moderate,C.warn)+seg(u.heavy,C.bad)+'</div>'; };
-const staleness = d => { const a=daysAgo(d); if(a==null) return '<span class="pill bad">never</span>';
-  return fmtDate(d)+' '+(a>=3?'<span class="pill bad">'+a+'d ago</span>':a>=1?'<span class="pill warn">'+a+'d ago</span>':'<span class="pill good">today</span>'); };
-document.querySelector('#userTable tbody').innerHTML = D.perUser.filter(u=>u.sends>0||u.user!=='admin').map(u=>
-  '<tr><td>'+u.label+'</td><td class="num">'+u.sends+'</td><td class="num">'+u.verbatimPct+'%</td><td style="min-width:170px">'+acc(u)+'</td>'+
-  '<td class="num">'+(u.medianSim!=null?Math.round(u.medianSim*100)+'%':'—')+'</td><td>'+staleness(u.lastSend)+'</td></tr>').join('');
-
-// daily charts
-function trendChart(id, newArr, sentArr, color){
-  new Chart(document.getElementById(id),{type:'bar',
-    data:{labels:D.trend.days.map(d=>d.slice(5)),datasets:[
-      {label:'Items in',data:newArr,backgroundColor:C.line,borderRadius:3},
-      {label:'Sent via Axle',data:sentArr,backgroundColor:color,borderRadius:3}]},
-    options:{plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}}});
+  const start = D.meta.windowStart, end = D.meta.windowEnd;
+  const year = (s) => UI.ymdTZ(parseTS(s)).slice(0, 4);
+  const span = t("ad_window").replace("{from}", date(start, year(start) !== year(end))).replace("{to}", date(end, true));
+  return UI.deskPage(t("adoption"), user, `<p class="ax-sub">${esc(span)} · ${esc(t("updated").replace("{t}", UI.fmtDateTime(D.meta.generatedAt, lang)))}</p>
+<div class="ax-stats">${stats.map(([l, v]) => `<div class="wb-card ax-stat"><span class="wb-label">${esc(l)}</span><b>${esc(v)}</b></div>`).join("")}</div>
+${users}
+<h2 class="ax-h2">${L("ad_daily")}</h2>
+<div class="ax-grid2">${daily(info, D.trend.infoNew, D.trend.infoSent)}${daily(drach, D.trend.drachNew, D.trend.drachSent)}</div>
+<h2 class="ax-h2">${L("ad_resolved")}</h2>
+<div class="ax-grid2">${resolved(info)}${resolved(drach)}</div>
+${weekly}
+${digest}
+<div class="ax-grid2">${topics}${conf}</div>
+<p class="wb-hint">${L("ad_thresholds")}</p>`);
 }
-trendChart('infoChart', D.trend.infoNew, D.trend.infoSent, C.good);
-trendChart('drachChart', D.trend.drachNew, D.trend.drachSent, C.warn);
 
-// resolution doughnuts
-const RES_COLORS = {replied:C.good, done:C.accent, phone:C.purple, no_action:C.mut, open:C.warn};
-function resChart(id, mb){
-  const r = mb.resolution||{}; const keys=Object.keys(r);
-  new Chart(document.getElementById(id),{type:'doughnut',
-    data:{labels:keys.map(k=>({replied:'Replied via Axle',done:'Closed (sent elsewhere)',phone:'Phone',no_action:'No reply needed',open:'Still open'}[k]||k)),
-      datasets:[{data:keys.map(k=>r[k]),backgroundColor:keys.map(k=>RES_COLORS[k]||C.mut),borderWidth:0}]},
-    options:{cutout:'58%',plugins:{legend:{position:'right',labels:{boxWidth:12}},title:{display:true,text:mb.label,color:C.ink}}}});
-}
-resChart('resInfo', info); resChart('resDrach', drach);
-
-// intent edit rate
-new Chart(document.getElementById('intentChart'),{type:'bar',
-  data:{labels:D.intents.map(i=>i.intent),datasets:[
-    {label:'Verbatim %',data:D.intents.map(i=>i.verbatimPct),backgroundColor:C.good,borderRadius:3},
-    {label:'Moderate+heavy edit %',data:D.intents.map(i=>i.modHeavyPct),backgroundColor:C.bad,borderRadius:3}]},
-  options:{indexAxis:'y',plugins:{legend:{position:'bottom'}},scales:{x:{beginAtZero:true,max:100}}}});
-
-// weekly acceptance
-new Chart(document.getElementById('weekChart'),{type:'line',
-  data:{labels:D.weekly.map(w=>w.week+' (n='+w.n+')'),datasets:[
-    {label:'Verbatim %',data:D.weekly.map(w=>w.verbatimPct),borderColor:C.good,backgroundColor:C.good,tension:.25},
-    {label:'Moderate+heavy edit %',data:D.weekly.map(w=>w.modHeavyPct),borderColor:C.bad,backgroundColor:C.bad,tension:.25}]},
-  options:{plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true,max:100}}}});
-
-// digest
-const BASE = location.pathname.replace(/\\/adoption\\/?$/, '');
-const pillOf = b => b==='light'?'good':b==='moderate'?'warn':'bad';
-document.querySelector('#digestTable tbody').innerHTML = D.digest.length ? D.digest.map(d=>
-  '<tr><td>'+d.intent+'</td><td><a href="'+BASE+'/item/'+d.item+'">#'+d.item+'</a></td><td>'+d.user+'</td><td>'+fmtDate(d.sent_at)+'</td>'+
-  '<td class="num">'+d.sim+'%</td><td><span class="pill '+pillOf(d.bucket)+'">'+d.bucket+'</span></td><td class="num">'+d.aiLen+' → '+d.sentLen+'</td></tr>').join('')
-  : '<tr><td colspan="7" class="sub">No edited sends in the last 7 days.</td></tr>';
-
-// confidence calibration
-new Chart(document.getElementById('confChart'),{type:'bar',
-  data:{labels:D.confidence.map(c=>c.confidence+' (n='+c.n+')'),datasets:[
-    {label:'Sent verbatim %',data:D.confidence.map(c=>c.pct),backgroundColor:D.confidence.map(c=>c.confidence==='high'?C.good:c.confidence==='medium'?C.warn:C.bad),borderRadius:3}]},
-  options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,title:{display:true,text:'% verbatim'}}}}});
-
-document.getElementById('foot').innerHTML =
-  'Verbatim = sent text ≥97% identical to Axle\\'s AI draft · Light ≥80% · Moderate ≥45% · Heavy &lt;45%. '+
-  'Drachten figures cover the shared Rob/Huub login. Regenerated daily by the Axle Report task; run <code>node adoption-report.js</code> on the box for a fresh copy.';
-</script></body></html>`;
+// The command line's file opens on its own: the stylesheets inline, no scripts.
+function standalone(html) {
+  return html
+    .replace(/<link rel="stylesheet" href="[^"]*\/assets\/([a-z]+\.css)\?v=[^"]*">/g, (m, f) => `<style>${fs.readFileSync(path.join(__dirname, "assets", f), "utf8")}</style>`)
+    .replace(/<script src="[^"]*"[^>]*><\/script>\n?/g, "");
 }

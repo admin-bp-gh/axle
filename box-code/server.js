@@ -145,6 +145,10 @@ function composeConvKey() {
   return "compose:" + Date.now().toString(36) + "-" + crypto.randomBytes(4).toString("hex");
 }
 const asArray = (x) => (x == null ? [] : Array.isArray(x) ? x : [x]);
+// Touch (a), redesign 2026-10-07: a POST made in place by assets/axle.js carries X-Axle-Inline: 1 and
+// gets its refusal or failure as JSON (same status); every other request gets the page, as before.
+const inline = (req) => req.get("X-Axle-Inline") === "1";
+const inlineNo = (kind, message) => ({ ok: false, kind, message, unchanged: true });
 
 // AJAX: resolve a customer identifier to a recipient (or candidates) for the modal. Read-only.
 app.post("/compose/resolve", async (req, res) => {
@@ -197,7 +201,7 @@ app.post("/compose", async (req, res) => {
   const mode = req.body.mode === "send" ? "send" : "draft";          // "draft" = let Axle write it; "send" = verbatim send-now
   const composeSubject = String(req.body.subject || "").trim().slice(0, 200);
 
-  const fail = (msg) => res.status(400).send(page(t(lang, "compose_failed"), req.user,
+  const fail = (msg) => inline(req) ? res.status(400).json(inlineNo("refused", msg)) : res.status(400).send(page(t(lang, "compose_failed"), req.user,
     `<p><b>${esc(t(lang, "compose_failed"))}:</b> ${esc(msg)}</p><p><a href="${BASE.path}&#47;">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
 
   if (!who || !instruction) return fail(t(lang, "compose_need_who_instr"));
@@ -318,6 +322,7 @@ async function setRecipient(req, res) {
 
   const refuse = (msgKey, auditAction, auditDetail) => {
     audit(login, auditAction, w.id, auditDetail);
+    if (inline(req)) return res.status(400).json(inlineNo("refused", t(lang, msgKey)));
     return res.status(400).send(page(t(lang, "send_refused"), req.user,
       `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, msgKey))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   };
@@ -389,11 +394,13 @@ async function sendWorkItem(req, res, w) {
   if (isComposeItem) {
     if (!ACTION_COMPOSE_SEND) {
       audit(login, "compose_send_blocked", w.id, "action #3 disabled (draft-only)");
+      if (inline(req)) return res.status(403).json(inlineNo("refused", t(lang, "compose_send_blocked")));
       return res.status(403).send(page(t(lang, "send_refused"), req.user,
         `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "compose_send_blocked"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
     if (!w.recipient) {
       audit(login, "compose_send_no_recipient", w.id, "no confirmed recipient");
+      if (inline(req)) return res.status(400).json(inlineNo("refused", t(lang, "compose_need_pick")));
       return res.status(400).send(page(t(lang, "send_refused"), req.user,
         `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "compose_need_pick"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
@@ -407,11 +414,13 @@ async function sendWorkItem(req, res, w) {
   if (isCF) {
     if (!ACTION_CONTACTFORM_SEND) {
       audit(login, "contactform_send_blocked", w.id, "action #4 disabled (draft-only)");
+      if (inline(req)) return res.status(403).json(inlineNo("refused", t(lang, "cf_send_not_enabled")));
       return res.status(403).send(page(t(lang, "send_refused"), req.user,
         `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_send_not_enabled"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
     if (!w.recipient) {
       audit(login, "contactform_send_no_recipient", w.id, "no confirmed recipient");
+      if (inline(req)) return res.status(400).json(inlineNo("refused", t(lang, "cf_confirm_first")));
       return res.status(400).send(page(t(lang, "send_refused"), req.user,
         `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_confirm_first"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
@@ -424,11 +433,13 @@ async function sendWorkItem(req, res, w) {
   if (isRN) {
     if (!ACTION_RETURN_SEND) {
       audit(login, "return_send_blocked", w.id, "return-send action disabled (draft-only)");
+      if (inline(req)) return res.status(403).json(inlineNo("refused", t(lang, "cf_send_not_enabled")));
       return res.status(403).send(page(t(lang, "send_refused"), req.user,
         `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_send_not_enabled"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
     if (!w.recipient) {
       audit(login, "return_send_no_recipient", w.id, "no confirmed recipient");
+      if (inline(req)) return res.status(400).json(inlineNo("refused", t(lang, "cf_confirm_first")));
       return res.status(400).send(page(t(lang, "send_refused"), req.user,
         `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(t(lang, "cf_confirm_first"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
     }
@@ -454,6 +465,7 @@ async function sendWorkItem(req, res, w) {
             : SG.assembleSend(w, body, attRows);
   } catch (e) {
     audit(login, "send_refused", w.id, e.message.slice(0, 200));
+    if (inline(req)) return res.status(400).json(inlineNo("refused", e.message.replace(/^refused:\s*/, "")));
     return res.status(400).send(page("Send refused", req.user,
       `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(e.message)}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   }
@@ -517,6 +529,7 @@ async function sendWorkItem(req, res, w) {
     db.prepare("DELETE FROM sends WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ? AND status = 'pending'").run(w.id, payload.to, payload.sha256);
     db.prepare("DELETE FROM drafts WHERE id = ?").run(humanDraftId);   // remove the speculative human draft on failure
     audit(login, "send_failed", w.id, e.message.slice(0, 200));
+    if (inline(req)) return res.status(502).json(inlineNo("failed", e.message));
     res.status(502).send(page("Send failed", req.user,
       `<p><b>${esc(t(lang, "send_failed"))}:</b> ${esc(e.message)}</p><p>${esc(t(lang, "send_failed_note"))}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
   }
@@ -544,6 +557,7 @@ app.use((err, req, res, next) => {
   try { audit(req.user ? req.user.tailscale_login : "system", "route_error", itemId, `${req.method} ${req.path} - ${short}`); } catch (e) { /* never block the response */ }
   if (res.headersSent) return next(err);
   const lang = langOK(req.user && req.user.lang);
+  if (inline(req)) return res.status(500).json(inlineNo("error", short));
   const msg = `<div class="empty-state"><p class="muted">${esc(t(lang, "load_error"))}</p><p class="muted">${esc(short)}</p></div>`;
   // C4 / M-51: the detail-shaped error screen; Retry only for a GET
   const retryBtn = req.method === "GET" ? `<button type="button" class="retry" hx-get="${esc(req.originalUrl)}" hx-target="#workpane" hx-swap="innerHTML">${esc(t(lang, "retry"))}</button>` : "";

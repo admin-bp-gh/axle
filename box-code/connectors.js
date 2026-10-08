@@ -479,12 +479,38 @@ async function sapStockPrice(itemCodes) {
 //   check_first  OnHand <= 0, DropShip <> 'Y'    -> availability MUST be checked with the
 //                                                   supplier by a human (often NLA). Nothing
 //                                                   about availability may be promised.
-function availabilityOf(onHand, dropShipFlag) {
+//
+// 2026-10-08 (purchasing ETA, phase 4): out of stock with FREE inbound stock (dbo.vw_ItemEta,
+// inbound net of existing back orders) comes before the DropShip rule. The view is the single
+// source for ETAs, the same one RoverSync and the webshop read, so the three tiers match the
+// product page:
+//
+//   eta_confirmed  Confidence = 'confirmed'  -> the date
+//   eta_estimated  Confidence = 'estimated'  -> "around N weeks"; the date never reaches the model
+//   order_in       Confidence = 'none'       -> no date known: the standard 2-3 weeks
+function availabilityOf(onHand, dropShipFlag, eta, now = Date.now()) {
   const ds = String(dropShipFlag == null ? "" : dropShipFlag).trim().toUpperCase();
   if (Number(onHand) > 0) {
     return { state: "in_stock", statement: "In stock (never quote exact quantities)." };
   }
-  if (ds === "Y") {
+  const inbound = eta && Number(eta.FreeInboundQty) > 0;
+  if (inbound && eta.Confidence !== "none") {
+    const d = new Date(eta.NextFreeEta);
+    if (eta.Confidence === "confirmed") {
+      return {
+        state: "eta_confirmed",
+        statement: `Not in stock, on order. Expected in stock ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}. `
+                 + "Say ONLY that date, worded as expected; never explain how or from where we source it.",
+      };
+    }
+    const weeks = Math.max(1, Math.round((d - now) / 6048e5));
+    return {
+      state: "eta_estimated",
+      statement: `Not in stock, on order. Expected in around ${weeks} week${weeks === 1 ? "" : "s"}. `
+               + "Say ONLY 'around' that many weeks, NEVER a date; never explain how or from where we source it.",
+    };
+  }
+  if (inbound || ds === "Y") {
     return {
       state: "order_in",
       statement: "Not in stock — we order it in for the customer. Lead time 2-3 weeks. "
@@ -530,9 +556,8 @@ function assembleDossier(familyRows, matchedSet, handleMap = {}) {
       abc: (r.U_ABC || "").trim() || undefined,
       // NOT the raw U_WS_DropShip flag — see availabilityOf(). The model gets the finished
       // sentence, so there is no internal jargon left for it to invent an explanation from.
-      availability: availabilityOf(r.OnHand, r.U_WS_DropShip),
+      availability: availabilityOf(r.OnHand, r.U_WS_DropShip, r),
       on_hand: r.OnHand,
-      on_order: r.OnOrder,
       web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
       fitment: trim(r.U_Tag_Model, 200) || undefined,
       alternatives: trim(r.U_Alternatives, 200) || undefined,
@@ -593,13 +618,15 @@ async function partDossier(code) {
     `SELECT TOP (12) I.ItemCode, I.U_WS_LRNo,
             I.U_Code_AllMakes, I.U_Code_BritPart, I.U_Code_Hotbray,
             I.ItemName, I.U_Quality, I.U_ABC, I.U_WS_DropShip,
-            I.OnHand, I.OnOrder, P.Price AS WebPrice,
+            I.OnHand, P.Price AS WebPrice,
+            E.FreeInboundQty, E.NextFreeEta, E.Confidence,
             CAST(I.U_Tag_Model AS NVARCHAR(MAX)) AS U_Tag_Model,
             I.U_Alternatives,
             CAST(I.U_FAQ AS NVARCHAR(MAX)) AS U_FAQ,
             CAST(I.UserText AS NVARCHAR(MAX)) AS UserText
      FROM OITM I
      LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1
+     LEFT JOIN dbo.vw_ItemEta E ON E.ItemCode = I.ItemCode
      WHERE ${where}`
   )).recordset;
 
@@ -778,7 +805,7 @@ function rankCandidates(rows, tokens, opts = {}) {
     name: (r.ItemName || "").trim() || undefined,
     quality: (r.U_Quality || "").trim() || undefined,
     on_hand: r.OnHand,
-    availability: availabilityOf(r.OnHand, r.U_WS_DropShip),
+    availability: availabilityOf(r.OnHand, r.U_WS_DropShip, r),
     web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
     fitment: r.U_Tag_Model ? String(r.U_Tag_Model).replace(/\s+/g, " ").trim().slice(0, 200) : undefined,
     handle: (opts.handleMap || {})[r.ItemCode] || undefined,
@@ -844,8 +871,10 @@ async function partFinder(params = {}) {
   const rows = (await req.query(
     `SELECT TOP (80) I.ItemCode, I.U_WS_LRNo, I.U_Code_AllMakes, I.U_Code_BritPart, I.U_Code_Hotbray,
             I.ItemName, I.U_Quality, I.U_ABC, I.OnHand, I.U_WS_DropShip, P.Price AS WebPrice,
+            E.FreeInboundQty, E.NextFreeEta, E.Confidence,
             CAST(I.U_Tag_Model AS NVARCHAR(MAX)) AS U_Tag_Model, I.U_Alternatives${catSelect}
      FROM OITM I LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1
+     LEFT JOIN dbo.vw_ItemEta E ON E.ItemCode = I.ItemCode
      WHERE ${where.join(" AND ")}
      ORDER BY (${relevance}) DESC, CASE WHEN I.OnHand > 0 THEN 0 ELSE 1 END, I.U_ABC`
   )).recordset;

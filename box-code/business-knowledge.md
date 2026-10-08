@@ -31,14 +31,12 @@
   we buy the item in; it does NOT mean a supplier ships to the customer, and nothing is ever
   sent to a customer by anyone but us. The customer is told the lead time and nothing more -
   never that a part comes direct from a supplier, manufacturer or another warehouse.
-- Already on order (firmer ETA than the generic lead times above): if an out-of-stock item shows
-  OITM.OnOrder > 0, stock is already incoming. Strongest signal = an A/P Reserve Invoice
-  (OPCH.isIns='Y') with an OPEN line for the item (PCH1.LineStatus='O' / OpenQty>0): once invoiced
-  on a reserve invoice we generally receive it within ~1-2 weeks of the POSTING date (OPCH.DocDate -
-  NOT DocDueDate, which is the payment-due date). Quote that posting-date + 1-2 week window as the
-  expected arrival (worded as expected / subject to change; if it has already passed, treat the
-  goods as overdue and check with the team). If instead an open purchase-order line exists
-  (POR1.LineStatus='O'), use OPOR.DocDueDate. If neither exists, the item is not yet truly on order.
+- Already on order: the availability statement on each part (part_dossier / part_finder) is the
+  ONLY source for when out-of-stock goods are expected. It reads the purchasing ETA view
+  (inbound stock net of existing back orders, kept current every weekday), the same source as
+  the webshop product page. Confirmed: give the date ("expected in stock 21 Oct"). Estimated:
+  "around N weeks", never a date. No date known: the standard 2-3 weeks. Never work out an ETA
+  from OITM.OnOrder, purchase orders or reserve invoices.
 
 ## Part identification & fitment
 - This is the most common customer question type. Goal: give the customer the correct part

@@ -27,6 +27,21 @@ ok(/2-3 weeks/.test(availabilityOf(0, "Y").statement), "order_in statement carri
 ok(!/direct/i.test(availabilityOf(0, "Y").statement), "order_in statement never suggests direct supply");
 ok(/salesperson must check/i.test(availabilityOf(0, "N").statement), "check_first statement demands a human check");
 
+// Purchasing ETA tiers (dbo.vw_ItemEta). "now" is pinned so the week count is deterministic.
+const NOW = Date.UTC(2026, 9, 8);
+const eta = (Confidence, FreeInboundQty = 4, NextFreeEta = new Date(Date.UTC(2026, 9, 21))) => ({ FreeInboundQty, NextFreeEta, Confidence });
+let av = availabilityOf(0, "N", eta("confirmed"), NOW);
+ok(av.state === "eta_confirmed" && /Expected in stock 21 Oct\./.test(av.statement), "confirmed -> the date");
+av = availabilityOf(0, "Y", eta("estimated"), NOW);
+ok(av.state === "eta_estimated" && /around 2 weeks/.test(av.statement), "estimated -> around N weeks");
+ok(!/21|Oct\b/.test(av.statement), "estimated statement carries no date");
+ok(/around 1 week\./.test(availabilityOf(0, "Y", eta("estimated", 1, new Date(Date.UTC(2026, 9, 9))), NOW).statement), "estimated is never under a week");
+av = availabilityOf(0, "N", eta("none", 2, null), NOW);
+ok(av.state === "order_in" && /2-3 weeks/.test(av.statement), "none -> the standard 2-3 weeks, whatever the DropShip flag");
+ok(availabilityOf(2, "Y", eta("confirmed"), NOW).state === "in_stock", "stock on hand wins over inbound");
+ok(availabilityOf(0, "Y", eta("confirmed", 0), NOW).state === "order_in", "inbound fully allocated to back orders -> DropShip rule");
+ok(availabilityOf(0, "N", { FreeInboundQty: null, NextFreeEta: null, Confidence: null }, NOW).state === "check_first", "no view row (LEFT JOIN nulls) -> DropShip rule");
+
 // ---------------------------------------------------------------- claim gate: VIN
 // The exact sentence from item 1249.
 let r = applyClaimGate(ready("Yes, the IAB000033E is the correct unit for your 2005 Range Rover L322 with the M57 3.0 diesel and 5-speed Steptronic automatic — it matches your VIN perfectly."));

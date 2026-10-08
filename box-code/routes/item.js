@@ -13,13 +13,14 @@ const SCEN = require("../scenarios.js");
 const SAPDOC = require("../sap-doc-pdf.js");       // render a referenced SAP document to its Boyum print PDF (read-only)
 const DOCSUGGEST = require("../doc-suggest.js");   // Auto-attach: resolve + scope-filter referenced documents (read-only)
 const CUSTSUM = require("../customer-summary.js"); // FR-0002: read-only customer at-a-glance + detail
+const PHONE = require("../phone-numbers.js");       // a phone number's tel: target
 const RSET = require("../recipient-set.js");       // the single definition of an item's known addresses
 const FG = require("../forward-guard.js");         // handover forward: deterministic internal-only guardrails
 const FWD = require("../forward.js");              // handover forward: the Graph call (Mail.Send)
 const SG = require("../send-guard.js");            // only for needsConfirmedRecipient (the UI mirror of the send refusal)
 const DS = require("../draft-staleness.js");       // is the newest stored draft still this email's draft?
 const { db, audit } = require("../db.js");
-const { esc, t, page, splitQuoted, fmtSize, renderAttachments, paras, pill, icon, iconBtn,
+const { esc, t, page, splitQuoted, fmtSize, replyParas, pill, icon, iconBtn, TR_SKEL,
         fmtDateTime, statusWithRes, suggestCloseChip, intentLabel, langDisplay, ownerLabel,
         ownerChoices, renderTimeline, workPanes, shell, lazyQueue, deskPage, bannerHtml, bannerPage,
         notFoundPage } = require("../views/ui.js");
@@ -28,12 +29,27 @@ const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
         latestWithdrawn, latestDraftVersion } = require("./shared.js");
 const WA = require("../withdrawn-attempt.js");     // why the reply box is empty after a gate withdrew the draft
 const K = require("../knowledge.js");              // Teach Axle: text cap + sanitiser for flags
+const MS = require("../message-store.js");         // the thread's stored messages and attachments (files on disk)
+const SEARCH = require("../search.js");            // keeps the customer resolved here in the search index
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
+const FMT = require("../reply-format.js");        // formatting markers: the reply translates as plain text
+const CC = require("../cc-list.js");               // the reply's Cc (list, suggestions); routes in server.js
+const DM = require("../draft-media.js");           // the customer files the latest draft could not be shown
+const ED = require("../assets/axle-editor.js");    // the reply editor's model: its first view is rendered here
+const fs = require("fs");
+const path = require("path");
 
 // Resolver-backed address lookups, built once. Best-effort by contract (see recipient-set.js).
 const RSET_DEPS = RSET.defaultDeps();
 
 module.exports = function mountItem(app, { ACTION_COMPOSE_SEND, ACTION_CONTACTFORM_SEND, ACTION_RETURN_SEND, ACTION_OWNER_FORWARD }) {
+
+// The reply grammar for the editor in the browser (assets/axle-editor.js reads window.AxleFormat):
+// reply-format.js itself, wrapped at start-up so its module.exports lands there. One grammar for the
+// send path, the displays and the editor, never a copy. Served beside the static assets (express
+// static passes a miss on to the routes).
+const FMT_JS = `(function (module) {\n${fs.readFileSync(path.join(__dirname, "..", "reply-format.js"), "utf8")}\n})(window.AxleFormat = { exports: {} });\n`;
+app.get("/assets/reply-format.js", (req, res) => res.type("js").set("Cache-Control", "public, max-age=3600").send(FMT_JS));
 
 // A proposed subject for a return-request reply (NEW outbound, no "Re:"), order-ref-aware and in the
 // customer's language (work_items.language). Deterministic default; the salesperson can edit it.
@@ -183,7 +199,18 @@ function customerLine(s, lang, opts = {}) {
   const parts = [s.cardName || s.cardCode, s.cardCode, s.country, s.tier,
     count(s.openOrders, "cust_orders") + (s.openOrders ? ` (${fmtMoney(s.openOrdersVal, s.currency, lang)})` : ""),
     count(s.openInvoices, "cust_invoices") + (s.openInvoices ? ` (${fmtMoney(s.openInvOutstanding, s.currency, lang)})` : "")];
-  return `<p class="ax-cust">${parts.filter(Boolean).map(esc).join(" · ")}${s.frozen ? " " + pill(t(lang, "cust_frozen"), "warn") : ""}${opts.guess ? " " + pill(t(lang, "cust_best_guess"), "warn", `title="${esc(t(lang, "cust_best_guess_tip"))}"`) : ""}</p>`;
+  return `<p class="ax-cust">${parts.filter(Boolean).map(esc).join(" · ")}${s.frozen ? " " + pill(t(lang, "cust_frozen"), "warn") : ""}${opts.guess ? " " + pill(t(lang, "cust_best_guess"), "warn", `title="${esc(t(lang, "cust_best_guess_tip"))}"`) : ""}</p>${contactLine(s, lang)}`;
+}
+
+// The customer's addresses and numbers from SAP (round 2, request 13), a quiet second line: the
+// addresses as plain text to select and copy, the numbers as tel: links, a small icon before each
+// kind (its name for a screen reader). Nothing when SAP holds neither.
+function contactLine(s, lang) {
+  const emails = s.emails || [], phones = s.phones || [];
+  if (!emails.length && !phones.length) return "";
+  const kind = (ic, label, items) => items.map((html, n) => `<span class="ax-ci">${n ? "" : `${icon(ic)}<span class="wb-sr">${esc(t(lang, label))}: </span>`}${html}</span>`).join("");
+  const tel = (p) => { const n = PHONE.telHref(p); return n ? `<a class="wb-link" href="tel:${esc(n)}">${esc(p)}</a>` : esc(p); };
+  return `<p class="ax-contact">${kind("mail", "contact_email", emails.map(esc))}${kind("phone", "contact_phone", phones.map(tel))}</p>`;
 }
 
 // Voicemail items (Change A, A5): the names to ask for on the call back. Three read-only sources,
@@ -246,6 +273,7 @@ app.get("/item/:id", async (req, res) => {
     return res.status(404).send(notFoundPage(req.user));
   }
   audit(req.user.tailscale_login, "view_item", w.id, `lang=${lang}`);
+  MS.healItem(w);   // background: an open email's missing thread, or a failed listing or fetch, is tried again
   const isCompose = w.origin === "compose";   // a proactively-composed outbound item (no inbound email)
   const isContactForm = isContactFormItem(w);  // webshop contact-form msg: real recipient is in the body, not the sender
   const isRN = isReturnNotificationItem(w);    // Shopify "Return items" notification: reply goes to the order's customer
@@ -307,6 +335,7 @@ app.get("/item/:id", async (req, res) => {
     ? WA.withdrawnNotice(w, latestWithdrawn(w.id), latestDraftVersion(w.id), open) : null;
   const busy = w.status === "investigating";
   const closed = ["done", "archived"].includes(w.status);
+  const thread = MS.itemThread(w.id);   // the stored messages: their attachments, and the Cc the customer copied
   const editable = !busy && !closed;
   const sentRow = db.prepare("SELECT * FROM sends WHERE work_item_id = ? AND status = 'sent' ORDER BY id DESC LIMIT 1").get(w.id);
   // Send is allowed any time the item isn't flagged (questions need not be answered first);
@@ -346,6 +375,7 @@ app.get("/item/:id", async (req, res) => {
       const s = await CUSTSUM.summarise(card);
       const isVm = SG.isVoicemailItem(w);
       if (s) custHtml = customerLine(s, lang, { guess: isVm && !!w.caller_card_guess });
+      if (s) SEARCH.rememberCustomer(w.id, s.cardCode, s.cardName);
       if (isVm && s) custHtml += await voicemailPeople(w, card, lang);
       custName = (s && s.name) || "";
     } else if (!isCompose && !isContactForm && !isRN) {
@@ -405,7 +435,7 @@ app.get("/item/:id", async (req, res) => {
     const on = o === (w.owner || "");
     const target = !on && ACTION_OWNER_FORWARD ? FG.forwardTargetFor(w.mailbox, o) : null;
     const act = on ? "" : ` data-submit="ax-f-owner" name="owner" value="${esc(o)}"` + (target
-      ? ` data-confirm="${esc(t(lang, "owner_handover_confirm").replace("{owner}", o).replace("{address}", target.address))}" data-confirm-ok="${L("owner_handover_ok")}" data-next data-toast="${esc(t(lang, "handed_over").replace("{owner}", o))}"` : "");
+      ? ` data-confirm="${esc(t(lang, "owner_handover_confirm", { owner: o, address: target.address }))}" data-confirm-ok="${L("owner_handover_ok")}" data-next data-toast="${esc(t(lang, "handed_over", { owner: o }))}"` : "");
     return `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${on}"${act}><span>${esc(o)}${target ? `<small>${L("owner_handover_hint")}</small>` : ""}</span>${on ? icon("check", "wb-menu__mark") : ""}</button>`;
   };
   const ownerEditable = editable && ownerOpts.some((o) => o !== (w.owner || ""));
@@ -433,7 +463,7 @@ app.get("/item/:id", async (req, res) => {
   // --- The email: the customer's message (compose items have none: their information card
   // takes its place). Rendered by renderTimeline (linkified, folds, translation) + attachments.
   const mailCard = isCompose ? "" : `<section class="wb-card ax-mail" aria-label="${L("customer_email")}"><div class="wb-card__bd">
-    ${renderTimeline(w, lang, emailTr, emailTrPending)}${w.caller_info ? `<p class="ax-caller">${esc(w.caller_info)}</p>` : ""}${renderAttachments(w)}</div></section>`;
+    ${renderTimeline(w, lang, emailTr, emailTrPending, thread, DM.notShownFor(w))}${w.caller_info ? `<p class="ax-caller">${esc(w.caller_info)}</p>` : ""}</div></section>`;
 
   // --- The information cards of the new-outbound kinds, quiet, above the reply. Compose: the
   // trusted instruction and the resolved customer (compose_customer carries NO address; the
@@ -474,6 +504,10 @@ app.get("/item/:id", async (req, res) => {
   // says where the address came from; "changed" and "not on file" warn as the old Send button did.
   // The customer named in the "not on file" warning comes from the trusted SAP summary.
   const sendTo = RSET.activeRecipient(w, kind);
+  const ccList = CC.list(w);   // the Cc on the item now (cc-list.js)
+  // "Sent to X" or "Sent to X, cc Y, Z": the closed card's line and the Send toast.
+  const sentLine = (to, cc) => cc.length ? t(lang, "sent_to_cc", { to, cc: cc.join(", ") }) : `${t(lang, "sent_to")} ${to}`;
+  const parseList = (s) => { try { return JSON.parse(s || "[]") || []; } catch (e) { return []; } };
   const redirected = RSET.isRedirected(w, kind);
   const typedTo = RSET.norm(w.recipient_source) === "typed";
   const pickable = knownAddrs.filter((e) => e.source !== "typed");
@@ -492,15 +526,47 @@ app.get("/item/:id", async (req, res) => {
   const toPill = recipNeed
     ? (canPick ? `<button type="button" class="wb-pillbtn" data-tone="warn" data-menu="to" data-to-pill aria-haspopup="menu" aria-expanded="false">${L("recip_confirm_btn")}${icon("chevron-down")}</button>` : pill(t(lang, "recip_confirm_btn"), "warn"))
     : (canPick ? `<button type="button" class="wb-pillbtn" data-menu="to" data-to-pill aria-haspopup="menu" aria-expanded="false" title="${L("recip_change")}"><span>${esc(sendTo)}</span>${icon("chevron-down")}</button>` : `<span class="wb-pill" data-to-pill>${esc(sendTo)}</span>`);
+  // The typed-address warning, for a typed To and a typed Cc alike.
+  const typedWarn = (addr) => t(lang, "recip_typed_warn", { to: addr, customer: custName || t(lang, "recip_this_customer") });
+  // At the right of the To line: Add Cc (opens the Cc row; not drawn once the row shows) and
+  // Translate, the same control the customer's message carries (needContent: the customer writes in
+  // another language than the reader). Both stay put while the typed-address field is open.
+  const trReply = needContent ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-tr-reply aria-expanded="false" aria-controls="replytr" data-on="${L("hide_translation")}" data-off="${L("translate")}">${L("translate")}</button>` : "";
+  const ccOpen = canPick ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-cc-open aria-expanded="${ccList.length > 0}" aria-controls="ax-ccrow"${ccList.length ? " hidden" : ""}>${L("cc_add")}</button>` : "";
+  const toEnd = trReply || ccOpen ? `<span class="ax-to__end">${ccOpen}${trReply}</span>` : "";
+  const otherField = (form, attr, label) => `<div class="wb-input wb-input--sm ax-toother" ${attr} hidden><input type="email" name="addr" form="${form}" autocomplete="off" spellcheck="false" required placeholder="${L("recip_email_ph")}" aria-label="${esc(label)}"></div><button type="submit" form="${form}" class="wb-btn wb-btn--sm" ${attr} hidden>${L("recip_use")}</button>`;
   const toLine = `<div class="ax-to"><span class="wb-label">${L("to_label")}</span>${toPill}
     ${!recipNeed ? `<span class="wb-pill" data-tone="neutral" data-to-pill>${esc(srcLabel[curSrc] || curSrc)}</span>` : ""}
-    ${!recipNeed && typedTo ? `<span class="wb-pill" data-tone="warn" data-to-pill title="${esc(t(lang, "recip_typed_warn").replace("{to}", sendTo).replace("{customer}", custName || t(lang, "recip_this_customer")))}">${L("recip_typed_pill")}</span>`
+    ${!recipNeed && typedTo ? `<span class="wb-pill" data-tone="warn" data-to-pill title="${esc(typedWarn(sendTo))}">${L("recip_typed_pill")}</span>`
       : !recipNeed && redirected ? `<span class="wb-pill" data-tone="warn" data-to-pill title="${L("recip_changed_title")}">${L("recip_changed_pill")}</span>` : ""}
-    ${canPick ? `<div class="wb-input wb-input--sm ax-toother" data-to-other-field hidden><input type="email" name="addr" form="ax-f-typed" autocomplete="off" spellcheck="false" required placeholder="${L("recip_email_ph")}" aria-label="${L("recip_other")}"></div><button type="submit" form="ax-f-typed" class="wb-btn wb-btn--sm" data-to-other-field hidden>${L("recip_use")}</button>${iconBtn(t(lang, "cancel"), "x", "data-to-cancel data-to-other-field hidden", "wb-btn--sm")}` : ""}</div>`;
+    ${canPick ? otherField("ax-f-typed", "data-to-other-field", t(lang, "recip_other")) + iconBtn(t(lang, "cancel"), "x", "data-to-cancel data-to-other-field hidden", "wb-btn--sm") : ""}${toEnd}</div>`;
 
-  // --- The reply card (editable). The questions banner leads when Axle is waiting for an answer;
-  // the withdrawn notice explains an empty box. The subject of a new outbound sits above the text.
-  // The text auto-grows; its AI seed sits in a hidden, name-less textarea so it never posts.
+  // --- The Cc row (round 2, request 8), under the To line wherever an address can be picked: the
+  // Cc as removable pills (a typed one amber, as a typed To), Add with the suggestions (the known
+  // set and the addresses the customer copied, cc-list.js) and "Other address...", which reveals a
+  // field exactly as the To line's does. Adding and removing post in place to the Cc routes in
+  // server.js. Drawn hidden while the Cc is empty, until Add Cc opens it.
+  const ccSugg = canPick ? CC.suggestions(w, knownAddrs, thread, sendTo) : [];
+  const ccMenu = canPick && ccList.length < CC.MAX_CC ? `<template id="m-cc" data-title="${L("cc_menu")}" data-align="start">
+    ${ccSugg.map((e) => `<button type="button" class="wb-menu__item" role="menuitem" data-submit="ax-f-cc" name="addr" value="${esc(e.addr)}"><span>${esc(e.addr)}<small>${esc(e.source === "copied" ? t(lang, "cc_src_copied") : srcLabel.onfile)}</small></span></button>`).join("")}
+    ${ccSugg.length ? `<div class="wb-menu__sep" role="separator"></div>` : ""}
+    <button type="button" class="wb-menu__item" role="menuitem" data-cc-other><span>${L("recip_other")}</span></button></template>` : "";
+  const ccPill = (e) => {
+    const typed = e.source === "typed";
+    return `<span class="wb-pill" data-tone="${typed ? "warn" : "neutral"}" data-cc-pill${typed ? ` title="${esc(typedWarn(e.addr))}"` : ""}><span>${esc(e.addr)}</span>${typed ? `<span class="wb-sr">, ${L("recip_typed_pill")}</span>` : ""}<button type="submit" form="ax-f-ccrm" name="addr" value="${esc(e.addr)}" class="wb-clear" aria-label="${esc(t(lang, "cc_remove", { addr: e.addr }))}" title="${L("remove")}">${icon("x")}</button></span>`;
+  };
+  // At the cap (CC.MAX_CC) Add gives way to a quiet note: the only thing it could still do is refuse.
+  const ccFull = ccList.length >= CC.MAX_CC;
+  const ccRow = canPick ? `<div class="ax-to ax-cc" id="ax-ccrow"${ccList.length ? "" : " hidden"}><span class="wb-label">${L("cc_label")}</span>${ccList.map(ccPill).join("")}
+    ${ccFull ? `<span class="wb-hint">${esc(t(lang, "cc_too_many").replace("{n}", CC.MAX_CC))}</span>`
+      : `<button type="button" class="wb-pillbtn" data-menu="cc" data-cc-pill aria-haspopup="menu" aria-expanded="false" aria-label="${L("cc_menu")}">${icon("plus")}<span>${L("cc_more")}</span></button>
+    ${otherField("ax-f-cctyped", "data-cc-other-field", t(lang, "cc_menu"))}${iconBtn(t(lang, "cancel"), "x", "data-cc-cancel data-cc-other-field hidden", "wb-btn--sm")}`}</div>` : "";
+
+  // --- The reply card (editable). The withdrawn notice explains an empty box; the subject of a new
+  // outbound sits above the text. The text is the rich editor (assets/axle-editor.js, its first view
+  // rendered here from the stored text) over the hidden reply field that holds the stored text and
+  // posts; the AI seed sits in a hidden, name-less textarea so it never posts. Axle's questions, when
+  // it waits for an answer, sit with the redraft line below the card.
   const needsAnswers = editable && w.status === "awaiting_input" && open.length > 0 && !w.injection_flag;
   const qBanner = needsAnswers ? banner("warn", `${L("needs_input")}<details class="wb-details"><summary>${esc(t(lang, questions.length === 1 ? "q_1" : "q_n").replace("{n}", questions.length))}${icon("chevron-right")}</summary><ol class="ax-qs">${questions.map((q) =>
     `<li><span${qTrAttr(q)}>${esc(qText(q))}</span>${q.kind === "physical" ? pill(t(lang, "check_shelf")) : ""}${q.answer ? `<br><b>${L("answer")}:</b> ${esc(q.answer)} <span class="wb-hint">(${esc(q.answered_by)}, ${esc(fmtDateTime(q.answered_at, lang))})</span>` : ""}</li>`).join("")}</ol></details>`) : "";
@@ -520,13 +586,16 @@ app.get("/item/:id", async (req, res) => {
   const teachFlags = db.prepare("SELECT * FROM teach_flags WHERE work_item_id = ? ORDER BY id").all(w.id);
   const teachBtn = `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-teach">${icon("note")}<span>${L("teach_title")}</span>${teachFlags.length ? `<span class="wb-count">${teachFlags.length}</span>` : ""}</button>`;
   const docsRow = editable && !isContactForm && !isRN ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
-  const replyCard = editable ? `<section class="wb-card ax-reply" aria-label="${L("reply")}" data-max="${MAX_ATTACH_BYTES}">${toLine}${offBanner}${qBanner}${wdBanner}${subjectField}
-    <div class="wb-input wb-input--area wb-input--quiet ax-text"><textarea id="replybox" name="reply" aria-label="${L("reply")}">${esc(replyText)}</textarea></div>
+  const fmtBtn = (f) => `<button type="button" class="wb-btn wb-btn--ghost wb-btn--icon wb-btn--sm" data-fmt="${f}" aria-pressed="false" aria-label="${L("fmt_" + f)}" title="${L("fmt_" + f)}">${icon(f)}</button>`;
+  const replyCard = editable ? `<section class="wb-card ax-reply" aria-label="${L("reply")}" data-max="${MAX_ATTACH_BYTES}">${toLine}${ccRow}${offBanner}${wdBanner}${subjectField}
+    <div class="ax-text"><div class="ax-edbar" role="toolbar" aria-label="${L("fmt_toolbar")}" aria-controls="replyed">${["bold", "italic", "list"].map(fmtBtn).join("")}</div>
+      <div class="ax-ed" id="replyed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="${L("reply")}" data-placeholder="${L("reply_ph")}" spellcheck="true">${ED.toHtml(ED.parse(replyText))}</div>
+      <textarea id="replybox" name="reply" hidden>${esc(replyText)}</textarea></div>
     ${aiSeed ? `<textarea id="ai_seed" hidden readonly>${esc(aiSeed.body)}</textarea>` : ""}
-    <div class="ax-tr" id="replytr" hidden><p class="wb-hint">${L("translate")}</p><div class="ax-msg"></div></div>
+    ${needContent ? `<div class="ax-tr" id="replytr" hidden><p class="wb-hint">${esc(t(lang, "reply_tr_note").replace("{lang}", langDisplay(lang, custLang)))}</p><div class="ax-msg">${TR_SKEL(lang)}</div></div>` : ""}
     <div class="ax-atts"${atts.length ? "" : " hidden"}>${atts.map((a) => attChip(a, true)).join("")}</div>
     <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>
-      ${needContent ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-tr-reply data-on="${L("hide_translation")}" data-off="${L("translate")}">${icon("transfer")}<span>${L("translate")}</span></button>` : ""}
+      <button type="button" class="wb-btn wb-btn--ghost wb-btn--sm ax-cam" data-camera>${icon("camera")}<span>${L("camera")}</span></button><input type="file" id="att_cam" accept="image/*" capture="environment" hidden>
       ${teachBtn}
       ${aiSeed ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-reset data-confirm="${L("reset_ai_confirm")}" data-confirm-ok="${L("reset_ai")}" hidden>${icon("refresh")}<span>${L("reset_ai")}</span></button>` : ""}${saveMark}</div>
     ${docsRow}</section>` : "";
@@ -539,8 +608,8 @@ app.get("/item/:id", async (req, res) => {
   // Closed: the reply as sent, read-only, with one line naming who it went to and when (office time).
   const shownText = (sentRow && sentRow.body) || replyText;
   const closedCard = closed && (shownText || atts.length) ? `<section class="wb-card ax-reply" aria-label="${L("reply")}">
-    ${sentRow ? `<p class="ax-sentline">${icon("check")}${L("sent_to")} ${esc(sentRow.to_addr)} · ${esc(fmtDateTime(sentRow.sent_at, lang))}</p>` : ""}
-    ${shownText ? `<div class="ax-msg">${paras(shownText)}</div>` : ""}
+    ${sentRow ? `<p class="ax-sentline">${icon("check")}${esc(sentLine(sentRow.to_addr, parseList(sentRow.cc_json)))} · ${esc(fmtDateTime(sentRow.sent_at, lang))}</p>` : ""}
+    ${shownText ? `<div class="ax-msg">${replyParas(shownText)}</div>` : ""}
     ${atts.length ? `<div class="ax-atts">${atts.map((a) => attChip(a, false)).join("")}</div>` : ""}
     <div class="ax-tools">${teachBtn}</div></section>` : "";
 
@@ -549,28 +618,27 @@ app.get("/item/:id", async (req, res) => {
   const redraft = editable ? `<div class="ax-redraft"><div class="wb-input wb-input--area ax-fb"><textarea name="feedback" rows="1" placeholder="${L(needsAnswers ? "answer_ph" : "feedback_ph")}" aria-label="${L("feedback_ph")}">${esc(w.feedback || "")}</textarea></div><button type="submit" class="wb-btn" name="action" value="redraft" data-inline title="${L("redraft_hint")}">${L("redraft")}</button></div>`
     : busy ? `<div class="ax-redraft"><div class="wb-input"><input disabled value="${esc(w.feedback || "")}" placeholder="${L("feedback_ph")}" aria-label="${L("feedback_ph")}"></div><button type="button" class="wb-btn" disabled>${L("redraft")}</button></div>` : "";
   // The previous round's draft, folded and read-only (plain text, never a field, so it cannot post).
-  const prevDraft = supersededRow ? `<details class="wb-disclosure ax-prev"><summary>${L("prev_draft_summary")}${icon("chevron-right")}</summary><div><p class="wb-hint">${L("prev_draft_hint")}</p><div class="ax-msg">${paras(supersededRow.body)}</div></div></details>` : "";
+  const prevDraft = supersededRow ? `<details class="wb-disclosure ax-prev"><summary>${L("prev_draft_summary")}${icon("chevron-right")}</summary><div><p class="wb-hint">${L("prev_draft_hint")}</p><div class="ax-msg">${replyParas(supersededRow.body)}</div></div></details>` : "";
 
-  const replyCol = isVoicemail && !closed ? "" : `<div class="ax-replycol">${isCompose ? "" : infoCard}${replyCard}${draftingCard}${closedCard}${redraft}${prevDraft}</div>`;
+  // Axle's questions directly above the redraft line, one unit with it (the answer goes in that field).
+  const ask = qBanner ? `<div class="ax-ask">${qBanner}${redraft}</div>` : redraft;
+  const replyCol = isVoicemail && !closed ? "" : `<div class="ax-replycol">${isCompose ? "" : infoCard}${replyCard}${draftingCard}${closedCard}${ask}${prevDraft}</div>`;
   const pair = `<div class="ax-pair">${isCompose ? infoCard : mailCard}${replyCol}</div>`;
 
   // --- The dock (from 640 up) and the phone bar. Send posts the work form to /send in place and
-  // locks while it runs; the next email opens on success. Mark done, Resolved by phone, Archive and
-  // Reopen post /status; Create order opens Ratchet's builder in a new tab (inbound items only);
-  // More holds the rarer actions. Every rule for a disabled Send is the old one (canSend).
+  // locks while it runs; the next email opens on success. Mark done, Reopen and a voicemail's
+  // Resolved by phone post /status; Create order opens Ratchet's builder in a new tab (inbound items
+  // only); More holds the rarer actions. Every rule for a disabled Send is the old one (canSend).
   // inBar: the phone bar's short label (two actions and More must fit at 360 in Dutch too).
   const markDone = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="done" class="wb-btn" data-next data-toast="${L("marked_done")}" title="${L("done_tip")}"${busy ? " disabled" : ""}>${icon("check")}<span>${L(inBar ? "mark_done_bar" : "mark_done")}</span></button>`;
   const phoneBtn = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="phone" class="wb-btn wb-btn--primary" data-next data-toast="${L("mark_phone")}" title="${L("phone_tip")}"><span>${L(inBar ? "mark_phone_bar" : "mark_phone")}</span></button>`;
-  const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(t(lang, "sent_to") + " " + sendTo)}"${canSend ? "" : " disabled"}>${icon("send")}<span>${L("send")}</span></button>`;
+  const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}"${canSend ? "" : " disabled"}>${icon("send")}<span>${L("send")}</span></button>`;
   const ratchet = isCompose ? "" : busy ? `<button type="button" class="wb-btn" disabled>${icon("plus")}<span>${L("new_order_ratchet")}</span></button>`
     : `<a class="wb-btn" href="/#/ratchet/new?axle=${w.id}" target="_blank" rel="noopener" title="${L("new_order_ratchet_tip")}">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>`;
   const moreBtn = (icn) => icn ? `<button type="button" class="wb-btn wb-btn--icon" data-menu="pmore" aria-haspopup="menu" aria-expanded="false" aria-label="${L("more")}" title="${L("more")}"${busy ? " disabled" : ""}>${icon("dots")}</button>`
     : `<button type="button" class="wb-btn wb-btn--ghost" data-menu="more" aria-haspopup="menu" aria-expanded="false"${busy ? " disabled" : ""}>${icon("dots")}<span>${L("more")}</span></button>`;
   const reopen = `<button type="submit" form="ax-f-status" name="to" value="reopen" class="wb-btn">${icon("refresh")}<span>${L("reopen")}</span></button>`;
-  const statusRow = (to, label, toast) => `<button type="button" class="wb-menu__item" role="menuitem" data-submit="ax-f-status" name="to" value="${to}" data-next data-toast="${L(toast)}"><span>${L(label)}</span></button>`;
   const moreRows = [
-    isVoicemail ? "" : statusRow("phone", "mark_phone", "mark_phone"),
-    statusRow("archived", "archive", "archived_toast"),
     isCompose ? "" : `<button type="button" class="wb-menu__item" role="menuitem" data-remote="${U("/block")}" data-remote-title="${L("block_title")}"><span>${L("block_sender")}</span></button>`,
     `<button type="button" class="wb-menu__item" role="menuitem" data-overlay="ax-lang"><span>${L("change_lang")}</span></button>`,
     admin ? `<div class="wb-menu__sep" role="separator"></div><button type="button" class="wb-menu__item" role="menuitem" data-overlay="ax-brief"><span>${L("what_checked")}</span></button>` : "",
@@ -595,6 +663,7 @@ app.get("/item/:id", async (req, res) => {
     !closed && !busy ? `<template id="m-more" data-title="${L("more")}" data-align="end">${moreRows}</template><template id="m-pmore" data-title="${L("more")}" data-align="end">${ratchetRow}${moreRows}</template>` : "",
     ownerEditable ? `<template id="m-owner" data-title="${L("owner_fix")}" data-align="start">${ownerOpts.map(ownerRow).join("")}</template>` : "",
     toMenu,
+    ccMenu,
     editable ? overlay("ax-lang", t(lang, "lang_fix"), lang,
       `<div class="ax-choices" role="group">${LANGS.map((l) => l === (w.language || "")
         ? `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="true" data-close><span>${l.toUpperCase()} · ${esc(langDisplay(lang, l))}</span>${icon("check", "wb-menu__mark")}</button>`
@@ -620,7 +689,9 @@ app.get("/item/:id", async (req, res) => {
     <form id="ax-f-status" method="post" action="${U("/status")}" data-inline></form>
     ${ownerEditable ? `<form id="ax-f-owner" method="post" action="${U("/owner")}" data-inline></form>` : ""}
     ${canPick ? `<form id="ax-f-recip" method="post" action="${U("/recipient")}" data-inline><input type="hidden" name="mode" value="known"><input type="hidden" name="use" value="1"></form>
-    <form id="ax-f-typed" method="post" action="${U("/recipient")}" data-inline novalidate><input type="hidden" name="mode" value="typed"><input type="hidden" name="use" value="1"></form>` : ""}
+    <form id="ax-f-typed" method="post" action="${U("/recipient")}" data-inline novalidate><input type="hidden" name="mode" value="typed"><input type="hidden" name="use" value="1"></form>
+    <form id="ax-f-cc" method="post" action="${U("/cc")}" data-inline></form><form id="ax-f-cctyped" method="post" action="${U("/cc")}" data-inline novalidate></form>
+    <form id="ax-f-ccrm" method="post" action="${U("/cc/remove")}" data-inline></form>` : ""}
     ${editable ? `<form id="ax-f-lang" method="post" action="${U("/language")}" data-inline></form>` : ""}
     ${sugg ? sugg.forms : ""}
     ${teachFlags.filter((f) => f.status === "pending").map((f) => `<form id="ax-f-tw-${f.id}" method="post" action="${U(`/teach/${f.id}/withdraw`)}" data-inline></form>`).join("")}
@@ -650,9 +721,32 @@ app.get("/item/:id", async (req, res) => {
 });
 
 
-// Open an attachment: fetched from Graph on demand, streamed to the browser.
-// Untrusted content rules: PDFs/images render inline; everything else (incl.
-// HTML/SVG, which can carry active content) is forced to download; nosniff always.
+// One stored attachment of this item (message-store.js), by its row id: from disk, fetched from
+// Graph first when the file is missing. Untrusted content rules: png, jpeg, gif, webp and PDF
+// inline as exactly that type, everything else (HTML and SVG included) a download; nosniff always.
+// The bytes behind a row id never change, so the browser may keep them.
+app.get("/item/:id/file/:attId", async (req, res) => {
+  const w = db.prepare("SELECT id, mailbox FROM work_items WHERE id = ?").get(req.params.id);
+  let f = null, err = null;
+  try { f = w && await MS.loadAttachment(w.id, parseInt(req.params.attId, 10)); }
+  catch (e) { err = e; }
+  if (!f && !err) return res.status(404).send(bannerPage(t(req.user.lang, "att_title"), req.user, t(req.user.lang, "att_missing"), { back: w ? backTo(req, w) : undefined }));
+  if (err) {
+    audit(req.user.tailscale_login, "attachment_error", w.id, String(err.message).slice(0, 200));
+    return res.status(502).send(deskPage(t(req.user.lang, "att_title"), req.user,
+      bannerHtml("bad", `${esc(t(req.user.lang, "att_fetch_failed"))}<span class="ax-link">${esc(err.message)}</span>`), { back: backTo(req, w) }));
+  }
+  audit(req.user.tailscale_login, "open_attachment", w.id, `${f.att.name} (${fmtSize(f.att.size)})`);
+  const headers = {
+    "Content-Type": f.plan.contentType, "Content-Disposition": f.plan.disposition,
+    "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=31536000, immutable",
+  };
+  if (f.buffer) return res.set(headers).send(f.buffer);
+  res.sendFile(f.path, { headers, cacheControl: false, lastModified: false, dotfiles: "allow" });
+});
+
+// The old index-based link (open tabs from before round 2): the same attachment's stored row when
+// there is one, else a live fetch from Graph as before.
 app.get("/item/:id/attachment/:idx", async (req, res) => {
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(notFoundPage(req.user));
@@ -660,17 +754,13 @@ app.get("/item/:id/attachment/:idx", async (req, res) => {
   try { atts = JSON.parse(w.attachments_json || "[]"); } catch (e) { /* ignore */ }
   const a = atts[parseInt(req.params.idx, 10)];
   if (!a) return res.status(404).send(bannerPage(t(req.user.lang, "att_title"), req.user, t(req.user.lang, "att_missing"), { back: backTo(req, w) }));
+  const row = db.prepare("SELECT id FROM message_attachments WHERE work_item_id = ? AND graph_att_id = ?").get(w.id, a.id);
+  if (row) return res.redirect(BASE.url(`/item/${w.id}/file/${row.id}`));
   try {
     const file = await C.getAttachment(MAILBOX_OF[w.mailbox], w.latest_message_id, a.id);
     audit(req.user.tailscale_login, "open_attachment", w.id, `${a.name} (${fmtSize(file.size)})`);
-    const ct = String(file.contentType || "application/octet-stream").split(";")[0].trim().toLowerCase();
-    const inlineOk = ct === "application/pdf" || /^image\/(png|jpe?g|gif|webp)$/.test(ct);
-    const fname = String(file.name || a.name || "attachment").replace(/[^\w. ()\[\]-]/g, "_");
-    res.set({
-      "Content-Type": inlineOk ? ct : "application/octet-stream",
-      "Content-Disposition": `${inlineOk ? "inline" : "attachment"}; filename="${fname}"`,
-      "X-Content-Type-Options": "nosniff",
-    });
+    const plan = MS.servePlan(file.contentType, file.name || a.name);
+    res.set({ "Content-Type": plan.contentType, "Content-Disposition": plan.disposition, "X-Content-Type-Options": "nosniff" });
     res.send(Buffer.from(file.contentBytes, "base64"));
   } catch (e) {
     audit(req.user.tailscale_login, "attachment_error", w.id, e.message.slice(0, 200));
@@ -843,7 +933,7 @@ app.get("/item/:id/ratchet-intake.json", async (req, res) => {
 app.post("/item/:id/translate-reply", async (req, res) => {
   const text = String(req.body.text || "");
   if (!text.trim()) return res.json({ text: "" });
-  try { res.json({ text: await TR.translate(anthropic, req.user.lang, text) }); }
+  try { res.json({ text: await TR.translate(anthropic, req.user.lang, FMT.toPlain(text)) }); }   // the words, not the markers
   catch (e) { res.status(502).json({ error: e.message.slice(0, 200) }); }
 });
 

@@ -36,6 +36,9 @@ const OUTLOOK = require("./outlook-close.js");   // Outlook -> Axle: close what 
 const OBLOCK = require("./outlook-block.js");    // Axle -> Outlook: file blocked senders out of the inbox
 const ACK = require("./acknowledgement.js");     // no_reply courtesy line: when to keep it, and what may be in it
 const US = require("./unread-sweep.js");         // which unread mail the watermark missed may be added to a run
+const MS = require("./message-store.js");        // every message of the thread and its attachments, files on disk
+const SEARCH = require("./search.js");           // the search index row of each item touched
+const DM = require("./draft-media.js");          // the customer's images and PDFs shown to the drafter
 const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
@@ -123,9 +126,13 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (!rule || rule.action === "archive" || rule.action === "junk") return { skip: "noise" };
 
   const existing = db
-    .prepare("SELECT id, latest_message_id, sender_email, recipient, origin FROM work_items WHERE mailbox = ? AND conversation_key = ?")
+    .prepare("SELECT id, latest_message_id, sender_email, recipient, cc_json, origin FROM work_items WHERE mailbox = ? AND conversation_key = ?")
     .get(boxName, key);
-  if (existing && existing.latest_message_id === email.id) return { skip: "unchanged" };
+  if (existing && existing.latest_message_id === email.id) {
+    // Nothing new to draft, but the thread is still stored and a failed listing or fetch retried.
+    await MS.storeThread(existing.id, boxName, MAILBOX, msgs);
+    return { skip: "unchanged" };
+  }
 
   const cls = await E.classify(anthropic, email, history);
 
@@ -137,13 +144,6 @@ async function processThread(anthropic, key, msgs, ctx) {
     try {
       callerMatch = await C.lookupCaller(email);
     } catch (e) { audit("system", "voicemail_lookup_error", existing ? existing.id : null, e.message.slice(0, 150)); }
-  }
-
-  // Attachment metadata for the newest inbound email (failure here never blocks the item).
-  let atts = [];
-  if (email.hasAttachments || email.hasInlineImages) {
-    try { atts = await C.listAttachments(MAILBOX, email.id); }
-    catch (e) { audit("system", "attachments_error", existing ? existing.id : null, e.message.slice(0, 150)); }
   }
 
   let itemId;
@@ -169,12 +169,22 @@ async function processThread(anthropic, key, msgs, ctx) {
       audit("system", "recipient_cleared", itemId,
         `correspondent changed ${known} -> ${incoming}; dropped confirmed recipient ${existing.recipient}`);
     }
+    // The Cc was chosen for the previous correspondent too (round 2): it goes the same way.
+    if (existing.origin !== "compose" && existing.cc_json && incoming && known && incoming !== known) {
+      db.prepare("UPDATE work_items SET cc_json = NULL WHERE id = ?").run(itemId);
+      audit("system", "cc_cleared", itemId, `correspondent changed ${known} -> ${incoming}; dropped Cc ${existing.cc_json}`.slice(0, 300));
+    }
   } else {
     itemId = db.prepare(
       "INSERT INTO work_items (mailbox, conversation_key, sender_email, sender_name, subject, email_text, email_received) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ).run(boxName, key, email.from.address, email.from.name, email.subject, email.text, email.received).lastInsertRowid;
     audit("system", "item_created", itemId, `rule=${rule.id}`);
   }
+
+  // Every message of the thread and the attachments of each (listed whatever Graph's hasAttachments
+  // says), files copied to disk. attachments_json keeps the newest message's list for the readers
+  // that still use it; null when that listing failed (retried later, never stored as "none").
+  const atts = await MS.storeThread(itemId, boxName, MAILBOX, msgs);
 
   // A new inbound message makes the item live again, so every trace of a PREVIOUS close is
   // cleared here: status back to 'new', the engine's "no reply needed" suggestion reset, and
@@ -191,7 +201,7 @@ async function processThread(anthropic, key, msgs, ctx) {
   ).run(
     email.subject, cls.language, cls.intent, PRIO[cls.priority] || 2, cls.summary,
     cls.injection_suspected ? 1 : 0, email.id, rule.id, rule.owner || null,
-    email.text, email.received, JSON.stringify(atts), itemId
+    email.text, email.received, atts ? JSON.stringify(atts) : null, itemId
   );
   // Caller line, card, guess flag and matched contact in one write (a match without a card clears it).
   if (callerMatch) setCallerMatch(itemId, callerMatch);
@@ -243,6 +253,9 @@ async function processThread(anthropic, key, msgs, ctx) {
     }
   }
 
+  // The search row: subject, summary, body, caller and the resolved customer are all written above.
+  SEARCH.reindexItem(itemId);
+
   if (!rule.draft) {
     await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, cls.injection_suspected, null, null, { text: email.text, intent: cls.intent });
     return { itemId, status: "new", drafted: false, threadLen: msgs.length };
@@ -251,8 +264,10 @@ async function processThread(anthropic, key, msgs, ctx) {
   // Agentic investigation + draft (same engine as drafts2).
   const seed = await E.gatherSeed(email, history);
   if (callerInfo) seed.caller_match = callerInfo;
+  const media = await DM.prepare(itemId, boxName, "system");   // never throws; the thread is stored above
   const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX, {
     exemplars: { intent: cls.intent, language: cls.language, mailbox: boxName, excludeItemId: itemId },
+    media,
   });
 
   // no_reply NEVER auto-closes (threat-model T13; and "no email reply" can still mean work,
@@ -483,6 +498,13 @@ async function runBoxes(boxes, opts = {}) {
       }
     }
   } catch (e) { console.log("Outlook-block: ERROR " + e.message); }
+
+  // The attachment files are a cache: drop those of emails closed more than 90 days ago (the rows
+  // stay, a later view fetches again). Riding on the ingest run is the only periodic mechanism.
+  try {
+    const pruned = MS.pruneClosed();
+    if (pruned) console.log(`Attachments: pruned ${pruned} cached file(s) of emails closed over 90 days ago`);
+  } catch (e) { console.log("Attachments prune: ERROR " + e.message); }
 }
 
 module.exports = { runBoxes };

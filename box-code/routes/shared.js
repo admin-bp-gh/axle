@@ -18,6 +18,8 @@ const CA = require("../claim-attach.js");          // carrier claims: stage the 
 const CS = require("../claim-statement.js");       // the generated purchase-value statement
 const SAPDOC = require("../sap-doc-pdf.js");       // read-only Boyum print renderer
 const C = require("../connectors.js");             // MyParcel + SAP reads for the claim dossier
+const SEARCH = require("../search.js");           // the compose subject is searchable
+const DM = require("../draft-media.js");          // the customer's images and PDFs shown to the drafter
 const { db, audit } = require("../db.js");
 const { t, fmtSize } = require("../views/ui.js");
 
@@ -128,6 +130,7 @@ async function runRedraft(itemId, login) {
       const subj = (result.subject || "").trim();
       db.prepare("UPDATE work_items SET injection_flag = ?, subject = COALESCE(NULLIF(?, ''), subject), updated_at = datetime('now') WHERE id = ?")
         .run(result.injection_suspected ? 1 : 0, subj, itemId);
+      SEARCH.reindexItem(itemId);
       // FR-0004: suggested documents for a COMPOSE item (read-only; the SAME deterministic resolve +
       // customer-scope gate as inbound). Scope = the resolved compose customer's card; the references
       // are extracted from the salesperson's instruction + the produced draft text. Skipped when
@@ -178,8 +181,10 @@ async function runRedraft(itemId, login) {
     const prev = WA.previousAttempt(w, latestWithdrawn(itemId), latestDraftVersion(itemId),
       db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL").all(itemId));
     if (prev) seed.previous_attempt = prev;
+    const media = await DM.prepare(itemId, w.mailbox, login);   // never throws
     const { result, toolLog } = await E.agenticDraft(anthropic, email, [], seed, MAILBOX_OF[w.mailbox], {
       exemplars: { intent: w.intent, language: w.language, mailbox: w.mailbox, excludeItemId: itemId },
+      media,
     });
     const { status, ver } = persistResult(itemId, result, toolLog, seed);
     // Refresh suggested documents from the newest body + the model's referenced_documents hint

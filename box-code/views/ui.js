@@ -6,6 +6,7 @@
 // authoritative; everything is escaped here exactly as before.
 const rulesets = require("../rules.js");
 const BASE = require("../base-path.js");   // AXLE_BASE_PATH URL prefix ("" or e.g. "/axle")
+const FMT = require("../reply-format.js"); // formatting markers in our own reply text
 const B = BASE.path;                        // plain [A-Za-z0-9_/-]: safe in attributes, selectors and RegExp sources
 
 const esc = (s) => String(s == null ? "" : s)
@@ -42,7 +43,7 @@ const STRINGS = {
     feedback_ph: "Tell Axle what to change",
     answer: "Answer",
     redraft_hint: "Writes the reply again with your note, in the background",
-    mark_done: "Mark done", archive: "Archive", reopen: "Reopen",
+    mark_done: "Mark done", reopen: "Reopen",
     new_order_ratchet: "Create order", new_order_ratchet_tip: "Open Ratchet's order builder with this e-mail already read in; you review before anything is created",
     mark_phone: "Resolved by phone",
     done_tip: "The work is completed (close the item)",
@@ -129,6 +130,9 @@ const STRINGS = {
     cf_matched: "Matched in SAP", cf_not_matched: "No SAP match: replying to the address from the form.",
     cf_order: "Order", cf_recipient_rejected: "That address is not one of the resolved options. Pick one of the listed addresses.",
     recip_bad_address: "That isn't a single valid email address. Enter one address, with no commas, semicolons or angle brackets.",
+    cc_refused: "Cc can't be changed on this email.", cc_own: "Our own mailboxes can't be copied.",
+    cc_same_as_to: "That address is already the To.", cc_duplicate: "That address is already in Cc.",
+    cc_too_many: "Cc holds at most {n} addresses.", sent_to_cc: "Sent to {to}, cc {cc}",
     recip_change: "Change recipient", recip_other: "Other address...", recip_use: "Use address",
     recip_from_sender: "sender", recip_on_file: "on file", recip_from_form: "from form", recip_typed: "typed",
     recip_typed_pill: "not on file", recip_typed_warn: "{to} is not one of {customer}'s known addresses. Check it before you send.",
@@ -148,7 +152,7 @@ const STRINGS = {
     restore: "Restore", discard: "Discard", draft_kept: "Draft kept", to_label: "To",
     // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
     close: "Close", cancel: "Cancel",
-    workbench_home: "Workbench home", no_matches: "No matches for '{q}'.", clear_search: "Clear search",
+    workbench_home: "Workbench home", clear_search: "Clear search",
     send_to: "Send to",
     relang_note: "Changing the language re-drafts the email.",
     // M-19/M-23/M-36/M-44: mobile Phase 1B
@@ -173,11 +177,17 @@ const STRINGS = {
     teach_decided: "Decided", teach_col_text: "Text", teach_col_by: "Reviewed",
     teach_approved_toast: "Approved", teach_rejected_toast: "Rejected", teach_retired_toast: "Retired",
     // Redesign phase 1 (2026-10-07): page shell, queue A, history, compose A, client library
-    mine: "Mine", show_label: "Show", search: "Search", close_search: "Close search", more: "More", back: "Back",
-    history: "History", history_detail: "Done and archived emails", history_back: "Back to open emails",
-    history_search: "Search all closed emails", history_none: "No closed emails.", history_no_match: "No closed emails match '{q}'.",
+    mine: "Mine", show_label: "Show", search: "Search", more: "More", back: "Back",
+    history: "History", history_none: "No closed emails.", history_no_match: "No closed emails match '{q}'.",
     teach_review: "Teach review", audit_log: "Audit log", updated: "Updated {t}",
     no_open: "No open emails.", nothing_waiting: "Nothing waiting. New emails appear here on their own.",
+    // Round 2 (requests 6 and 12): Open | History beside Mine | All, one search for both lists
+    list_label: "List", open_list: "Open", open_no_match: "No open emails match '{q}'.",
+    q_count_0: "No matches", q_count_1: "1 match", q_count_n: "{n} matches",
+    q_in_all: "{n} in All", q_in_history: "{n} in History", q_in_open: "{n} in Open",
+    q_in_all_history: "{n} in All, History", q_in_all_open: "{n} in All, Open",
+    snip_body: "In the email", snip_sent: "In our reply", snip_files: "Attachment", snip_recipients: "Recipients",
+    snip_customer: "Customer", snip_sender: "From", snip_subject: "Subject", snip_summary: "Summary",
     attach: "Attach", compose_write: "Write it myself", compose_draft_ai: "Draft with Axle", send: "Send",
     compose_frozen_pill: "Frozen", compose_need_instr: "Tell Axle what to write.",
     confirm_ok: "Continue", unchanged: "Nothing was changed.", post_failed: "That did not go through. Check the connection and try again.",
@@ -187,7 +197,7 @@ const STRINGS = {
     reply: "Reply", recip_email_ph: "Email address", sugg_label: "Suggested", sugg_n_docs: "{n} documents",
     pick_doc: "Which document?", other_doc: "Other document...", other_doc_title: "Other document",
     doc_other_cust: "Different customer", back_email: "Back to the email", saved: "Saved",
-    change_lang: "Change language", marked_done: "Marked done", archived_toast: "Archived",
+    change_lang: "Change language", marked_done: "Marked done",
     handed_over: "Handed over to {owner}", owner_handover_ok: "Hand over", blocked_toast: "Sender blocked",
     teach_done: "Flagged for Brad", teach_withdrawn: "Flag withdrawn", not_sent: "Not sent",
     nothing_sent: "Nothing was sent.", details: "Details", redraft: "Redraft",
@@ -217,6 +227,16 @@ const STRINGS = {
     ad_conf: "Is Axle's confidence trustworthy?", ad_conf_hint: "Sent unchanged, by Axle's own confidence.", ad_col_conf: "Confidence",
     ad_c_high: "High", ad_c_medium: "Medium", ad_c_low: "Low", ad_c_none: "None",
     mark_done_bar: "Mark done", mark_phone_bar: "Resolved by phone", save_failed: "Not saved", save_failed_tip: "Could not save. Your text is still on this screen and Axle tries again as you type.",
+    // Round 2 phase 3b: attachments in their message and the photo viewer, the rich editor, the
+    // camera, translate on the reply, Cc, the customer's contact line
+    att_open: "Open {name}", att_failed: "Could not load",
+    media_unread: "Axle could not read: {list}", media_too_large: "too large", media_too_many: "too many attachments",
+    media_total_limit: "too many attachments", media_type: "file type not supported", media_unavailable: "could not be fetched",
+    viewer_title: "Photo", viewer_count: "{i} of {n}", viewer_prev: "Previous photo", viewer_next: "Next photo", viewer_open: "Open original",
+    fmt_toolbar: "Formatting", fmt_bold: "Bold", fmt_italic: "Italic", fmt_list: "Bulleted list", reply_ph: "Write your reply",
+    camera: "Take photo", reply_tr_note: "Translated for you: the reply is in {lang}.",
+    cc_add: "Add Cc", cc_label: "Cc", cc_more: "Add", cc_menu: "Add to Cc", cc_src_copied: "copied by the customer", cc_remove: "Remove {addr} from Cc",
+    contact_email: "Email", contact_phone: "Phone",
     ad_thresholds: "Unchanged: 97 % or more of the draft kept. Light edit 80 %, moderate 45 %, heavy below 45 %. Drachten is the shared Rob and Huub login.",
   },
   nl: {
@@ -240,7 +260,7 @@ const STRINGS = {
     feedback_ph: "Vertel Axle wat er anders moet",
     answer: "Antwoord",
     redraft_hint: "Schrijft het antwoord opnieuw met jouw opmerking, op de achtergrond",
-    mark_done: "Markeer afgehandeld", archive: "Archiveer", reopen: "Heropen",
+    mark_done: "Markeer afgehandeld", reopen: "Heropen",
     new_order_ratchet: "Order aanmaken", new_order_ratchet_tip: "Opent de orderbouwer van Ratchet met deze e-mail al ingelezen; je controleert alles voordat er iets wordt aangemaakt",
     mark_phone: "Telefonisch afgehandeld",
     done_tip: "Het werk is afgerond (item sluiten)",
@@ -325,6 +345,9 @@ const STRINGS = {
     cf_matched: "Gekoppeld in SAP", cf_not_matched: "Geen SAP-koppeling: antwoord naar het adres uit het formulier.",
     cf_order: "Order", cf_recipient_rejected: "Dat adres is geen van de gevonden opties. Kies een van de getoonde adressen.",
     recip_bad_address: "Dat is geen geldig e-mailadres. Vul één adres in, zonder komma's, puntkomma's of punthaken.",
+    cc_refused: "De Cc van deze e-mail kan niet worden gewijzigd.", cc_own: "Onze eigen mailboxen kunnen niet in Cc.",
+    cc_same_as_to: "Dat adres staat al bij Aan.", cc_duplicate: "Dat adres staat al in Cc.",
+    cc_too_many: "In Cc passen hoogstens {n} adressen.", sent_to_cc: "Verstuurd naar {to}, cc {cc}",
     recip_change: "Ontvanger wijzigen", recip_other: "Ander adres...", recip_use: "Adres gebruiken",
     recip_from_sender: "afzender", recip_on_file: "bekend adres", recip_from_form: "uit formulier", recip_typed: "ingetypt",
     recip_typed_pill: "niet bekend", recip_typed_warn: "{to} is geen bekend adres van {customer}. Controleer het voor je verstuurt.",
@@ -344,7 +367,7 @@ const STRINGS = {
     restore: "Herstellen", discard: "Weggooien", draft_kept: "Concept bewaard", to_label: "Aan",
     // M-01/M-02/M-08/M-13/M-14: mobile Phase 1A
     close: "Sluiten", cancel: "Annuleren",
-    workbench_home: "Workbench-start", no_matches: "Geen resultaten voor '{q}'.", clear_search: "Zoekopdracht wissen",
+    workbench_home: "Workbench-start", clear_search: "Zoekopdracht wissen",
     send_to: "Verzenden naar",
     relang_note: "Een andere taal stelt de e-mail opnieuw op.",
     // M-19/M-23/M-36/M-44: mobile Phase 1B
@@ -369,11 +392,17 @@ const STRINGS = {
     teach_decided: "Beoordeeld", teach_col_text: "Tekst", teach_col_by: "Beoordeeld door",
     teach_approved_toast: "Goedgekeurd", teach_rejected_toast: "Afgewezen", teach_retired_toast: "Ingetrokken",
     // Redesign fase 1 (2026-10-07): pagina, wachtrij A, geschiedenis, nieuwe e-mail A, clientbibliotheek
-    mine: "Aan mij", show_label: "Toon", search: "Zoeken", close_search: "Zoeken sluiten", more: "Meer", back: "Terug",
-    history: "Geschiedenis", history_detail: "Afgehandelde en gearchiveerde e-mails", history_back: "Terug naar open e-mails",
-    history_search: "Zoek in alle afgesloten e-mails", history_none: "Geen afgesloten e-mails.", history_no_match: "Geen afgesloten e-mails gevonden voor '{q}'.",
+    mine: "Aan mij", show_label: "Toon", search: "Zoeken", more: "Meer", back: "Terug",
+    history: "Historie", history_none: "Geen afgesloten e-mails.", history_no_match: "Geen afgesloten e-mails gevonden voor '{q}'.",
     teach_review: "Leer Axle iets", audit_log: "Auditlog", updated: "Bijgewerkt {t}",
     no_open: "Geen open e-mails.", nothing_waiting: "Niets te doen. Nieuwe e-mails verschijnen hier vanzelf.",
+    // Ronde 2 (verzoeken 6 en 12): Open | Historie naast Aan mij | Alle, een zoekveld voor beide lijsten
+    list_label: "Lijst", open_list: "Open", open_no_match: "Geen open e-mails gevonden voor '{q}'.",
+    q_count_0: "Geen resultaten", q_count_1: "1 resultaat", q_count_n: "{n} resultaten",
+    q_in_all: "{n} in Alle", q_in_history: "{n} in Historie", q_in_open: "{n} in Open",
+    q_in_all_history: "{n} in Alle, Historie", q_in_all_open: "{n} in Alle, Open",
+    snip_body: "In de e-mail", snip_sent: "In ons antwoord", snip_files: "Bijlage", snip_recipients: "Ontvangers",
+    snip_customer: "Klant", snip_sender: "Van", snip_subject: "Onderwerp", snip_summary: "Samenvatting",
     attach: "Bijvoegen", compose_write: "Zelf schrijven", compose_draft_ai: "Opstellen met Axle", send: "Versturen",
     compose_frozen_pill: "Geblokkeerd", compose_need_instr: "Vertel Axle wat het moet schrijven.",
     confirm_ok: "Doorgaan", unchanged: "Er is niets gewijzigd.", post_failed: "Dat is niet gelukt. Controleer de verbinding en probeer het opnieuw.",
@@ -384,7 +413,7 @@ const STRINGS = {
     sugg_n_docs: "{n} documenten", pick_doc: "Welk document?", other_doc: "Ander document...",
     other_doc_title: "Ander document", doc_other_cust: "Andere klant", back_email: "Terug naar de e-mail",
     saved: "Opgeslagen", change_lang: "Taal wijzigen", marked_done: "Afgehandeld",
-    archived_toast: "Gearchiveerd", handed_over: "Overgedragen aan {owner}", owner_handover_ok: "Overdragen",
+    handed_over: "Overgedragen aan {owner}", owner_handover_ok: "Overdragen",
     blocked_toast: "Afzender geblokkeerd", teach_done: "Doorgegeven aan Brad",
     teach_withdrawn: "Melding ingetrokken", not_sent: "Niet verstuurd", nothing_sent: "Er is niets verstuurd.",
     details: "Details", redraft: "Opnieuw opstellen", answer_ph: "Antwoord hier en stel daarna opnieuw op",
@@ -414,11 +443,27 @@ const STRINGS = {
     ad_conf: "Klopt het vertrouwen van Axle?", ad_conf_hint: "Ongewijzigd verstuurd, per eigen inschatting van Axle.", ad_col_conf: "Vertrouwen",
     ad_c_high: "Hoog", ad_c_medium: "Gemiddeld", ad_c_low: "Laag", ad_c_none: "Geen",
     mark_done_bar: "Afgehandeld", mark_phone_bar: "Teruggebeld", save_failed: "Niet opgeslagen", save_failed_tip: "Kon niet opslaan. Je tekst staat nog op dit scherm en Axle probeert het opnieuw zodra je typt.",
+    // Ronde 2 fase 3b: bijlagen bij hun bericht en de fotoviewer, de opmaakeditor, de camera,
+    // vertalen bij het antwoord, Cc, de contactregel van de klant
+    att_open: "{name} openen", att_failed: "Kon niet laden",
+    media_unread: "Axle kon niet lezen: {list}", media_too_large: "te groot", media_too_many: "te veel bijlagen",
+    media_total_limit: "te veel bijlagen", media_type: "bestandstype niet ondersteund", media_unavailable: "kon niet worden opgehaald",
+    viewer_title: "Foto", viewer_count: "{i} van {n}", viewer_prev: "Vorige foto", viewer_next: "Volgende foto", viewer_open: "Origineel openen",
+    fmt_toolbar: "Opmaak", fmt_bold: "Vet", fmt_italic: "Cursief", fmt_list: "Opsomming", reply_ph: "Schrijf je antwoord",
+    camera: "Foto maken", reply_tr_note: "Voor je vertaald: het antwoord is in het {lang}.",
+    cc_add: "Cc toevoegen", cc_label: "Cc", cc_more: "Toevoegen", cc_menu: "Toevoegen aan Cc", cc_src_copied: "door de klant in kopie", cc_remove: "{addr} uit Cc halen",
+    contact_email: "E-mail", contact_phone: "Telefoon",
     ad_thresholds: "Ongewijzigd: 97 % of meer van het concept behouden. Kleine aanpassing 80 %, matig 45 %, herschreven onder 45 %. Drachten is de gedeelde login van Rob en Huub.",
   },
 };
-const t = (lang, k) => (STRINGS[lang] && STRINGS[lang][k] != null) ? STRINGS[lang][k]
-  : (STRINGS.en[k] != null ? STRINGS.en[k] : k);
+// t(lang, key, vars): the string, with {name} placeholders filled from vars when given. Filled by a
+// function, so a "$&" or "$'" in a value (typed text, a file name, an address) stays as typed; use
+// vars rather than .replace whenever a value comes from a person or a customer.
+const fill = (s, vars) => String(s).replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m));
+const t = (lang, k, vars) => {
+  const s = (STRINGS[lang] && STRINGS[lang][k] != null) ? STRINGS[lang][k] : (STRINGS.en[k] != null ? STRINGS.en[k] : k);
+  return vars ? fill(s, vars) : s;
+};
 
 // --- labels that depend on a controlled vocabulary, per language ---------------
 const titleCase = (s) => String(s == null ? "" : s).replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -515,26 +560,15 @@ const fmtDateTime = (iso, lang) => {
 // Long URLs (Shopify click-tracking etc.) get truncated DISPLAY text only; the
 // real destination stays in href and shows on hover. New tab, no referrer.
 // Renders both markdown links [visible text](url), used by our drafts so the customer code
-// shows instead of a raw URL, and bare URLs (truncated display, full href on hover).
-const MD_OR_URL = /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s<>"]+)/g;
-function linkify(s) {
-  let out = "", last = 0, m;
-  MD_OR_URL.lastIndex = 0;
-  while ((m = MD_OR_URL.exec(s)) !== null) {
-    out += esc(s.slice(last, m.index));
-    if (m[1] !== undefined) {                          // markdown link: m[1]=text, m[2]=url
-      const url = m[2].replace(/[).,;:!?']+$/, "");
-      out += `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(url)}">${esc(m[1])}</a>`;
-    } else {                                           // bare URL: m[3]
-      const url = m[3].replace(/[).,;:!?']+$/, "");    // drop trailing punctuation
-      const shown = url.length > 72 ? url.slice(0, 60) + "…" + url.slice(-8) : url;
-      out += `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(url)}">${esc(shown)}</a>`;
-      out += esc(m[3].slice(url.length));              // re-emit any trimmed punctuation
-    }
-    last = m.index + m[0].length;
-  }
-  return out + esc(s.slice(last));
+// shows instead of a raw URL, and bare URLs (truncated display, full href on hover). Links and
+// URLs are found by reply-format.js tokens(), so where a URL ends is the same rule as in the reply
+// editor and the sent email; an image token is just text here.
+function linkAnchor(tok) {
+  if (tok.type === "image") return esc(tok.raw);
+  const shown = tok.type === "link" ? tok.text : tok.url.length > 72 ? tok.url.slice(0, 60) + "…" + tok.url.slice(-8) : tok.url;
+  return `<a href="${esc(tok.url)}" target="_blank" rel="noopener noreferrer" title="${esc(tok.url)}">${esc(shown)}</a>`;
 }
+const linkify = (s) => FMT.tokens(s).map((tok) => (tok.type === "text" ? esc(tok.raw) : linkAnchor(tok))).join("");
 
 // splitQuoted: find the first reply/forward marker line (EN/NL/DE) and fold
 // everything from there down. Never folds if the marker is the first line
@@ -559,24 +593,29 @@ const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : n > 1024
 const paras = (text) => String(text || "").split(/\n[ \t\r]*\n/).filter((p) => p.trim())
   .map((p) => `<p>${linkify(p.replace(/^\n+|\s+$/g, ""))}</p>`).join("");
 
-// Inbound attachments under the email. Browser-renderable images show as thumbnails (a click opens
-// full size in a new tab); everything else is a pill link. Index-based URLs: the route resolves the
-// index against the stored metadata, so only attachments Axle ingested are fetchable.
-const SHOWABLE_IMAGE = /^image\/(png|jpe?g|gif|webp)$/i;
-function renderAttachments(w) {
-  let atts = [];
-  try { atts = JSON.parse(w.attachments_json || "[]"); } catch (e) { /* ignore bad json */ }
+// Our own reply text, read-only (a sent reply, an earlier draft): paras plus the formatting markers
+// of reply-format.js as bold, italic and lists. Never used for the customer's text, where an
+// asterisk is just an asterisk.
+const replyParas = (text) => FMT.displayHtml(text, { esc, atom: linkAnchor });
+
+// The attachments of one message (round 2, request 1): photos (png, jpeg, gif, webp) as thumbnails
+// that open the viewer in axle.js (data-photo; data-meta names the message: sender and time), each
+// a skeleton until it loads and a "could not load" tile with Retry when it fails or its fetch is
+// known to have failed; then the other files as chips with a type icon, name and size: a PDF opens in
+// a new tab, anything else downloads. atts: [{ name, size, url, image, pdf, contentType, failed }].
+function attachmentsHtml(atts, meta, lang) {
   if (!atts.length) return "";
-  const href = (i) => `${B}/item/${w.id}/attachment/${i}`;
-  const imgs = [], files = [];
-  atts.forEach((a, i) => {
-    if (SHOWABLE_IMAGE.test(a.contentType || ""))
-      imgs.push(`<a class="ax-thumb" href="${href(i)}" target="_blank" rel="noopener" title="${esc(a.name)} (${fmtSize(a.size)})"><img src="${href(i)}" alt="${esc(a.name)}" loading="lazy"></a>`);
-    else
-      files.push(`<a class="wb-pillbtn" href="${href(i)}" target="_blank" rel="noopener">${icon("clip")}${esc(a.name)} (${fmtSize(a.size)})</a>`);
-  });
-  return `${imgs.length ? `<div class="ax-thumbs">${imgs.join("")}</div>` : ""}${files.length ? `<div class="ax-files">${files.join("")}</div>` : ""}`;
+  const L = (k) => esc(t(lang, k));
+  const photos = atts.filter((a) => a.image).map((a) => `<div class="ax-thumb"${a.failed ? " data-failed" : ""}>
+    <button type="button" class="ax-thumb__b" data-photo="${esc(a.url)}" data-name="${esc(a.name)}" data-meta="${esc(meta)}" aria-label="${esc(t(lang, "att_open", { name: a.name }))}" title="${esc(a.name)} (${fmtSize(a.size)})"><span class="wb-skel" aria-hidden="true"></span><img ${a.failed ? "data-src" : "src"}="${esc(a.url)}" alt="${esc(a.name)}" loading="lazy"></button>
+    <button type="button" class="ax-thumb__fail" data-photo-retry title="${esc(a.name)}">${icon("alert")}<span>${L("att_failed")}</span><span class="wb-link">${L("retry")}</span></button></div>`);
+  const files = atts.filter((a) => !a.image).map((a) => `<a class="wb-pillbtn ax-file" href="${esc(a.url)}"${a.pdf ? ' target="_blank" rel="noopener"' : " download"} title="${esc(a.name)}">${icon(/^image\//i.test(a.contentType || "") ? "image" : "file")}<span>${esc(a.name)}</span><small>${fmtSize(a.size)}</small></a>`);
+  return `<div class="ax-atts-in">${photos.length ? `<div class="ax-thumbs">${photos.join("")}</div>` : ""}${files.length ? `<div class="ax-files">${files.join("")}</div>` : ""}</div>`;
 }
+// The quiet line under the newest message's attachments naming what Axle's drafter could not read
+// (draft-media.js notShownFor: [{ name, reason }]).
+const unreadLine = (notShown, lang) => notShown.length
+  ? `<p class="ax-unread">${icon("info")}<span>${esc(t(lang, "media_unread", { list: notShown.map((x) => `${x.name} (${t(lang, "media_" + x.reason)})`).join(", ") }))}</span></p>` : "";
 
 // Render-side folding for the conversation timeline (F7). The regexes mirror the
 // patterns engine.js classify() folds for language detection, duplicated here on
@@ -620,15 +659,32 @@ function segmentQuoted(quoted) {
 // The customer's email (F7): one line naming sender, address, time and mailbox, with Translate when
 // the customer wrote in another language than the reader's; the newest message (its legal footer
 // folded, [cid:] tokens shown as a readable marker, clamped on a phone behind "Show full message");
-// the translation behind the toggle; older messages folded beneath, one block each.
+// the translation behind the toggle; its attachments and what Axle could not read; older messages
+// folded beneath, one block each.
 // emailTrPending: the translation is not cached yet; axle.js fills it in (POST /item/:id/translations).
-function renderTimeline(w, lang, emailTr, emailTrPending) {
+// thread: message-store's itemThread (oldest first). Its newest message (the item's latest message)
+// carries the newest attachments; each earlier stored message's attachments go into the quoted block
+// that holds its text, or, when no quoted block does, into a block of its own (sender, time, its
+// text). An email from before round 2 with no stored message lists the newest message's files from
+// attachments_json through the old index-based route. notShown: draft-media.js notShownFor(w).
+const SHOWABLE_IMAGE = /^image\/(png|jpe?g|gif|webp)$/i;
+function renderTimeline(w, lang, emailTr, emailTrPending, thread = [], notShown = []) {
   const L = (k) => esc(t(lang, k));
   const who = w.sender_name ? `<b>${esc(w.sender_name)}</b> · ${esc(w.sender_email || "")}` : `<b>${esc(w.sender_email || "")}</b>`;
   const tr = emailTr || emailTrPending;
   const from = `<div class="ax-from"><span>${who} · ${esc(fmtDateTime(w.email_received, lang))} · ${esc(w.mailbox)}@</span>${tr ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-tr-email aria-expanded="false" data-on="${L("hide_translation")}" data-off="${L("translate")}">${L("translate")}</button>` : ""}</div>`;
+  const newest = thread.find((m) => m.graphId === w.latest_message_id) || thread[thread.length - 1];
+  const meta = (m) => `${m.from.name || m.from.address} · ${fmtDateTime(m.received, lang)}`;
+  let newestAtts;
+  if (newest) newestAtts = newest.attachments;
+  else {
+    try { newestAtts = JSON.parse(w.attachments_json || "[]") || []; } catch (e) { newestAtts = []; }
+    newestAtts = newestAtts.map((a, i) => ({ name: a.name, size: a.size, contentType: a.contentType, image: SHOWABLE_IMAGE.test(a.contentType || ""),
+      pdf: /^application\/pdf$/i.test(a.contentType || ""), url: `${B}/item/${w.id}/attachment/${i}` }));
+  }
+  const files = attachmentsHtml(newestAtts, newest ? meta(newest) : `${w.sender_name || w.sender_email || ""} · ${fmtDateTime(w.email_received, lang)}`, lang) + unreadLine(notShown, lang);
   const raw = String(w.email_text || "");
-  if (!raw.trim()) return `${from}<p class="wb-hint">${L("body_not_stored")}</p>`;
+  if (!raw.trim()) return `${from}<p class="wb-hint">${L("body_not_stored")}</p>${files}`;
   const imgMark = "[\u{1F4F7} " + t(lang, "inline_image") + "]";
   const clean = (s) => String(s)
     .replace(/\[cid:[^\]]*\]/gi, imgMark)
@@ -636,19 +692,33 @@ function renderTimeline(w, lang, emailTr, emailTrPending) {
   const { top, quoted } = splitQuoted(raw);
   const { main, footer } = foldFooter(top);
   const fold = (summary, body) => `<details class="wb-details ax-fold"><summary>${summary}${icon("chevron-right")}</summary>${body}</details>`;
-  const segs = quoted ? segmentQuoted(quoted) : [];
+  // The earlier messages: the quoted blocks of the newest message, each with the files of the stored
+  // message whose own text it holds, then the stored messages no quoted block holds.
+  const flat = (s) => String(s).replace(/^[ \t]*>+ ?/gm, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const segs = (quoted ? segmentQuoted(quoted) : []).map((x) => ({ text: x, flat: flat(x), files: "" }));
+  const loose = [];
+  for (const m of thread.filter((x) => x !== newest).reverse()) {
+    const own = foldFooter(splitQuoted(m.body).top).main;
+    const key = flat(own).slice(0, 60);
+    const seg = key.length >= 12 && segs.find((x) => x.flat.includes(key));
+    if (seg) seg.files += attachmentsHtml(m.attachments, meta(m), lang);
+    else loose.push(`<div class="ax-msg ax-quoted"><p class="ax-qfrom">${esc(meta(m))}</p>${paras(clean(own))}${attachmentsHtml(m.attachments, meta(m), lang)}</div>`);
+  }
+  const earlier = segs.map((x) => `<div class="ax-msg ax-quoted">${paras(clean(x.text))}${x.files}</div>`).concat(loose);
   return `${from}<div class="ax-msg" data-clamp>${paras(clean(main))}</div>
     <button type="button" class="ax-more" data-more-toggle aria-expanded="false" data-more="${L("show_full")}" data-less="${L("show_less")}" hidden>${L("show_full")}${icon("chevron-down")}</button>
-    ${tr ? `<div class="ax-tr" data-tr-box hidden><p class="wb-hint">${esc(t(lang, "translation_note").replace("{lang}", langDisplay(lang, (w.language || "").toLowerCase())))}</p><div class="ax-msg"${emailTrPending ? " data-tr-pending" : ""}>${emailTr ? paras(emailTr) : `<div class="wb-skel-rows" aria-label="${L("translating")}"><span class="wb-skel" style="width:90%"></span><span class="wb-skel" style="width:70%"></span></div>`}</div></div>` : ""}
+    ${tr ? `<div class="ax-tr" data-tr-box hidden><p class="wb-hint">${esc(t(lang, "translation_note").replace("{lang}", langDisplay(lang, (w.language || "").toLowerCase())))}</p><div class="ax-msg"${emailTrPending ? " data-tr-pending" : ""}>${emailTr ? paras(emailTr) : TR_SKEL(lang)}</div></div>` : ""}
     ${footer ? fold(L("footer_fold"), `<div class="ax-msg ax-quiet">${paras(clean(footer))}</div>`) : ""}
-    ${segs.length ? fold(`${L("earlier_msgs")} (${segs.length})`, segs.map((x) => `<div class="ax-msg ax-quoted">${paras(clean(x))}</div>`).join("")) : ""}`;
+    ${files}
+    ${earlier.length ? fold(`${L("earlier_msgs")} (${earlier.length})`, earlier.join("")) : ""}`;
 }
+// The skeleton a translation shows while it is fetched (the customer's email and the reply).
+const TR_SKEL = (lang) => `<div class="wb-skel-rows" aria-label="${esc(t(lang, "translating"))}"><span class="wb-skel" style="width:90%"></span><span class="wb-skel" style="width:70%"></span></div>`;
 
 // --- Icons: the Workbench stroke set (web/src/components/ui/icon.tsx), as markup ---------------
 // Trusted static SVG, 16 px (20 on touch through the --icon token). [stroke width, inner markup].
 const ICONS = {
   bolt: [2.4, '<path d="M13 2 4.5 13.5H11l-1 8.5L18.5 10.5H12l1-8.5z"/>'],
-  transfer: [2, '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>'],
   clock: [2, '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>'],
   check: [2.4, '<polyline points="20 6 9 17 4 12"/>'],
   back: [2.2, '<polyline points="15 18 9 12 15 6"/>'],
@@ -671,6 +741,15 @@ const ICONS = {
   dots: [2.6, '<path d="M5 12h.01M12 12h.01M19 12h.01"/>'],
   info: [2.2, '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'],
   home: [2.2, '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/>'],
+  // Axle's own additions in the same stroke style (round 2): the reply's formatting, the camera, file
+  // and photo chips, the customer's phone
+  bold: [2.4, '<path d="M7 4h6.5a4 4 0 0 1 0 8H7zM7 12h7.5a4 4 0 0 1 0 8H7z"/>'],
+  italic: [2.2, '<path d="M10 4h8M6 20h8M14.5 4l-5 16"/>'],
+  list: [2.2, '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'],
+  camera: [2, '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/>'],
+  file: [2, '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>'],
+  image: [2, '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>'],
+  phone: [2, '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>'],
 };
 const icon = (name, cls) => {
   const [w, d] = ICONS[name];
@@ -689,17 +768,18 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax6";   // 2026-10-07: redesign fix round 3
+const ASSET_V = "ax12";  // 2026-10-08: round 2 last fix round (URL ends, backslashes, queue row pills wrap)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [
   "close", "cancel", "confirm_ok", "retry", "unchanged", "post_failed", "load_failed_title", "load_error",
-  "updated", "syncing", "sync_started", "no_matches", "pull_refresh", "refreshing",
+  "updated", "syncing", "sync_started", "pull_refresh", "refreshing",
   "restored", "restore_offer", "restore", "discard", "draft_kept",
   "compose_finding", "compose_pick_address", "compose_pick_customer", "compose_not_found", "compose_guest",
   "compose_frozen", "compose_frozen_pill", "compose_need_pick", "compose_need_instr", "compose_need_subject",
   "file_too_big", "attach_total", "remove",
-  "inbox", "details", "not_sent", "nothing_sent", "pick_doc", "doc_other_cust", "translating", "attach_failed",
+  "inbox", "details", "not_sent", "nothing_sent", "pick_doc", "doc_other_cust", "attach_failed",
+  "viewer_title", "viewer_count", "viewer_prev", "viewer_next", "viewer_open",
 ];
 const clientStrings = (lang) =>
   JSON.stringify(Object.fromEntries(CLIENT_KEYS.map((k) => [k, t(lang, k)]))).replace(/</g, "\\u003c");
@@ -729,6 +809,8 @@ ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
 <link rel="stylesheet" href="${B}/assets/axle.css?v=${ASSET_V}">
 <meta name="htmx-config" content='{"refreshOnHistoryMiss":true,"historyCacheSize":0,"timeout":60000}'>
 <script src="${B}/assets/htmx.min.js?v=${ASSET_V}" defer></script>
+<script src="${B}/assets/reply-format.js?v=${ASSET_V}" defer></script>
+<script src="${B}/assets/axle-editor.js?v=${ASSET_V}" defer></script>
 <script src="${B}/assets/axle.js?v=${ASSET_V}" defer></script>
 <script type="application/json" id="ax-l10n">${clientStrings(lang)}</script>
 </head><body class="${esc(cls)}">
@@ -782,7 +864,7 @@ module.exports = {
   esc, UI_LANGS, DEFAULT_LANG, langOK, STRINGS, t,
   titleCase, statusLabel, statusWithRes, suggestCloseChip, intentLabel, langDisplay,
   ownerLabel, ownerChoices, TZ, ymdTZ, fmtTime, parseTS, fmtDateTime,
-  linkify, splitQuoted, fmtSize, paras, renderAttachments, page,
+  linkify, splitQuoted, fmtSize, paras, replyParas, page, TR_SKEL,
   foldFooter, segmentQuoted, renderTimeline, ASSET_V,
   icon, iconBtn, pill, homeLink, voidPane, workPanes, shell, lazyQueue, SKELROW,
   deskPage, bannerHtml, bannerPage, notFoundPage,

@@ -2,10 +2,10 @@
 // POST /queue/summaries), the per-browser language cookie (/setlang), the manual Sync (/sync) and
 // the compose drawer (composeUi, rendered once per full page; routes/item.js appends it to deep
 // links through app.locals.composeUi). Extracted from server.js in UI rework Step 0.
-// Redesign phase 1 (2026-10-07), Queue A: the open list only. Header: Mine | All, then search,
-// compose and More (History, Mailbox, Sync now, Blocked senders, the owner pages). History is the
-// done and archived emails with a server-side search (?show=history&q=). Every switch posts or
-// fetches in place through assets/axle.js; the markup carries data attributes, no inline script.
+// Redesign phase 1 (2026-10-07), Queue A; round 2 (requests 6 and 12): one header for both lists,
+// Mine | All and Open | History (?scope, ?show), the one server-side search (?q, search.js), then
+// compose and More (Mailbox, Sync now for owners, Blocked senders, the owner pages). Every switch
+// and search fetches in place through assets/axle.js; the markup carries data attributes, no script.
 // Query semantics, audit rows and the live probe are as before. ACTION_COMPOSE_SEND is passed in
 // by server.js so the allow-list env check stays defined in exactly one place.
 const INGEST = require("../ingest.js");
@@ -16,6 +16,8 @@ const { esc, t, page, langOK, statusLabel, statusWithRes, intentLabel, ownerLabe
         fmtDateTime, fmtTime, parseTS, shell, voidPane, icon, iconBtn, homeLink } = require("../views/ui.js");
 const { anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, defaultMailbox } = require("./shared.js");
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
+const SEARCH = require("../search.js");           // the one server-side search (full-text index, LIKE fallback)
+const { requireAdmin } = require("./admin.js");   // owners only: Sync now
 
 module.exports = function mountInbox(app, { ACTION_COMPOSE_SEND }) {
 
@@ -36,7 +38,8 @@ app.get("/setlang", (req, res) => {
 // the server process (with a guaranteed release in finally) means the button and "last synced"
 // always update; a server restart mid-sync is healed by the startup reset above. Acquiring the same
 // lock as the scheduled task ensures no overlap. axle.js posts it in place and refreshes the queue;
-// the redirect is for a browser without script.
+// the redirect is for a browser without script. Owners only (round 2): anyone else gets the 403 and
+// audit row of requireAdmin, and the menu does not draw the entry for them.
 function startSync(login) {
   if (!acquireSync("manual:" + login)) return false; // already running (scheduled or manual)
   audit(login, "manual_sync", null, "started");
@@ -53,6 +56,7 @@ function startSync(login) {
   return true;
 }
 app.post("/sync", (req, res) => {
+  if (!requireAdmin(req, res, "sync")) return;
   startSync(req.user.tailscale_login);
   res.redirect(BASE.url("/?synced=1"));
 });
@@ -64,34 +68,31 @@ app.post("/sync", (req, res) => {
 //    Gouda (info@) and switch in the More menu. An explicit ?mailbox= always wins.
 //  show: "open" (the list) or "history" (done and archived). The old tab values done, archived and
 //    all are History now, so their links keep working.
-//  scope: "mine" (the user's owner label) or "all". Sales default to mine, admins to all. It applies
-//    to the open list only. Browsing History follows the mailbox; a History search (q) ignores both
-//    and searches every closed email, its rows naming their mailbox.
-//  q: History's server-side search over sender name and address, subject, summary and "#id".
+//  scope: "mine" (the user's owner label) or "all", in both lists. Sales default to mine, admins
+//    to all.
+//  q: the one search (search.js), in both lists: words ANDed, each a substring of the sender, the
+//    recipients, subject, summary, customer, every stored message, our sent replies or attachment
+//    names; short words on the short fields; "#id" the id. A search ignores the mailbox (its rows
+//    name their own); show and scope still apply.
 function queueFilter(req) {
   const mb = ["info", "drachten", "all"].includes(req.query.mailbox) ? req.query.mailbox
     : (req.user.role === "admin" ? "info" : "all");
   const show = ["history", "done", "archived", "all"].includes(req.query.show) ? "history" : "open";
   const scope = ["mine", "all"].includes(req.query.scope) ? req.query.scope
     : (req.user.role === "admin" ? "all" : "mine");
-  const q = show === "history" ? String(req.query.q || "").trim().slice(0, 100) : "";
-  const myOwner = req.user.owner_label || req.user.display_name;
+  const q = String(req.query.q || "").trim().slice(0, 100);
+  const owner = req.user.owner_label || req.user.display_name;
   const conds = [show === "open" ? "w.status NOT IN ('done','archived')" : "w.status IN ('done','archived')"];
   const params = [];
-  const mineOnly = scope === "mine" && show === "open";
   const oneBox = mb !== "all" && !q;
   if (oneBox) { conds.push("w.mailbox = ?"); params.push(mb); }
-  if (mineOnly) { conds.push("w.owner = ?"); params.push(myOwner); }
-  if (q) {
-    const like = "%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
-    conds.push("(w.sender_name LIKE ? ESCAPE '\\' OR w.sender_email LIKE ? ESCAPE '\\' OR w.subject LIKE ? ESCAPE '\\' OR w.summary LIKE ? ESCAPE '\\' OR ('#' || w.id) LIKE ? ESCAPE '\\')");
-    params.push(like, like, like, like, like);
-  }
+  if (scope === "mine") { conds.push("w.owner = ?"); params.push(owner); }
+  if (q) { const tc = SEARCH.termConds(q); conds.push(...tc.conds); params.push(...tc.params); }
   // Counts under the current mailbox + scope (status and search excluded), for the change stamp.
   const cConds = [], cParams = [];
   if (oneBox) { cConds.push("w.mailbox = ?"); cParams.push(mb); }
-  if (mineOnly) { cConds.push("w.owner = ?"); cParams.push(myOwner); }
-  return { mb, show, scope, q, conds, params, cConds, cParams };
+  if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(owner); }
+  return { mb, show, scope, q, owner, conds, params, cConds, cParams };
 }
 // The filter as the query string the client sends back (refresh, probe, Load more).
 const filterQs = (f) => `mailbox=${f.mb}&scope=${f.scope}&show=${f.show}${f.q ? "&q=" + encodeURIComponent(f.q) : ""}`;
@@ -112,11 +113,38 @@ function queueStamp(f) {
   return [r.n, r.u || "", c.open_n || 0, c.done_n || 0, c.arch_n || 0, c.all_n || 0].join("|");
 }
 
+// Search highlighting: the text escaped first, then each [start, end) range wrapped in a mark.
+function markHtml(text, ranges) {
+  let out = "", at = 0;
+  for (const [a, b] of ranges) { out += esc(text.slice(at, a)) + `<mark class="ax-mark">${esc(text.slice(a, b))}</mark>`; at = b; }
+  return out + esc(text.slice(at));
+}
+// A row text with the searched words marked in place; hit says whether any were.
+const hl = (text, ws) => { const r = ws ? SEARCH.hitRanges(text, ws) : []; return { html: markHtml(text, r), hit: r.length > 0 }; };
+// The label of a snippet: where it matched (the id needs none).
+const SNIP_LABEL = { body: "snip_body", sent: "snip_sent", files: "snip_files", recipients: "snip_recipients",
+  customer: "snip_customer", sender: "snip_sender", subject: "snip_subject", summary: "snip_summary" };
+// One line of where a search matched. The text starts at most about 30 characters before the first
+// hit, so the hit shows on a narrow row too.
+function snipHtml(m, lang) {
+  let { text, ranges } = m;
+  const first = ranges.length ? ranges[0][0] : 0;
+  if (first > 30) {
+    const cut = Math.max(text.lastIndexOf(" ", first - 12) + 1, first - 30);
+    text = "…" + text.slice(cut);
+    ranges = ranges.map(([a, b]) => [a - cut + 1, b - cut + 1]);
+  }
+  const label = SNIP_LABEL[m.field];
+  return `<span class="ax-snip">${label ? `<b>${esc(t(lang, label))}</b> ` : ""}${markHtml(text, ranges)}</span>`;
+}
+
 // One list row (the vocabulary list row): sender and time; subject with the suggested-document
 // count; one line of summary; a status pill only when the email is not simply ready to send (New,
-// Needs your answer, Drafting, Check, or the closed status in History) and a P1 pill.
+// Needs your answer, Drafting, Check, or the closed status in History) and a P1 pill. In a search:
+// the mailbox pill, the searched words marked where the row shows them, and a snippet of where the
+// search matched unless the row already shows that.
 function rowHtml(w, ctx) {
-  const { lang, sel, sumOf, sumPending, boxes } = ctx;
+  const { lang, sel, sumOf, sumPending, ws } = ctx;
   const closed = w.status === "done" || w.status === "archived";
   let clip = 0;
   if (!closed && w.doc_suggestions_json && !w.injection_flag) {
@@ -129,34 +157,55 @@ function rowHtml(w, ctx) {
       : closed ? pill(statusWithRes(lang, w), "neutral")
       : tone ? pill(statusLabel(lang, w.status), tone, true) : "")
     + ((w.priority || 2) === 1 && !w.injection_flag && !closed ? pill("P1", "bad") : "")
-    + (boxes ? pill(t(lang, w.mailbox), "neutral") : "");
-  const searchable = [
-    "#" + w.id, statusLabel(lang, w.status), w.mailbox, w.sender_name, w.sender_email, w.subject,
-    sumOf(w), w.summary, intentLabel(lang, w.intent), ownerLabel(w), w.rule_id, w.email_text,
-  ].filter(Boolean).join(" ").toLowerCase();
-  const sum = esc(sumOf(w)) + (w.caller_info ? `${sumOf(w) ? " · " : ""}${esc(w.caller_info)}` : "");
-  return `<a class="wb-row" role="option" href="${BASE.path}/item/${w.id}" hx-get="${BASE.path}/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true" data-id="${w.id}" aria-selected="${sel === w.id}" data-search="${esc(searchable)}">
-<span class="wb-row__title">${esc(w.sender_name || w.sender_email)}</span><span class="wb-row__meta">${esc(fmtDateTime(w.updated_at, lang))}</span>
-<span class="wb-row__line">${clip ? `<span class="ax-clip" aria-label="${esc(t(lang, "sugg_title"))}: ${clip}">${icon("clip")}${clip}</span>` : ""}${w.origin === "compose" ? `<span class="ax-clip" aria-label="${esc(t(lang, "compose_new"))}">${icon("edit")}</span>` : ""}${esc(w.subject || t(lang, "no_subject"))}</span>
-<span class="wb-row__sum"${sumPending.has(w.id) ? ` data-trs="${w.id}"` : ""}>${sum}</span>${end ? `<span class="wb-row__end">${end}</span>` : ""}</a>`;
+    + (ws ? pill(t(lang, w.mailbox), "neutral") : "");
+  const title = hl(w.sender_name || w.sender_email || "", ws);
+  const subj = w.subject ? hl(w.subject, ws) : { html: esc(t(lang, "no_subject")), hit: false };
+  const sumText = sumOf(w);
+  const sum = hl(sumText, ws);
+  const m = w.match;
+  const shown = m && { sender: title.hit, subject: subj.hit, summary: sum.hit }[m.field];
+  const snip = m && !shown ? snipHtml(m, lang) : "";
+  return `<a class="wb-row" role="option" href="${BASE.path}/item/${w.id}" hx-get="${BASE.path}/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true" data-id="${w.id}" aria-selected="${sel === w.id}">
+<span class="wb-row__title">${title.html}</span><span class="wb-row__meta">${esc(fmtDateTime(w.updated_at, lang))}</span>
+<span class="wb-row__line">${clip ? `<span class="ax-clip" aria-label="${esc(t(lang, "sugg_title"))}: ${clip}">${icon("clip")}${clip}</span>` : ""}${w.origin === "compose" ? `<span class="ax-clip" aria-label="${esc(t(lang, "compose_new"))}">${icon("edit")}</span>` : ""}${subj.html}</span>
+<span class="wb-row__sum"${sumPending.has(w.id) ? ` data-trs="${w.id}"` : ""}>${sum.html}${w.caller_info ? `${sumText ? " · " : ""}${esc(w.caller_info)}` : ""}</span>${snip}${end ? `<span class="wb-row__end">${end}</span>` : ""}</a>`;
+}
+
+// What a search that found nothing offers instead: the same search in All, in the other list, or
+// (only when both are empty) in All of the other list, each with its count and one click away.
+function offersHtml(f, counts, lang) {
+  const other = f.show === "open" ? "history" : "open";
+  const all = { open: counts.allOpen, history: counts.allHistory };
+  const offer = (qs, key, n) => [qs, t(lang, key).replace("{n}", n)];
+  const offers = [];
+  if (f.scope === "mine" && all[f.show]) offers.push(offer("scope=all", "q_in_all", all[f.show]));
+  if (counts[other]) offers.push(offer(`show=${other}`, "q_in_" + other, counts[other]));
+  if (!offers.length && f.scope === "mine" && all[other]) offers.push(offer(`scope=all&show=${other}`, "q_in_all_" + other, all[other]));
+  return offers.length ? `<span class="ax-qoffers">${offers.map(([qs, label]) => `<button type="button" class="wb-pillbtn" data-q="${qs}">${esc(label)}</button>`).join("")}</span>` : "";
 }
 
 async function buildQueuePane(req, opts) {
   const lang = req.user.lang;
   const sel = (opts && opts.sel) || 0;
   const f = queueFilter(req);
-  const { mb, show, scope, q, conds, params } = f;
+  const { mb, show, scope, q, owner, conds, params } = f;
   const hist = show === "history";
-  // History loads PAGE_SIZE rows at a time (Load more); the open list is always whole.
+  // History and every search load PAGE_SIZE rows at a time (Load more); the open list is whole.
   const PAGE_SIZE = 50;
-  const pageNo = hist ? Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1) : 1;
+  const paged = hist || !!q;
+  const pageNo = paged ? Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1) : 1;
   const offset = (pageNo - 1) * PAGE_SIZE;
   // The open list: what needs me next. History: newest first.
   const order = hist ? " ORDER BY w.updated_at DESC"
     : " ORDER BY w.injection_flag DESC, CASE WHEN w.status = 'awaiting_input' THEN 0 WHEN w.status = 'ready' THEN 1 WHEN w.status = 'new' THEN 2 ELSE 3 END, w.priority ASC, w.updated_at DESC";
-  const items = db.prepare(`SELECT w.* FROM work_items w WHERE ${conds.join(" AND ")}${order}${hist ? " LIMIT ? OFFSET ?" : ""}`)
+  // A search runs through search.js (the same rows queueFilter's conditions select), newest first;
+  // the counts in the other lists only when it found nothing here.
+  const search = { q, show, scope, owner, mailbox: "all", page: pageNo, pageSize: PAGE_SIZE };
+  const found = q ? SEARCH.searchItems(search) : null;
+  const counts = found && !found.total ? SEARCH.searchItems({ ...search, counts: true }).counts : null;
+  const items = found ? found.rows : db.prepare(`SELECT w.* FROM work_items w WHERE ${conds.join(" AND ")}${order}${hist ? " LIMIT ? OFFSET ?" : ""}`)
     .all(...params, ...(hist ? [PAGE_SIZE, offset] : []));
-  const total = hist ? db.prepare(`SELECT COUNT(*) AS n FROM work_items w WHERE ${conds.join(" AND ")}`).get(...params).n : items.length;
+  const total = found ? found.total : hist ? db.prepare(`SELECT COUNT(*) AS n FROM work_items w WHERE ${conds.join(" AND ")}`).get(...params).n : items.length;
   audit(req.user.tailscale_login, "view_inbox", null, `mailbox=${mb} scope=${scope} show=${show} items=${total} lang=${lang}`);
   const qs = filterQs(f);
   // Axle authors summaries in English; CACHED translations render inline, uncached ones show
@@ -169,12 +218,11 @@ async function buildQueuePane(req, opts) {
     if (c) sumTr[w.id] = c; else sumPending.add(w.id);
   }
   const sumOf = (w) => (lang !== "en" && sumTr[w.id]) || w.summary || "";
-  // A History search spans both mailboxes: each row names its own (Gouda, Drachten).
-  const boxes = !!f.q;
-  const rows = items.map((w) => rowHtml(w, { lang, sel, sumOf, sumPending, boxes })).join("\n");
-  const hasMore = hist && offset + items.length < total;
+  const ws = q ? SEARCH.matchWords(q) : null;
+  const rows = items.map((w) => rowHtml(w, { lang, sel, sumOf, sumPending, ws })).join("\n");
+  const hasMore = paged && offset + items.length < total;
   const moreRow = `<div class="ax-qmore" id="qmoreRow"${pageNo > 1 ? ' hx-swap-oob="true"' : ""}><button type="button" class="wb-btn wb-btn--sm" hx-get="${BASE.path}/queue?${esc(qs)}&page=${pageNo + 1}" hx-target="#qlist" hx-swap="beforeend">${esc(t(lang, "load_more"))}</button></div>`;
-  // Page 2 and later of History: only the new rows and the out-of-band Load more row.
+  // Page 2 and later: only the new rows and the out-of-band Load more row.
   if (pageNo > 1) return { html: `${rows}\n${hasMore ? moreRow : `<div id="qmoreRow" hx-swap-oob="delete"></div>`}`, lang, empty: false };
 
   const sync = syncStatus();
@@ -184,33 +232,33 @@ async function buildQueuePane(req, opts) {
   const mbItem = (v, label) => `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${mb === v}" data-q="mailbox=${v}"><span>${label}</span>${mb === v ? icon("check", "wb-menu__mark") : ""}</button>`;
   const link = (href, label, extra) => `<a class="wb-menu__item" role="menuitem" href="${BASE.path}${href}"><span>${label}</span>${extra || ""}</a>`;
   const menu = `<template id="m-qmore" data-title="${L("more")}" data-align="end">`
-    + (hist ? "" : `<button type="button" class="wb-menu__item" role="menuitem" data-q="show=history"><span>${L("history")}<small>${L("history_detail")}</small></span></button><div class="wb-menu__sep" role="separator"></div>`)
     + `<span class="wb-menu__label">${L("mailbox")}</span>${mbItem("all", L("all"))}${mbItem("info", L("info"))}${mbItem("drachten", L("drachten"))}`
-    + `<div class="wb-menu__sep" role="separator"></div><button type="button" class="wb-menu__item" role="menuitem" data-sync${sync.running ? " disabled" : ""}><span>${L("sync_now")}</span></button>`
+    + (admin ? `<div class="wb-menu__sep" role="separator"></div><button type="button" class="wb-menu__item" role="menuitem" data-sync${sync.running ? " disabled" : ""}><span>${L("sync_now")}</span></button>` : "")
     + `<div class="wb-menu__sep" role="separator"></div>${link("/blocks", L("blocks_title"))}`
     + (admin ? link("/teach", L("teach_review"), teachN ? `<span class="wb-count">${teachN}</span>` : "") + link("/audit", L("audit_log")) + link("/adoption", L("adoption")) : "")
     + `</template>`;
-  const btnSearch = iconBtn(t(lang, "search"), "search", "data-qsearch");
   const btnCompose = iconBtn(t(lang, "compose_new"), "edit", "data-compose");
   const btnMore = iconBtn(t(lang, "more"), "dots", 'data-menu="qmore" aria-haspopup="menu" aria-expanded="false"');
-  const icons = `<span class="ax-icons">${hist ? "" : btnSearch}${btnCompose}${btnMore}</span>`;
-  const head = hist
-    ? `<div class="ax-qhd">${iconBtn(t(lang, "history_back"), "back", 'data-q="show=open"', "ax-qback")}<h2 class="ax-qt">${L("history")}</h2>${icons}</div>
-<div class="ax-qfind"><div class="wb-input"><span class="wb-adorn">${icon("search")}</span><input type="search" id="qh" value="${esc(q)}" placeholder="${L("history_search")}" aria-label="${L("history_search")}" autocomplete="off" enterkeyhint="search"><button type="button" class="wb-clear" data-qh-clear aria-label="${L("clear_search")}" title="${L("clear_search")}"${q ? "" : " hidden"}>${icon("x")}</button></div></div>`
-    : `<div class="ax-qhd"><div class="wb-seg" role="radiogroup" aria-label="${L("show_label")}"><button type="button" role="radio" aria-checked="${scope === "mine"}" data-q="scope=mine">${L("mine")}</button><button type="button" role="radio" aria-checked="${scope === "all"}" data-q="scope=all">${L("all")}</button></div>${icons}
-<div class="wb-input ax-qsearch"><span class="wb-adorn">${icon("search")}</span><input type="search" id="q" placeholder="${L("search_emails")}" aria-label="${L("search_emails")}" autocomplete="off"></div>${iconBtn(t(lang, "close_search"), "x", "data-qsearch-close", "ax-qclose")}</div>`;
-  const empty = hist ? (q ? t(lang, "history_no_match").replace("{q}", q) : t(lang, "history_none")) : t(lang, "no_open");
+  const icons = `<span class="ax-icons">${btnCompose}${btnMore}</span>`;
+  const seg = (label, pairs) => `<div class="wb-seg" role="radiogroup" aria-label="${label}">${pairs.map(([qv, on, text]) => `<button type="button" role="radio" aria-checked="${on}" data-q="${qv}">${text}</button>`).join("")}</div>`;
+  // The header (both lists): Mine | All and Open | History, then the search field and the icons
+  // (on a phone standalone the icons sit in the top bar). The rows wrap where one does not fit.
+  const head = `<div class="ax-qhd"><div class="ax-qsegs">${seg(L("show_label"), [["scope=mine", scope === "mine", L("mine")], ["scope=all", scope === "all", L("all")]])}${seg(L("list_label"), [["show=open", !hist, L("open_list")], ["show=history", hist, L("history")]])}</div>
+<div class="ax-qfind"><div class="wb-input"><span class="wb-adorn">${icon("search")}<span class="wb-spin" hidden></span></span><input type="search" id="q" value="${esc(q)}" placeholder="${L("search_emails")}" aria-label="${L("search_emails")}" autocomplete="off" enterkeyhint="search"><button type="button" class="wb-clear" data-q-clear aria-label="${L("clear_search")}" title="${L("clear_search")}"${q ? "" : " hidden"}>${icon("x")}</button></div>${icons}</div></div>`;
+  const empty = q ? t(lang, hist ? "history_no_match" : "open_no_match", { q }) : t(lang, hist ? "history_none" : "no_open");
+  const count = q ? `<p class="ax-qcount" role="status">${esc(t(lang, total === 1 ? "q_count_1" : total ? "q_count_n" : "q_count_0").replace("{n}", total))}</p>` : "";
   const lastT = sync.finished_at ? fmtTime(parseTS(sync.finished_at), lang) : t(lang, "never");
   const html = `<div class="ax-q" data-qs="${esc(qs)}" data-stamp="${esc(queueStamp(f))}" data-show="${show}">
 <header class="wb-page__hd ax-ptop">${homeLink(lang)}<h1 class="wb-page__t">Axle</h1>${icons}</header>
 ${head}
 <div data-ax-banner>${opts && opts.syncedBanner ? `<div class="wb-banner ax-flash" data-tone="info">${icon("info")}<div class="wb-banner__body">${L("sync_started")}</div></div>` : ""}</div>
-<div class="wb-list" role="listbox" id="qlist" data-page="${pageNo}" aria-label="${L(hist ? "history" : "inbox")}">${rows || `<div class="wb-empty">${esc(empty)}</div>`}</div>
-${hasMore ? moreRow : ""}
+<div id="qbody">${count}
+<div class="wb-list" role="listbox" id="qlist" data-page="${pageNo}" aria-label="${L(hist ? "history" : "inbox")}">${rows || `<div class="wb-empty">${esc(empty)}${counts ? offersHtml(f, counts, lang) : ""}</div>`}</div>
+${hasMore ? moreRow : ""}</div>
 ${menu}
 </div>
 <p class="ax-live"${sync.running ? " data-running" : ""}><span id="qlivet">${sync.running ? L("syncing") : esc(t(lang, "updated").replace("{t}", lastT))}</span><button type="button" class="wb-pillbtn" id="qupd" hidden>${L("updates_waiting")}</button></p>`;
-  return { html, lang, empty: !hist && !items.length };
+  return { html, lang, empty: !hist && !q && !items.length };
 }
 
 // --- Compose (Compose A) ----------------------------------------------------------------------
@@ -264,8 +312,8 @@ app.get("/", async (req, res) => {
   res.send(page("Inbox", req.user, body, 0, { shell: true }));
 });
 
-// Queue fragment: the live refresh, every in-place switch (Mine | All, Mailbox, History and its
-// search), Load more, and the lazy queue of item deep links. Same data path, audit and
+// Queue fragment: the live refresh, every in-place switch (Mine | All, Open | History, Mailbox),
+// every search, Load more, and the lazy queue of item deep links. Same data path, audit and
 // translations as GET /; ?sel marks the open email's row.
 app.get("/queue", async (req, res) => {
   const q = await buildQueuePane(req, { sel: parseInt(req.query.sel, 10) || 0 });

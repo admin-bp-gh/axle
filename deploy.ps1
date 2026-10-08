@@ -73,7 +73,10 @@ $suites = @("accuracy-gates.test.js","fitment-gate.test.js","part-dossier.test.j
             "draft-staleness.test.js","acknowledgement.test.js","dash-style.test.js",
             "carrier-claim.test.js","claim-dossier.test.js","claim-statement.test.js",
             "claim-attach.test.js","doc-suggest.test.js","thread-read.test.js","unread-sweep.test.js",
-            "withdrawn-attempt.test.js","teach.test.js","caller-match.test.js","vocabulary-sync.test.js")
+            "withdrawn-attempt.test.js","teach.test.js","caller-match.test.js","vocabulary-sync.test.js",
+            "message-store.test.js","search.test.js","customer-contact.test.js",
+            "draft-media.test.js","reply-format.test.js","cc-list.test.js","message-store-retry.test.js","search-highlight.test.js",
+            "axle-editor.test.js")
 
 try {
   Say "Running as: $([Security.Principal.WindowsIdentity]::GetCurrent().Name)"

@@ -6,10 +6,11 @@
      2. Overlay stack (Esc closes only the topmost) and focus trap
      3. Menu, Sheet, Overlay (dialog, drawer, page), Toast, Banner, confirm dialog
      4. In-place posting, autosave, next email, keyboard
-     5. Queue: open an email, Back, filters, search, History, live refresh, pull to refresh, Sync now
+     5. Queue: open an email, Back, filters, the search, live refresh, pull to refresh, Sync now
      6. Compose
      7. Phone draft protection, growing text areas, htmx failures, busy buttons
-     8. The email: translations, folds, attachments, documents, the To line, Teach, Reset
+     8. The email: the reply editor's adapter, translations, folds, the photo viewer, files and the
+        camera, documents, the To and Cc lines, Teach, Reset
    The public surface is window.Axle (the end of this file); AXLE-JS.md in _ref is the how-to. */
 (() => {
   "use strict";
@@ -416,12 +417,19 @@
     const y = scrollY, f = D.getElementById("workform"), a = D.activeElement;
     const typed = f ? [...f.elements].filter((el) => el.name && isText(el) && el.value !== el.defaultValue).map((el) => [el.name, el.value, el.defaultValue]) : [];
     const focus = a?.name && a.form === f ? [a.name, a.selectionStart, a.selectionEnd] : null;
+    const caret = a?.id === "replyed" ? replyEd()?.caret() : null;
     return () => {
       const g = D.getElementById("workform");
-      typed.forEach(([n, v, d]) => { const el = g?.elements.namedItem(n); if (el?.defaultValue === d) el.value = v; });
+      typed.forEach(([n, v, d]) => {
+        const el = g?.elements.namedItem(n);
+        if (el?.defaultValue !== d) return;
+        el.value = v;
+        if (n === "reply") replyEd()?.setText(v);
+      });
       growAll();
       const el = focus && g?.elements.namedItem(focus[0]);
       if (el?.focus) { el.focus({ preventScroll: true }); try { el.setSelectionRange(focus[1], focus[2]); } catch (e) { /* not a text field */ } }
+      if (caret) replyEd()?.setCaret(caret);
       scrollTo(0, y);
     };
   }
@@ -475,7 +483,7 @@
   // Next email: after Send or Mark done (or anything that closes the email) the next row of the
   // list opens and a toast confirms; with none left the work area says so. Then the queue refreshes.
   function next(msg) {
-    const rows = $$("#qlist .wb-row").filter((r) => !r.hidden);
+    const rows = $$("#qlist .wb-row");
     const cur = openId() || $('#qlist .wb-row[aria-selected="true"]')?.dataset.id;
     const i = rows.findIndex((r) => r.dataset.id === cur);
     const nx = rows.slice(i + 1).concat(rows.slice(0, Math.max(i, 0)))[0] || null;
@@ -486,13 +494,15 @@
   }
 
   // Keyboard: Ctrl+Enter (Cmd+Enter) sends ([data-send] of the field's form, or the old Send
-  // button); Enter in a single-line field of a posting form never submits it.
+  // button), from the reply editor too (a contenteditable in the work form); Enter in a single-line
+  // field of a posting form never submits it.
   const sendBtnOf = (form) => $$("[data-send], button[formaction$='/send']")
     .find((b) => b.form === form && !b.disabled && b.offsetParent !== null);
   D.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" || e.isComposing || !e.target.form) return;
+    const form = e.target.form || (e.target.isContentEditable ? e.target.closest("form") : null);
+    if (e.key !== "Enter" || e.isComposing || !form) return;
     if (e.ctrlKey || e.metaKey) {
-      const b = sendBtnOf(e.target.form);
+      const b = sendBtnOf(form);
       if (b) { e.preventDefault(); b.click(); }
     } else if (e.target.matches("input:not([type=submit], [type=button], [type=checkbox], [type=radio], [type=file], [type=image], [type=reset])") && (e.target.form.getAttribute("method") || "").toLowerCase() === "post") {
       e.preventDefault();
@@ -500,10 +510,13 @@
   });
 
   /* ---------- 5. Queue ---------- */
-  // Q: the queue as rendered (filter query string, change stamp, view) and the reader's place.
-  const Q = { qs: "", stamp: "", show: "open", inflight: 0, prev: null, keepY: null, touch: 0, listY: 0, listUrl: "", rowReq: null, lastReturn: 0, histTimer: 0, hist: null, pollY: null };
+  // Q: the queue as rendered (filter query string, change stamp) and the reader's place. F: the
+  // search in flight (debounce timer, request number, abort controller).
+  const Q = { qs: "", stamp: "", inflight: 0, prev: null, keepY: null, focus: null, touch: 0, listY: 0, listUrl: "", rowReq: null, lastReturn: 0, pollY: null };
+  const F = { timer: 0, seq: 0, ctl: null };
   const qp = () => D.getElementById("queuepane");
-  const setParams = (qs, more) => { const p = new URLSearchParams(qs); new URLSearchParams(more).forEach((v, k) => p.set(k, v)); if (p.get("show") !== "history") p.delete("q"); return p.toString(); };
+  const setParams = (qs, more) => { const p = new URLSearchParams(qs); new URLSearchParams(more).forEach((v, k) => p.set(k, v)); if (!p.get("q")) p.delete("q"); return p.toString(); };
+  const searchOf = (qs) => new URLSearchParams(qs).get("q") || "";
   const listUrl = () => B + "/?" + Q.qs;
   const openId = () => Q.rowReq?.dataset.id || currentId();
   const skelRows = () => '<div class="ax-skelrow"><span class="wb-skel" style="width:38%"></span><span class="wb-skel" style="width:66%"></span><span class="wb-skel" style="width:86%"></span></div>'.repeat(4);
@@ -517,28 +530,6 @@
     const tm = new Date().toLocaleTimeString(nl ? "nl-NL" : "en-US", { timeZone: "Europe/Amsterdam", hour: "numeric", minute: "2-digit", hour12: !nl });
     tx.textContent = on ? t("syncing") : t("updated", { t: nl ? tm : tm.replace(" ", "").toLowerCase() });
   }
-  // The open list's search: a client-side filter over the loaded rows, kept for the session.
-  function applySearch() {
-    const inp = D.getElementById("q"), list = D.getElementById("qlist");
-    if (!inp || !list) return;
-    const v = inp.value.trim().toLowerCase();
-    let n = 0;
-    $$(".wb-row", list).forEach((r) => { r.hidden = !!v && !(r.dataset.search || "").includes(v); if (!r.hidden) n++; });
-    $("#qnomatch")?.remove();
-    if (v && !n && $(".wb-row", list)) {
-      const [none] = nodes('<div class="wb-empty" id="qnomatch"></div>');
-      none.textContent = t("no_matches", { q: inp.value.trim() });
-      list.append(none);
-    }
-    store("sessionStorage", (s) => s.setItem("axle_q", inp.value));
-  }
-  function searchMode(on) {
-    const hd = $(".ax-qhd"), inp = D.getElementById("q");
-    if (!hd || !inp) return;
-    hd.classList.toggle("is-search", on);
-    if (on) inp.focus();
-    else { inp.value = ""; applySearch(); }
-  }
   // Fill the summaries that were not yet translated ([data-trs]), one batched call per render.
   function fillSummaries() {
     const pend = $$("#qlist [data-trs]");
@@ -550,76 +541,129 @@
         if (!v) return;
         el.textContent = v;
         el.removeAttribute("data-trs");
-        const row = el.closest(".wb-row");
-        if (row) row.dataset.search += " " + v.toLowerCase();
       }))
       .catch(() => { /* the English summaries stay */ });
   }
-  // After every render of the queue (and of a Load more page).
+  // After every render of the list (the whole queue, or the list part after a search).
+  function afterList() {
+    const cur = openId();
+    if (cur && $(`#qlist .wb-row[data-id="${cur}"]`)) markSelected(cur);
+    $(".ax")?.toggleAttribute("data-empty", $("#queuepane .ax-q")?.dataset.show === "open" && !searchOf(Q.qs) && !$("#qlist .wb-row"));
+    markDraftKept();
+    fillSummaries();
+    D.dispatchEvent(new CustomEvent("ax:queue"));
+  }
+  // After every render of the queue. The focus a refresh took away (a segment, the search field)
+  // comes back to the same control.
   function initQueue() {
     const pane = $("#queuepane .ax-q");
     if (!pane) return;
     Q.qs = pane.dataset.qs;
     Q.stamp = pane.dataset.stamp;
-    const entered = Q.show !== "history" && pane.dataset.show === "history";
-    Q.show = pane.dataset.show;
     Q.inflight = 0;
     if (Q.prev) $$("#qlist .wb-row").forEach((r) => { if (!Q.prev.has(r.dataset.id)) r.classList.add("ax-new"); });
     Q.prev = null;
-    const cur = openId();
-    if (cur && $(`#qlist .wb-row[data-id="${cur}"]`)) markSelected(cur);
-    $(".ax")?.toggleAttribute("data-empty", Q.show === "open" && !$("#qlist .wb-row"));
-    const saved = Q.show === "open" ? store("sessionStorage", (s) => s.getItem("axle_q")) : "";
-    if (saved) { D.getElementById("q").value = saved; $(".ax-qhd").classList.add("is-search"); applySearch(); }
-    const qh = D.getElementById("qh");
-    if (qh && Q.hist != null) {
-      const typed = Q.hist;
-      Q.hist = null;
-      qh.value = typed;
-      qh.focus();
-      qh.setSelectionRange(typed.length, typed.length);
-      if (typed.trim() !== (new URLSearchParams(Q.qs).get("q") || "")) histSearch(qh);
-    }
-    // History just opened with a mouse or trackpad: the search field takes the focus, so finding an
-    // old email is More, History, type. Never on touch (it would raise the keyboard).
-    else if (qh && entered && W.matchMedia("(pointer: fine)").matches) qh.focus({ preventScroll: true });
-    markDraftKept();
-    fillSummaries();
+    const f = Q.focus && $(Q.focus, pane);
+    Q.focus = null;
+    if (f) { f.focus({ preventScroll: true }); if (f.id === "q") f.setSelectionRange(f.value.length, f.value.length); }
     pullReset();
     if (Q.keepY != null && ONEPANE.matches) scrollTo(0, Q.keepY);
     Q.keepY = null;
-    D.dispatchEvent(new CustomEvent("ax:queue"));
+    afterList();
   }
-  // Refresh the queue fragment in place. opts: qs (a new filter), sel, skeleton (a filter switch
-  // shows skeleton rows meanwhile), keepScroll (phone: put the list back where it was).
+  // Refresh the queue fragment in place, the search field's text included. opts: qs (a new
+  // filter), sel, skeleton (a filter switch shows skeleton rows meanwhile), keepScroll (phone: put
+  // the list back where it was). A search in flight is dropped: this render carries its text.
   function refreshQueue(opts = {}) {
     const pane = qp();
     if (!pane || !W.htmx) return;
-    const qs = opts.qs || Q.qs;
+    const field = D.getElementById("q");
+    const qs = field ? setParams(opts.qs || Q.qs, { q: field.value.trim() }) : opts.qs || Q.qs;
+    findStop();
     if (qs === Q.qs && !opts.skeleton) Q.prev = new Set($$("#qlist .wb-row").map((r) => r.dataset.id));
     if (opts.keepScroll) Q.keepY = scrollY;
+    const a = D.activeElement;
+    if (a && pane.contains(a)) Q.focus = a.id === "q" ? "#q" : a.dataset.q ? `.ax-qhd [data-q="${a.dataset.q}"]` : null;
     const list = D.getElementById("qlist");
-    if (opts.skeleton && list) { list.innerHTML = skelRows(); D.getElementById("qmoreRow")?.remove(); }
+    if (opts.skeleton && list) { list.innerHTML = skelRows(); $$("#qmoreRow, .ax-qcount").forEach((n) => n.remove()); }
     Q.inflight = Date.now();
     W.htmx.ajax("GET", `${B}/queue?${qs}&sel=${opts.sel ?? (openId() || 0)}`, { target: pane, swap: "innerHTML" });
   }
-  // A switch of Mine | All, Mailbox or History: in place, the open email stays.
+  // A switch of Mine | All, Open | History or Mailbox (or an offer of an empty search): in place,
+  // the open email and the search text stay.
   function switchFilter(more) {
-    const qs = setParams(Q.qs, more);
+    const field = D.getElementById("q");
+    const qs = setParams(setParams(Q.qs, more), { q: field ? field.value.trim() : searchOf(Q.qs) });
     if (qs === Q.qs) return;
     if (!currentId()) history.replaceState({ htmx: true }, "", B + "/?" + qs);
     refreshQueue({ qs, skeleton: true });
   }
-  // History's search runs on the server, 400 ms after the last keystroke; the typed text and the
-  // focus survive the swap (initQueue).
-  function histSearch(inp) {
-    clearTimeout(Q.histTimer);
-    Q.histTimer = setTimeout(() => { Q.hist = inp.value; refreshQueue({ qs: setParams(Q.qs, { q: inp.value.trim() }) }); }, 400);
+
+  // The search (both lists, on the server): 250 ms after the last keystroke, at once on Enter or
+  // when the field is cleared. Only the list part is redrawn, so the field keeps the focus and the
+  // keyboard stays up; only the newest request may draw. While one is out the field shows a spinner;
+  // the first search on a list shows skeleton rows, later ones dim the rows they replace.
+  function findBusy(on) {
+    const ad = $(".ax-qfind .wb-adorn");
+    if (!ad) return;
+    ad.firstElementChild.toggleAttribute("hidden", on);
+    ad.lastElementChild.hidden = !on;
+  }
+  function findStop() {
+    clearTimeout(F.timer);
+    F.seq++;
+    F.ctl?.abort();
+    F.ctl = null;
+    findBusy(false);
+  }
+  function findLater() {
+    const v = D.getElementById("q").value;
+    $("[data-q-clear]").hidden = !v;
+    clearTimeout(F.timer);
+    if (v.trim()) F.timer = setTimeout(findNow, 250);
+    else findNow();
+  }
+  function findNow() {
+    const field = D.getElementById("q"), list = D.getElementById("qlist"), pane = $("#queuepane .ax-q");
+    if (!field || !list || !pane) return;
+    const qs = setParams(Q.qs, { q: field.value.trim() });
+    if (qs === Q.qs && !F.ctl) return;
+    findStop();
+    const seq = F.seq, ctl = F.ctl = new AbortController(), was = [...list.childNodes];
+    if (searchOf(qs) && !searchOf(Q.qs)) list.innerHTML = skelRows();
+    else list.setAttribute("aria-busy", "true");
+    findBusy(true);
+    Q.inflight = Date.now();
+    fetch(`${B}/queue?${qs}&sel=${openId() || 0}`, { signal: ctl.signal, credentials: "same-origin" })
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+      .then((html) => {
+        if (seq !== F.seq) return;
+        F.ctl = null;
+        findBusy(false);
+        const tp = D.createElement("template");
+        tp.innerHTML = html;
+        const fresh = tp.content.querySelector(".ax-q"), body = tp.content.getElementById("qbody");
+        pane.dataset.qs = Q.qs = fresh.dataset.qs;
+        pane.dataset.stamp = Q.stamp = fresh.dataset.stamp;
+        Q.inflight = 0;
+        D.getElementById("qbody").replaceWith(body);
+        W.htmx.process(body);
+        if (!currentId()) history.replaceState({ htmx: true }, "", listUrl());
+        afterList();
+      })
+      .catch(() => {
+        if (seq !== F.seq) return;
+        F.ctl = null;
+        findBusy(false);
+        list.replaceChildren(...was);
+        list.removeAttribute("aria-busy");
+        banner(qp(), { tone: "bad", message: t("post_failed") });
+      });
   }
 
   // The live refresh: every 10 s a cheap stamp probe; the list re-renders only when the stamp
   // changed. Held back (the "New activity" pill shows instead) while a field in the queue has focus,
-  // a menu or overlay is open, History is paged past its first page, or the list is scrolled away
+  // a menu or overlay is open, the list is paged past its first page, or the list is scrolled away
   // from the top (one-pane: the page scroll or a touch in the last 10 s). A hidden tab pauses it.
   function holdBack(pane) {
     const a = D.activeElement;
@@ -725,7 +769,7 @@
     const tg = e.detail.target;
     if (e.target !== tg) return;   // htmx fires it on the source element too
     if (tg?.id === "queuepane") initQueue();
-    else if (tg?.id === "qlist") { tg.dataset.page = String(+(tg.dataset.page || 1) + 1); applySearch(); markDraftKept(); fillSummaries(); }
+    else if (tg?.id === "qlist") { tg.dataset.page = String(+(tg.dataset.page || 1) + 1); markDraftKept(); fillSummaries(); }
     else if (tg?.id === "workpane") {
       const poll = (e.detail.elt?.getAttribute?.("hx-trigger") || "").includes("load delay");
       afterWork(!poll);
@@ -877,7 +921,7 @@
   const readB64 = (f) => new Promise((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result).split(",")[1] || ""); rd.onerror = no; rd.readAsDataURL(f); });
   function snippets(e) {
     const imgs = [...(e.clipboardData?.items || [])].filter((i) => i.kind === "file" && /^image\//i.test(i.type)).map((i) => i.getAsFile()).filter(Boolean);
-    if (!imgs.length || (e.target.matches?.("input, textarea") && e.clipboardData.getData("text/plain"))) return null;
+    if (!imgs.length || ((e.target.matches?.("input, textarea") || e.target.isContentEditable) && e.clipboardData.getData("text/plain"))) return null;
     const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
     return imgs.map((f, i) => new File([f], `snippet-${stamp}${imgs.length > 1 ? "-" + (i + 1) : ""}.${(/image\/(png|jpe?g|gif|webp)/i.exec(f.type) || [, "png"])[1].replace("jpeg", "jpg")}`, { type: f.type || "image/png" }));
   }
@@ -1003,7 +1047,7 @@
     try { d = JSON.parse(store("localStorage", (s) => s.getItem(PRE + id)) || "null"); } catch (e) { d = null; }
     if (!d) return;
     if (dSame(d, dr.base)) return dropDraft(id);
-    const put = () => { Object.entries(F).forEach(([k, el]) => { if (d[k] != null) el.value = d[k]; }); growAll(); };
+    const put = () => { Object.entries(F).forEach(([k, el]) => { if (d[k] != null) el.value = d[k]; }); replyEd()?.setText(F.reply.value); growAll(); };
     const host = F.reply.closest(".ax-reply, .box, .wb-card") || F.reply.parentElement;
     let n;
     if (dSame(d.base, dr.base)) {
@@ -1046,7 +1090,7 @@
     });
   })();
   D.addEventListener("input", (e) => {
-    if (e.target.matches?.(".wb-input--area > textarea, #replybox, textarea.ans")) grow(e.target);
+    if (e.target.matches?.(".wb-input--area > textarea, textarea.ans")) grow(e.target);
     if (!dr || !phone() || !FNAMES.includes(e.target.name) || e.target.form !== workForm()) return;
     clearTimeout(dr.timer);
     dr.timer = setTimeout(draftWrite, 600);
@@ -1067,7 +1111,7 @@
 
   // Text areas grow with their text (three lines minimum, no inner scrollbar).
   function grow(el) { if (!el.offsetParent) return; el.style.height = "auto"; el.style.height = el.scrollHeight + 2 + "px"; }
-  function growAll() { $$(".wb-input--area > textarea, #replybox, textarea.ans").forEach(grow); }
+  function growAll() { $$(".wb-input--area > textarea, textarea.ans").forEach(grow); }
   W.addEventListener("resize", growAll);
 
   // A failed request into the work area: the server's own error pane when it sent one, else a bad
@@ -1101,6 +1145,18 @@
   const emailEl = () => $("#workpane .ax-email[data-email]");
   const itemUrl = (id, p) => `${B}/item/${id}${p || ""}`;
   const replyBox = () => D.getElementById("replybox");
+  // The reply editor (assets/axle-editor.js) over the hidden reply field. The field holds the stored
+  // text (markers and all) that every reader uses: autosave, the phone's draft, Reset to draft,
+  // Translate, Send; the editor writes it on every input and fires the field's input event. Whatever
+  // sets or inserts reply text goes through here: setReply (Reset to draft), replyEd().setText (a
+  // restored or carried edit), replyEd().insert (an [image:N] token at the caret).
+  const replyEd = () => { const el = D.getElementById("replyed"), f = replyBox(); return el && f && W.AxleEditor ? W.AxleEditor.mount(el, f) : null; };
+  function setReply(text) {
+    const f = replyBox();
+    f.value = text;
+    replyEd()?.setText(text);
+    f.dispatchEvent(new Event("input", { bubbles: true }));   // autosave, the draft protection, Reset's visibility
+  }
   // The email again from the server, swapped in place (scroll, focus and typed text kept).
   async function reloadEmail() {
     const id = emailEl()?.dataset.email;
@@ -1112,10 +1168,13 @@
       .catch(() => banner(emailEl() || $("#workpane"), { tone: "bad", message: t("post_failed") }));
   }
 
-  // After every render of an email: the phone clamp, Reset to draft, the background translations.
+  // After every render of an email: the reply editor, the Cc row the user opened, the phone clamp,
+  // Reset to draft, the background translations.
   function emailInit() {
     const em = emailEl();
     if (!em) return;
+    replyEd();
+    if (ccOpened.has(em.dataset.email)) ccShow(false);
     foldCheck();
     resetVisible();
     const id = em.dataset.email, pend = $("[data-tr-pending]", em), qs = $$("[data-trq]", em);
@@ -1148,64 +1207,99 @@
     const b = $("#workpane [data-reset]"), seed = D.getElementById("ai_seed"), r = replyBox();
     if (b && seed && r) b.hidden = nz(r.value) === nz(seed.value);
   }
-  const insAt = (ta, txt) => {
-    const a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a;
-    ta.value = ta.value.slice(0, a) + txt + ta.value.slice(z);
-    ta.selectionStart = ta.selectionEnd = a + txt.length;
-    ta.focus();
-    ta.dispatchEvent(new Event("input", { bubbles: true }));   // autosave, growth, draft protection
-  };
-  // The To line: "Other address..." swaps the pills for an email field and Use address.
-  function toOther(on) {
+  // The To and Cc lines (kind "to" or "cc"): "Other address..." swaps the line's pills for an email
+  // field and Use address; Cancel (or Esc) puts them back.
+  function toOther(on, kind) {
     const em = emailEl();
     if (!em) return;
-    $$("[data-to-pill]", em).forEach((n) => { n.hidden = on; });
-    $$("[data-to-other-field]", em).forEach((n) => { n.hidden = !on; });
+    $$(`[data-${kind}-pill]`, em).forEach((n) => { n.hidden = on; });
+    $$(`[data-${kind}-other-field]`, em).forEach((n) => { n.hidden = !on; });
     // The field and Use come fully into view (on a phone above the sticky bar: the row's scroll
     // margin, axle.css), then take the focus.
     if (on) {
-      const f = $("[data-to-other-field] input", em), row = f.closest(".ax-to");
+      const f = $(`[data-${kind}-other-field] input`, em), row = f.closest(".ax-to");
       if (row.getBoundingClientRect().bottom + parseFloat(getComputedStyle(row).scrollMarginBottom) > innerHeight) row.scrollIntoView({ block: "end" });
       f.focus({ preventScroll: true });
     }
   }
+  // The Cc row: drawn hidden while the Cc is empty; Add Cc opens it, and it stays open for that email
+  // through the redraws an add or a remove brings (otherwise it goes when the last address does).
+  const ccOpened = new Set();
+  function ccShow(focus) {
+    const row = D.getElementById("ax-ccrow"), b = $("#workpane [data-cc-open]");
+    if (!row) return;
+    row.hidden = false;
+    if (b) { b.hidden = true; b.setAttribute("aria-expanded", "true"); }
+    if (focus) $('[data-menu="cc"]', row).focus();
+  }
 
-  // Files: the Attach button's picker, a drop on the reply card and a pasted screenshot go through
-  // the existing POST /item/:id/attach-add, one call per file, carrying the reply and the redraft
-  // note as before (the route saves them first). Pasted into the reply, an image also gets its
-  // [image:N] token at the caret, and the token-edited reply is saved by one more call without a
-  // file. Then the email renders again in place; a refusal is a banner, nothing else changes.
+  // Files: the Attach button's picker, the camera, a drop on the reply card and a pasted screenshot
+  // go through the existing POST /item/:id/attach-add, one call per file, carrying the reply and the
+  // redraft note as before (the route saves them first). Pasted into the reply, an image also gets
+  // its [image:N] token at the caret, and the token-edited reply is saved by one more call without a
+  // file. A camera photo, and any picked image over the per-file limit, is first scaled down here
+  // (shrink). Each file shows as a busy chip until it landed. Then the email renders again in place;
+  // a refusal (the per-file or the total limit) is a banner, nothing else changes.
   const textFields = (form) => { const d = new URLSearchParams(); for (const el of form.elements) if (el.name && isText(el) && !el.disabled) d.append(el.name, el.value); return d; };
-  async function addFiles(files, tokenTa) {
+  // A photo scaled for the reply: long edge at most 1600 px, JPEG at quality 0.8. createImageBitmap
+  // with imageOrientation "from-image" turns it upright by its EXIF orientation; where that is not
+  // supported, an img element is drawn instead, which current engines also turn upright by default
+  // (CSS image-orientation: from-image). Throws when the browser cannot read the image.
+  async function shrink(f, name) {
+    let src;
+    try { src = await createImageBitmap(f, { imageOrientation: "from-image" }); }
+    catch (e) {
+      const u = URL.createObjectURL(f);
+      try { src = await new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = u; }); }
+      finally { URL.revokeObjectURL(u); }
+    }
+    const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height, k = Math.min(1, 1600 / Math.max(w, h));
+    const c = Object.assign(D.createElement("canvas"), { width: Math.round(w * k), height: Math.round(h * k) });
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+    src.close?.();
+    const blob = await new Promise((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("encode"))), "image/jpeg", 0.8));
+    return new File([blob], name, { type: "image/jpeg" });
+  }
+  const photoName = () => "photo-" + new Date().toTimeString().slice(0, 8).replace(/:/g, "") + ".jpg";
+  async function addFiles(files, token, camera) {
     const em = emailEl(), form = D.getElementById("workform"), card = $(".ax-reply[data-max]", em || D);
     if (!em || !form || !card || !files.length) return;
-    const id = em.dataset.email, btn = $("[data-attach]", card), say = (m) => banner(form, { tone: "bad", message: m, unchanged: true });
+    const id = em.dataset.email, btn = $(camera ? "[data-camera]" : "[data-attach]", card), row = $(".ax-atts", card), say = (m) => banner(form, { tone: "bad", message: m, unchanged: true });
     clearBanner(form);
     await flush();
     busyBtn(btn, true);
+    const wasHidden = row.hidden;
+    row.hidden = false;
     let added = false, tokens = false;
-    for (const f of files) {
-      if (f.size > +card.dataset.max) { say(t("file_too_big")); continue; }
-      const p = textFields(form);
-      p.set("name", f.name); p.set("ctype", f.type || "application/octet-stream"); p.set("data", await readB64(f));
+    for (let f of files) {
+      const [chip] = nodes('<span class="wb-pill ax-chip" data-tone="neutral" aria-busy="true"><span class="wb-spin" aria-hidden="true"></span><span></span></span>');
+      chip.lastElementChild.textContent = camera ? photoName() : f.name;
+      row.append(chip);
       try {
+        if (camera || (f.size > +card.dataset.max && /^image\//i.test(f.type || ""))) {
+          try { f = await shrink(f, camera ? chip.lastElementChild.textContent : f.name.replace(/\.[^.]*$/, "") + ".jpg"); } catch (e) { /* not an image this browser reads: sent as it is */ }
+        }
+        if (f.size > +card.dataset.max) { say(t("file_too_big")); continue; }
+        const p = textFields(form);
+        p.set("name", f.name); p.set("ctype", f.type || "application/octet-stream"); p.set("data", await readB64(f));
         const d = await (await fetch(itemUrl(id, "/attach-add"), { method: "POST", body: p, credentials: "same-origin" })).json();
         if (d.error) { say(d.error); continue; }
         added = true;
-        if (tokenTa && d.id && /^image\//i.test(f.type || "")) { insAt(tokenTa, `[image:${d.id}]`); tokens = true; }
+        if (token && d.id && /^image\//i.test(f.type || "")) { replyEd()?.insert(`[image:${d.id}]`); tokens = true; }
       } catch (e) { say(t("attach_failed")); }
+      finally { chip.remove(); }
     }
     if (tokens) await fetch(itemUrl(id, "/attach-add"), { method: "POST", body: textFields(form), credentials: "same-origin" }).catch(() => {});
     busyBtn(btn, false);
     if (added) { dropDraft(id); reloadEmail(); }
+    else row.hidden = wasHidden;
   }
   D.addEventListener("paste", (e) => {
-    const r = replyBox();
-    if (!r || stack.length) return;   // no editable email, or an overlay (compose has its own) has the paste
+    if (!replyBox() || stack.length) return;   // no editable email, or an overlay (compose has its own) has the paste
     const files = snippets(e);
     if (!files) return;
     e.preventDefault();
-    addFiles(files, e.target === r ? r : null);
+    addFiles(files, !!e.target.closest?.("#replyed"));
   });
   D.addEventListener("dragover", (e) => {
     if (!e.dataTransfer?.types?.includes("Files")) return;
@@ -1223,10 +1317,70 @@
     if (card) addFiles([...e.dataTransfer.files]);
   });
   D.addEventListener("change", (e) => {
-    if (e.target.id !== "att_file") return;
-    addFiles([...e.target.files]);
+    if (e.target.id !== "att_file" && e.target.id !== "att_cam") return;
+    addFiles([...e.target.files], false, e.target.id === "att_cam");
     e.target.value = "";
   });
+
+  // The photo viewer: every photo of the conversation that loaded, in the order the email shows
+  // them (the newest message first, then the earlier ones). An overlay on a dim backdrop from 640 up,
+  // full screen on a phone (axle.css): the photo fitted to the window, previous and next (buttons,
+  // arrow keys, a swipe on a phone when not zoomed in), "2 of 5", the file name with the sender and
+  // time of its message, Open original and Close. A layer of the overlay stack: Esc closes it, focus
+  // stays inside and goes back to the thumbnail. The browser's own pinch zoom is never blocked.
+  function viewer(start) {
+    const list = $$("#workpane .ax-thumb:not([data-failed]) [data-photo]");
+    let at = Math.max(0, list.indexOf(start));
+    const [el] = nodes(`<div class="ax-viewer" role="dialog" aria-modal="true" aria-label="${esc(t("viewer_title"))}" tabindex="-1">
+      <div class="ax-viewer__hd"><span class="ax-viewer__n" aria-live="polite"></span><span class="ax-viewer__name"><b></b><span></span></span>
+        <a class="wb-btn wb-btn--sm ax-viewer__open" target="_blank" rel="noopener">${esc(t("viewer_open"))}</a>
+        <button type="button" class="wb-btn wb-btn--icon ax-viewer__x" aria-label="${esc(t("close"))}" title="${esc(t("close"))}">${icon("x")}</button></div>
+      <div class="ax-viewer__stage"><img alt=""></div>
+      <button type="button" class="wb-btn wb-btn--icon ax-viewer__go" data-go="-1" aria-label="${esc(t("viewer_prev"))}" title="${esc(t("viewer_prev"))}">${icon("back")}</button>
+      <button type="button" class="wb-btn wb-btn--icon ax-viewer__go" data-go="1" aria-label="${esc(t("viewer_next"))}" title="${esc(t("viewer_next"))}">${icon("chevron-right")}</button></div>`);
+    const img = $("img", el), more = list.length > 1;
+    const show = (n) => {
+      at = (n + list.length) % list.length;
+      const b = list[at];
+      img.src = b.dataset.photo;
+      img.alt = b.dataset.name;
+      $(".ax-viewer__n", el).textContent = t("viewer_count", { i: at + 1, n: list.length });
+      $(".ax-viewer__name b", el).textContent = b.dataset.name;
+      $(".ax-viewer__name span", el).textContent = b.dataset.meta;
+      $(".ax-viewer__open", el).href = b.dataset.photo;
+    };
+    $$("[data-go]", el).forEach((b) => { b.hidden = !more; b.addEventListener("click", () => show(at + +b.dataset.go)); });
+    el.addEventListener("keydown", (e) => {
+      if (more && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); show(at + (e.key === "ArrowRight" ? 1 : -1)); }
+    });
+    el.addEventListener("click", (e) => { if (e.target === el || e.target.matches(".ax-viewer__stage") || e.target.closest(".ax-viewer__x")) ly.close(); });
+    let sw = null;
+    el.addEventListener("touchstart", (e) => { sw = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+    el.addEventListener("touchend", (e) => {
+      const p = e.changedTouches[0], zoomed = (W.visualViewport?.scale || 1) > 1.01;
+      if (!sw || !more || zoomed || e.touches.length) return;
+      const dx = p.clientX - sw.x, dy = p.clientY - sw.y;
+      sw = null;
+      if (Math.abs(dx) > 50 && Math.abs(dy) < Math.abs(dx) * 0.6) show(at + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+    show(at);
+    start.focus({ preventScroll: true });
+    D.body.append(el);
+    D.body.classList.add("ax-viewing");
+    const ly = layer(el, () => { el.remove(); D.body.classList.remove("ax-viewing"); });
+    el.focus({ preventScroll: true });
+  }
+  // A thumbnail's skeleton goes once its photo is in; a photo that fails shows "Could not load" with
+  // Retry, which asks for it again (the server fetches a missing file from Graph on the way).
+  D.addEventListener("load", (e) => { if (e.target.matches?.(".ax-thumb img")) e.target.previousElementSibling?.remove(); }, true);
+  D.addEventListener("error", (e) => { if (e.target.matches?.(".ax-thumb img")) e.target.closest(".ax-thumb").toggleAttribute("data-failed", true); }, true);
+  function retryPhoto(tile) {
+    const img = $("img", tile), u = img.dataset.src || img.getAttribute("src");
+    img.dataset.src = u;
+    tile.removeAttribute("data-failed");
+    img.src = u + (u.includes("?") ? "&" : "?") + "r=" + Date.now();
+    $("[data-photo]", tile).focus({ preventScroll: true });
+  }
 
   // A refused Send says what was refused and that nothing was sent; an offending link is named on
   // its own line. The reply stays exactly as typed.
@@ -1289,45 +1443,64 @@
   function emailClick(tg) {
     const em = tg.closest?.(".ax-email, .ax-ov, .wb-menu, .wb-sheet");
     if (!em) return false;
-    const b = tg.closest("[data-tr-email], [data-tr-reply], [data-more-toggle], [data-reset], [data-insimg], [data-attach], [data-to-other], [data-to-cancel], [data-remote]");
+    const b = tg.closest("[data-tr-email], [data-tr-reply], [data-more-toggle], [data-reset], [data-insimg], [data-attach], [data-camera], [data-to-other], [data-to-cancel], [data-cc-open], [data-cc-other], [data-cc-cancel], [data-photo], [data-photo-retry], [data-remote]");
     if (!b) return false;
-    if (b.matches("[data-tr-email]")) {
-      const box = $("#workpane [data-tr-box]"), on = box.hidden;
+    // Translate, the same control on the customer's message and on the reply: the label swaps, the
+    // translation shows in its box below the text.
+    const trToggle = (box) => {
+      const on = box.hidden;
       box.hidden = !on;
       b.textContent = on ? b.dataset.on : b.dataset.off;
       b.setAttribute("aria-expanded", String(on));
-    } else if (b.matches("[data-tr-reply]")) {
-      const box = D.getElementById("replytr"), out = box.lastElementChild, on = box.hidden;
-      box.hidden = !on;
-      b.lastElementChild.textContent = on ? b.dataset.on : b.dataset.off;
-      if (!on) return true;
-      out.textContent = t("translating");
-      fetch(itemUrl(emailEl().dataset.email, "/translate-reply"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "text=" + encodeURIComponent(replyBox().value), credentials: "same-origin" })
+      return on;
+    };
+    if (b.matches("[data-tr-email]")) trToggle($("#workpane [data-tr-box]"));
+    else if (b.matches("[data-tr-reply]")) {
+      // The reply's words (the server strips the markers), fetched when switched on and again when
+      // switched on after the text changed; the skeleton meanwhile.
+      const box = D.getElementById("replytr"), out = box.lastElementChild, text = replyBox().value;
+      box.axSkel ??= out.innerHTML;
+      if (!trToggle(box) || box.dataset.text === text) return true;
+      box.dataset.text = text;
+      out.innerHTML = box.axSkel;
+      fetch(itemUrl(emailEl().dataset.email, "/translate-reply"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "text=" + encodeURIComponent(text), credentials: "same-origin" })
         .then((r) => r.json())
-        .then((d) => { out.replaceChildren(...nodes(String(d.text || d.error || "").split(/\n[ \t\r]*\n/).filter((x) => x.trim()).map((x) => `<p>${esc(x)}</p>`).join(""))); })
-        .catch(() => { out.textContent = t("post_failed"); });
+        .then((d) => {
+          if (box.dataset.text !== text) return;
+          if (d.error) delete box.dataset.text;
+          out.replaceChildren(...nodes(String(d.text || d.error || "").split(/\n[ \t\r]*\n/).filter((x) => x.trim()).map((x) => `<p>${esc(x)}</p>`).join("")));
+        })
+        .catch(() => { if (box.dataset.text === text) { delete box.dataset.text; out.textContent = t("post_failed"); } });
     } else if (b.matches("[data-more-toggle]")) {
       const m = b.previousElementSibling, on = m.classList.toggle("is-open");
       b.firstChild.textContent = on ? b.dataset.less : b.dataset.more;
       b.setAttribute("aria-expanded", String(on));
     } else if (b.matches("[data-reset]")) {
-      insAt(Object.assign(replyBox(), { selectionStart: 0, selectionEnd: replyBox().value.length }), D.getElementById("ai_seed").value);
+      setReply(D.getElementById("ai_seed").value);
     } else if (b.matches("[data-insimg]")) {
-      insAt(replyBox(), `[image:${b.dataset.insimg}]`);
-    } else if (b.matches("[data-attach]")) {
-      D.getElementById("att_file").click();
+      replyEd()?.insert(`[image:${b.dataset.insimg}]`);
+    } else if (b.matches("[data-attach], [data-camera]")) {
+      D.getElementById(b.matches("[data-camera]") ? "att_cam" : "att_file").click();
+    } else if (b.matches("[data-photo]")) {
+      viewer(b);
+    } else if (b.matches("[data-photo-retry]")) {
+      retryPhoto(b.closest(".ax-thumb"));
+    } else if (b.matches("[data-cc-open]")) {
+      ccOpened.add(emailEl().dataset.email);
+      ccShow(true);
     } else if (b.matches("[data-remote]")) {
       openRemote(b);
-    } else toOther(b.matches("[data-to-other]"));
+    } else toOther(b.matches("[data-to-other], [data-cc-other]"), b.matches("[data-cc-other], [data-cc-cancel]") ? "cc" : "to");
     return true;
   }
   D.addEventListener("input", (e) => { if (e.target.id === "replybox") resetVisible(); });
   D.addEventListener("keydown", (e) => {
     const el = e.target;
-    // The typed address: Enter uses it, Esc puts the pills back.
-    if (el.matches?.("[data-to-other-field] input")) {
-      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $('#workpane button[form="ax-f-typed"]')?.click(); }
-      else if (e.key === "Escape" && !stack.length) toOther(false);
+    // A typed address (To or Cc): Enter uses it (it never sends the email), Esc puts the pills back.
+    const kind = el.matches?.("[data-to-other-field] input") ? "to" : el.matches?.("[data-cc-other-field] input") ? "cc" : "";
+    if (kind) {
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $(`#workpane button[form="${kind === "cc" ? "ax-f-cctyped" : "ax-f-typed"}"]`)?.click(); }
+      else if (e.key === "Escape" && !stack.length) toOther(false, kind);
     }
   });
   // Ctrl+Enter in the redraft note redrafts (it is that field's own action); everywhere else in the
@@ -1361,9 +1534,7 @@
     const q = tg.closest("[data-q]");
     if (q) { if (q.getAttribute("aria-checked") !== "true") switchFilter(q.dataset.q); return; }
     if (tg.closest("[data-sync]")) return syncNow();
-    if (tg.closest("[data-qsearch]")) return searchMode(true);
-    if (tg.closest("[data-qsearch-close]")) return searchMode(false);
-    if (tg.closest("[data-qh-clear]")) { const qh = D.getElementById("qh"); qh.value = ""; qh.focus(); return histSearch(qh); }
+    if (tg.closest("[data-q-clear]")) { const f = D.getElementById("q"); f.value = ""; f.focus(); return findLater(); }
     if (tg.closest("#qupd")) { tg.closest("#qupd").hidden = true; qp().scrollTop = 0; scrollTo(0, 0); return refreshQueue(); }
     const bk = tg.closest("[data-back]");
     if (bk && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) { e.preventDefault(); return back(); }
@@ -1394,17 +1565,18 @@
   D.addEventListener("change", (e) => {
     if (e.target.matches("select") && e.target.form?.hasAttribute("data-autosubmit")) e.target.form.requestSubmit();
   });
-  D.addEventListener("input", (e) => {
-    if (e.target.id === "q") applySearch();
-    else if (e.target.id === "qh") { $("[data-qh-clear]").hidden = !e.target.value; histSearch(e.target); }
-  });
+  D.addEventListener("input", (e) => { if (e.target.id === "q") findLater(); });
   D.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && e.target.id === "q" && !stack.length) searchMode(false);
+    // The search field: Enter searches at once (and nothing else), Esc clears it.
+    if (e.target.id === "q" && !e.isComposing) {
+      if (e.key === "Enter") { e.preventDefault(); clearTimeout(F.timer); findNow(); }
+      else if (e.key === "Escape" && !stack.length && e.target.value) { e.preventDefault(); e.target.value = ""; findLater(); }
+    }
     // The queue is a listbox: ArrowDown and ArrowUp move the focus between its visible rows (Enter
     // opens one, as a link).
     const row = e.target.closest?.("#qlist .wb-row");
     if (row && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      const rows = $$("#qlist .wb-row").filter((r) => !r.hidden), i = rows.indexOf(row);
+      const rows = $$("#qlist .wb-row"), i = rows.indexOf(row);
       e.preventDefault();
       rows[Math.min(rows.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))].focus();
     }

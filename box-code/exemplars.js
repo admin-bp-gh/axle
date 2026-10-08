@@ -10,6 +10,8 @@
 // Exemplars shape TONE only. The engine's instruction forbids reusing their facts; every fact
 // in a new draft still traces to a tool result. Off switch: AXLE_EXEMPLARS=0.
 
+const FMT = require("./reply-format.js");
+
 const ENABLED = process.env.AXLE_EXEMPLARS !== "0";
 const DEFAULT_N = Number(process.env.AXLE_EXEMPLARS_N) || 3;
 const MIN_LEN = 200;
@@ -38,7 +40,9 @@ function pickExemplars({ intent, language, mailbox, excludeItemId = 0, n = DEFAU
     (b.mailbox === mailbox) - (a.mailbox === mailbox) ||
     b.edited - a.edited ||
     (a.sent_at < b.sent_at ? 1 : a.sent_at > b.sent_at ? -1 : 0));
-  return rows.slice(0, n).map((r) => ({ sendId: r.id, edited: Boolean(r.edited), body: r.body }));
+  // Sent text may carry formatting markers (**bold**, lists); the drafter writes plain text, so it
+  // is shown the text without them.
+  return rows.slice(0, n).map((r) => ({ sendId: r.id, edited: Boolean(r.edited), body: FMT.toPlain(r.body) }));
 }
 
 // The prompt block. Bodies are our own staff's sent text, sanitised by the caller.

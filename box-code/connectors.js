@@ -64,7 +64,7 @@ async function graphToken() {
 // so every ingest run threw before processing anything; the watermark could not advance, the window
 // never cleared, and BOTH mailboxes deadlocked for ~21h. We now list metadata only and hydrate each
 // body individually (fetchMessageBody), where one bad body is skipped instead of sinking the batch.
-const MSG_LIST_SELECT = "id,conversationId,subject,from,receivedDateTime,categories,hasAttachments";
+const MSG_LIST_SELECT = "id,conversationId,internetMessageId,subject,from,toRecipients,ccRecipients,receivedDateTime,categories,hasAttachments";
 
 // All Graph reads funnel through here for one shared thing the raw fetch lacked: a hard timeout.
 // Before 2026-09-01 a stalled Graph call hung the whole ingest run silently (the run just never
@@ -88,18 +88,24 @@ async function graphGetJson(url, { timeoutMs = GRAPH_TIMEOUT_MS } = {}) {
   }
 }
 
+// Graph recipient list -> [{name, address}] (empty entries dropped).
+const recipients = (list) => (list || []).map((r) => r && r.emailAddress)
+  .filter((a) => a && a.address).map((a) => ({ name: a.name || "", address: String(a.address) }));
+
 function mapMessage(m) {
   return {
     id: m.id,
     conversationId: m.conversationId,
+    internetMessageId: m.internetMessageId || null,
     subject: m.subject || "",
     from: (m.from && m.from.emailAddress) || { address: "unknown", name: "unknown" },
+    to: recipients(m.toRecipients),
+    cc: recipients(m.ccRecipients),
     received: m.receivedDateTime,
     categories: m.categories || [],
+    // Graph says false for inline-only mail (a Gmail or phone photo pasted into the body), so ingest
+    // lists the attachments of every message instead of trusting this (message-store.js).
     hasAttachments: Boolean(m.hasAttachments),
-    // Graph reports hasAttachments=false for inline-only mail (a phone/Gmail photo pasted into the
-    // body as <img src="cid:...">), so ingest also checks this to fetch the attachment list.
-    hasInlineImages: /src\s*=\s*["']?cid:/i.test((m.body && m.body.content) || ""),
     text: bodyText(m.body).slice(0, 4000),
   };
 }
@@ -224,28 +230,48 @@ function pickAttachments(values) {
 }
 
 async function listAttachments(mailbox, messageId) {
-  const token = await graphToken();
-  const r = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  const data = await r.json();
+  const data = await graphGetJson(
+    `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline`);
   if (data.error) throw new Error(data.error.message);
   return pickAttachments(data.value);
 }
 
-// Fetch one attachment's content (base64). Only plain file attachments are supported.
+// Fetch one attachment's content (base64). Only plain file attachments are supported. A longer
+// timeout than a metadata read: the body is the whole file.
 async function getAttachment(mailbox, messageId, attachmentId) {
-  const token = await graphToken();
-  const r = await fetch(
+  const data = await graphGetJson(
     `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  const data = await r.json();
+    { timeoutMs: 120000 });
   if (data.error) throw new Error(data.error.message);
   if (data["@odata.type"] !== "#microsoft.graph.fileAttachment" || !data.contentBytes)
     throw new Error("unsupported attachment type: " + (data["@odata.type"] || "unknown"));
   return { name: data.name, contentType: data.contentType, size: data.size, contentBytes: data.contentBytes };
+}
+
+// Every message in a message's Outlook conversation, mapped like getMessages (newest first, bodies
+// hydrated one by one). Not folder-scoped, so our own sent replies come back too; the caller keeps
+// the ones that belong to its work item. Throws when the message itself cannot be read.
+async function threadMessages(mailbox, messageId) {
+  const head = await graphGetJson(
+    `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${encodeURIComponent(messageId)}?$select=conversationId`);
+  if (head.error) throw new Error(head.error.message);
+  if (!head.conversationId) throw new Error("no conversationId");
+  const filter = encodeURIComponent(`conversationId eq '${String(head.conversationId).replace(/'/g, "''")}'`);
+  const data = await graphGetJson(
+    `https://graph.microsoft.com/v1.0/users/${mailbox}/messages?$filter=${filter}&$select=${MSG_LIST_SELECT}&$top=50`);
+  if (data.error) throw new Error(data.error.message);
+  const rows = (data.value || []).sort((a, b) => (a.receivedDateTime < b.receivedDateTime ? 1 : a.receivedDateTime > b.receivedDateTime ? -1 : 0));
+  for (const m of rows) m.body = await fetchMessageBody(mailbox, m.id);
+  return rows.map(mapMessage);
+}
+
+// The current Graph id of a message known by its internet message id (a move mints a new Graph id
+// but keeps this one). Null when the mailbox no longer holds it.
+async function findMessageByInternetId(mailbox, internetId) {
+  const filter = encodeURIComponent(`internetMessageId eq '${String(internetId).replace(/'/g, "''")}'`);
+  const data = await graphGetJson(`https://graph.microsoft.com/v1.0/users/${mailbox}/messages?$filter=${filter}&$select=id&$top=1`);
+  if (data.error) throw new Error(data.error.message);
+  return (data.value && data.value[0] && data.value[0].id) || null;
 }
 
 async function searchMailbox(mailbox, fromAddress, count) {
@@ -1750,7 +1776,7 @@ function extractEntities(text) {
 }
 
 module.exports = {
-  htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, pickAttachments, getAttachment,
+  htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, pickAttachments, getAttachment, threadMessages, findMessageByInternetId,
   getMessageStates, folderIds, folderName,
   getPool, closePool, sapCustomerContext, sapStockPrice,
   partDossier, customerCode, assembleDossier, availabilityOf,

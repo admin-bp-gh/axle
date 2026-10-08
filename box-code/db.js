@@ -303,6 +303,81 @@ CREATE TABLE IF NOT EXISTS teach_flags (
 );
 `);
 
+// Round 2 (2026-10-07): every incoming message Axle sees for a work item, and that message's
+// attachments (message-store.js owns both). work_items.email_text and attachments_json are still
+// written as before; these tables add the whole thread. One row per Graph message (mailbox +
+// graph_id); internet_id lets a moved message (new Graph id) be found again. to_json and cc_json
+// are [{name,address}]. list_state: pending | listed | error (an error is retried by the next
+// ingest pass that touches the item, or on view; never read as "no attachments").
+// Attachment rows follow pickAttachments' rules (file attachments, inline images of 15 KB and up).
+// The bytes live on disk beside the database (attachments/<row id>, a re-fetchable cache, not in
+// the backup); file is that file name while it is held. fetch_state: pending | stored | error |
+// live (over the size ceiling: served by a live Graph fetch only).
+// cust_card / cust_name: the SAP customer the item view resolved, kept for the search index.
+// sends.cc_json: the Cc list of a send ([address]), written by the send path once it sends Cc.
+// meta: small key/value flags (the one-time backfill, the search index version).
+db.exec(`
+CREATE TABLE IF NOT EXISTS messages (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  work_item_id INTEGER NOT NULL REFERENCES work_items(id),
+  mailbox      TEXT NOT NULL,
+  graph_id     TEXT NOT NULL,
+  internet_id  TEXT,
+  from_name    TEXT,
+  from_addr    TEXT,
+  to_json      TEXT,
+  cc_json      TEXT,
+  received     TEXT,
+  body         TEXT,
+  list_state   TEXT NOT NULL DEFAULT 'pending',
+  list_error   TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (mailbox, graph_id)
+);
+CREATE INDEX IF NOT EXISTS idx_messages_item ON messages(work_item_id, received);
+CREATE TABLE IF NOT EXISTS message_attachments (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id   INTEGER NOT NULL REFERENCES messages(id),
+  work_item_id INTEGER NOT NULL,
+  graph_att_id TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  content_type TEXT,
+  size         INTEGER NOT NULL DEFAULT 0,
+  is_inline    INTEGER NOT NULL DEFAULT 0,
+  file         TEXT,
+  fetch_state  TEXT NOT NULL DEFAULT 'pending',
+  fetch_error  TEXT,
+  fetched_at   TEXT,
+  UNIQUE (message_id, graph_att_id)
+);
+CREATE INDEX IF NOT EXISTS idx_msgatt_item ON message_attachments(work_item_id);
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
+`);
+ensureColumn("work_items", "cust_card", "TEXT");
+ensureColumn("work_items", "cust_name", "TEXT");
+ensureColumn("sends", "cc_json", "TEXT");
+// Round 2 phase 2. Retry bound: failed listings and fetches count their attempts, and an ingest pass
+// stops retrying after 5 (message-store.js). media_not_shown_json: [{name, reason}] of the customer
+// attachments the latest draft could not be shown (draft-media.js). cc_json: the reply's Cc,
+// [{addr, source}] with source onfile | copied | typed (cc-list.js), cleared after a send.
+ensureColumn("messages", "list_attempts", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("messages", "list_tried_at", "TEXT");
+ensureColumn("message_attachments", "attempts", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("message_attachments", "tried_at", "TEXT");
+ensureColumn("work_items", "media_not_shown_json", "TEXT");
+ensureColumn("work_items", "cc_json", "TEXT");
+
+function getMeta(key) {
+  const r = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
+  return r ? r.value : null;
+}
+function setMeta(key, value) {
+  db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, String(value));
+}
+
 // True when an inbound sender address is on the blocklist (exact address, or a domain
 // pattern matching the sender's domain or any subdomain of it). Small table - the domain
 // scan in JS keeps the matching rule identical to rules.js senderDomain semantics.
@@ -385,7 +460,7 @@ function setCallerMatch(itemId, m) {
   ).run(m.callerInfo, m.card || null, m.card && m.guess ? 1 : 0, (m.card && m.contact) || null, itemId);
 }
 
-module.exports = { db, audit, setCallerMatch, acquireSync, releaseSync, syncStatus, getWatermark, setWatermark, isBlockedSender };
+module.exports = { db, DB_PATH, audit, setCallerMatch, acquireSync, releaseSync, syncStatus, getWatermark, setWatermark, isBlockedSender, getMeta, setMeta };
 
 // Smoke test when run directly: node db.js
 if (require.main === module) {

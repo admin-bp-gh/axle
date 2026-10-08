@@ -20,10 +20,13 @@ const SG = require("./send-guard.js");
 const SEND = require("./send.js");
 const RESOLVE = require("./resolve-customer.js");   // Compose: deterministic read-only customer resolver
 const RSET = require("./recipient-set.js");         // the single definition of an item's known addresses
+const CC = require("./cc-list.js");                 // the reply's Cc: suggestions and what may be added
 const COMPOSE = require("./compose.js");            // Compose: compose-mode engine (draft-only)
 const SCEN = require("./scenarios.js");             // Compose: seeded quick-start scenario library
 const crypto = require("crypto");                   // synthetic conversation keys
 const { db, audit } = require("./db.js");
+const SEARCH = require("./search.js");              // the search index: filled at start-up, kept current at each write
+const MS = require("./message-store.js");           // stored messages and attachments: the one-time background backfill
 const BASE = require("./base-path.js");             // AXLE_BASE_PATH: "" or the URL prefix, e.g. "/axle"
 const { esc, t, page, langOK, workPanes } = require("./views/ui.js");
 const { MAILBOX_OF, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, runRedraft, markReadSafe,
@@ -65,6 +68,8 @@ if (stuck.changes) audit("system", "recovered_stuck_items", null, `${stuck.chang
 // Clear a stuck sync lock left by a manual sync that died with a previous server instance.
 const stuckSync = db.prepare("UPDATE sync_state SET running = 0 WHERE id = 1 AND running = 1").run();
 if (stuckSync.changes) audit("system", "sync_lock_reset", null, "cleared running flag on startup");
+// The search index: rebuilt when its definition changed, else topped up with any item it lacks.
+{ const r = SEARCH.fillIndex(); if (r.indexed) console.log(`Search: indexed ${r.indexed} item(s) in ${r.ms} ms`); }
 
 // Read one cookie value from the request (no cookie-parser dependency).
 function getCookie(req, name) {
@@ -258,6 +263,7 @@ app.post("/compose", async (req, res) => {
     subject, language, scenarioKey, 2, initialStatus, instruction, JSON.stringify(modelCustomer), recipient, scenarioKey,
     req.user.owner_label || req.user.display_name
   ).lastInsertRowid;
+  SEARCH.reindexItem(itemId);
 
   // Attachments staged in the modal (base64), capped per-file and per-item.
   const names = asArray(req.body.att_name), ctypes = asArray(req.body.att_ctype), datas = asArray(req.body.att_data);
@@ -336,6 +342,14 @@ async function setRecipient(req, res) {
   const posted = String(req.body.addr || "");
   const oldTo = w.recipient || "";
 
+  // A new To that sits in the Cc leaves the Cc (a person is never both).
+  const dropFromCc = (addr) => {
+    const r = CC.remove(w, addr);
+    if (!r.removed) return;
+    db.prepare("UPDATE work_items SET cc_json = ? WHERE id = ?").run(CC.column(r.cc), w.id);
+    audit(login, "cc_removed", w.id, `removed=${addr} reason=now the To`);
+  };
+
   let recipient = "", source = "";
   if (mode === "known") {
     recipient = RSET.pickKnown(await knownAddresses(w), posted);
@@ -352,11 +366,15 @@ async function setRecipient(req, res) {
   // reply has such a default; compose/contact-form/return need a stored recipient to send at all.
   if (kind === "reply" && recipient === RSET.defaultRecipient(w, "reply")) {
     db.prepare("UPDATE work_items SET recipient = NULL, recipient_source = NULL, updated_at = datetime('now') WHERE id = ?").run(w.id);
+    dropFromCc(recipient);
+    SEARCH.reindexItem(w.id);
     if (oldTo) audit(login, "recipient_cleared", w.id, `from=${oldTo} to=<thread sender> mode=${mode}`);
     return res.redirect(BASE.url("/item/" + w.id));
   }
 
   db.prepare("UPDATE work_items SET recipient = ?, recipient_source = ?, updated_at = datetime('now') WHERE id = ?").run(recipient, source, w.id);
+  dropFromCc(recipient);
+  SEARCH.reindexItem(w.id);
   audit(login, "recipient_set", w.id, `from=${oldTo || "<thread sender>"} to=${recipient} mode=${mode}`);
   res.redirect(BASE.url("/item/" + w.id));
 }
@@ -368,6 +386,53 @@ app.post("/item/:id/recipient", setRecipient);
 const knownOnly = (req, res) => { req.body.mode = "known"; return setRecipient(req, res); };
 app.post("/item/:id/contactform-recipient", knownOnly);
 app.post("/item/:id/return-recipient", knownOnly);
+
+// ---- the Cc of a reply (round 2, request 8) ---------------------------------------------------
+//
+// POST /item/:id/cc (addr) adds one address, POST /item/:id/cc/remove (addr) removes one. The only
+// writers of work_items.cc_json besides the send (which clears it) and ingest (which clears it when
+// the correspondent changes). Adding is refused, like setting a recipient, on an injection-flagged
+// or closed item. A suggested address (the known set, or one the customer copied on their own email)
+// keeps its source; anything else must pass the typed-To screen and is stored as typed. Never one of
+// our own mailboxes, never the To, no duplicates, at most CC.MAX_CC (cc-list.js). In place: a
+// refusal is JSON with the X-Axle-Inline pattern plus `reason`; success redirects to the item.
+const CC_MSG = { item: "cc_refused", bad_address: "recip_bad_address", own: "cc_own", same_as_to: "cc_same_as_to",
+  duplicate: "cc_duplicate", too_many: "cc_too_many" };
+async function changeCc(req, res, op) {
+  const lang = req.user.lang;
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(page("Not found", req.user, `<p>${esc(t(lang, "not_found"))}</p>`));
+  const posted = String(req.body.addr || "");
+
+  const refuse = (reason, detail) => {
+    audit(login, "cc_rejected", w.id, `addr=${posted.slice(0, 80)} reason=${reason}${detail ? " " + detail : ""}`);
+    const msg = t(lang, CC_MSG[reason]).replace("{n}", CC.MAX_CC);
+    if (inline(req)) return res.status(400).json({ ...inlineNo("refused", msg), reason });
+    return res.status(400).send(page(t(lang, "send_refused"), req.user,
+      `<p><b>${esc(t(lang, "send_refused"))}:</b> ${esc(msg)}</p><p><a href="${BASE.path}/item/${w.id}">&larr; ${esc(t(lang, "back_inbox"))}</a></p>`));
+  };
+  const save = (cc) => {
+    db.prepare("UPDATE work_items SET cc_json = ?, updated_at = datetime('now') WHERE id = ?").run(CC.column(cc), w.id);
+    SEARCH.reindexItem(w.id);
+  };
+
+  if (op === "remove") {
+    const r = CC.remove(w, posted);
+    if (r.removed) { save(r.cc); audit(login, "cc_removed", w.id, `removed=${RSET.norm(posted)} cc=${r.cc.length}`); }
+    return res.redirect(BASE.url("/item/" + w.id));
+  }
+  if (w.injection_flag) return refuse("item", "injection-flagged item");
+  if (w.status === "done" || w.status === "archived") return refuse("item", `item ${w.status}`);
+  const to = RSET.activeRecipient(w, itemKind(w));
+  const r = CC.add(w, posted, CC.suggestions(w, await knownAddresses(w), MS.itemThread(w.id), to), to);
+  if (r.refuse) return refuse(r.refuse);
+  save(r.cc);
+  audit(login, "cc_set", w.id, `added=${r.entry.addr} source=${r.entry.source} cc=${r.cc.length}`);
+  res.redirect(BASE.url("/item/" + w.id));
+}
+app.post("/item/:id/cc", (req, res) => changeCc(req, res, "add"));
+app.post("/item/:id/cc/remove", (req, res) => changeCc(req, res, "remove"));
 
 // Send the approved reply (allow-list action #1). The salesperson can edit the reply and
 // send at any time; deterministic guardrails (send-guard) re-validate the FINAL body - an
@@ -495,8 +560,8 @@ async function sendWorkItem(req, res, w) {
   // Reserve a pending send; UNIQUE(work_item_id, to_addr, body_sha256) rejects a race double-send
   // to the same address, while still permitting the same body to a second, different address.
   try {
-    db.prepare("INSERT INTO sends (work_item_id, draft_id, source_draft_id, to_addr, subject, body_sha256, body, attachments_json, status, sent_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
-      .run(w.id, humanDraftId, aiSrc ? aiSrc.id : null, payload.to, payload.subject, payload.sha256, body, attMeta.length ? JSON.stringify(attMeta) : null, login);
+    db.prepare("INSERT INTO sends (work_item_id, draft_id, source_draft_id, to_addr, cc_json, subject, body_sha256, body, attachments_json, status, sent_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
+      .run(w.id, humanDraftId, aiSrc ? aiSrc.id : null, payload.to, payload.cc.length ? JSON.stringify(payload.cc) : null, payload.subject, payload.sha256, body, attMeta.length ? JSON.stringify(attMeta) : null, login);
   } catch (e) {
     db.prepare("DELETE FROM drafts WHERE id = ?").run(humanDraftId);
     return res.redirect(BASE.url("/item/" + w.id));
@@ -506,13 +571,14 @@ async function sendWorkItem(req, res, w) {
     // Contact-form is a fresh email (no thread); originalMessageId=null so send.js threads nothing.
     const r = await SEND.sendReply({
       mailbox: MAILBOX_OF[w.mailbox], originalMessageId: (isCF || isComposeItem || isRN) ? null : w.latest_message_id,
-      to: payload.to, subject: payload.subject, html: payload.html, attachments: graphAtts,
+      to: payload.to, cc: payload.cc, subject: payload.subject, html: payload.html, attachments: graphAtts,
     });
     // Scoped by to_addr as well: the row just reserved is the (item, address, body) triple, and an
     // earlier send of the SAME body to a DIFFERENT address must not be touched by this update.
     db.prepare("UPDATE sends SET status = 'sent', graph_message_id = ? WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ?").run(r.sentId || "sent", w.id, payload.to, payload.sha256);
-    db.prepare("UPDATE work_items SET status = 'done', resolution = 'replied', draft_edit = NULL, updated_at = datetime('now') WHERE id = ?").run(w.id);
+    db.prepare("UPDATE work_items SET status = 'done', resolution = 'replied', draft_edit = NULL, cc_json = NULL, updated_at = datetime('now') WHERE id = ?").run(w.id);
     db.prepare("DELETE FROM draft_attachments WHERE work_item_id = ?").run(w.id); // bytes no longer needed; metadata kept in sends
+    SEARCH.reindexItem(w.id);                                                      // our sent reply is searchable
     const edited = aiSrc ? String(aiSrc.body) !== body : true;
     // Where the To came from. Read from the stored column, never re-derived here: the send path must
     // not depend on a live SAP read. NULL means no override -> we replied to whoever wrote to us.
@@ -520,7 +586,7 @@ async function sendWorkItem(req, res, w) {
     // resolver-produced (compose / contact-form / return), hence the 'onfile' default.
     const toSource = !w.recipient ? "sender" : (w.recipient_source || "onfile");
     audit(login, "email_sent", w.id,
-      `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
+      `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} cc=${payload.cc.join(",") || "-"} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
     if (!isComposeItem) await markReadSafe(login, w);
     // F6 (mobile fix 1): the phone adds ret=list at submit time and lands on the Open list
     res.redirect(req.body.ret === "list" ? BASE.url("/") : BASE.url("/item/" + w.id));
@@ -588,6 +654,7 @@ root.use(BASE.path || "/", app);
 if (require.main === module) {
   root.listen(PORT, BIND_IP, () => {
     console.log(`Axle web listening on ${BIND_IP}:${PORT}${BASE.path ? ` under ${BASE.path}` : ""} (loopback; fronted by Tailscale Serve)`);
+    MS.startBackfillOnce();   // once per database, in the background: the threads and attachments of the open emails
   });
 }
 module.exports = root;   // for base-path.test.js (healthz and the identity wall over plain http)

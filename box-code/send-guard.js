@@ -25,13 +25,15 @@
 // address. No code stops that; the send confirm is the mitigation and the audit is detection.
 //
 // Invariants enforced:
-//   * exactly ONE recipient, screened as above (one To, never any CC/BCC);
+//   * exactly ONE To, screened as above; no BCC ever; Cc only the addresses a human put on the item
+//     (work_items.cc_json, round 2), each re-screened here at send time (itemCc);
 //   * every URL in the body is on the domain allowlist (else the send is refused);
 //   * the body is sent verbatim - the SHA-256 ties the approved text to what goes out;
 //   * HTML is generated from the escaped plain text, so href always equals its visible
 //     URL (no href/text mismatch) and no <img> or other tags can be injected;
 //   * one send per approved draft is enforced by the caller via the sends table (UNIQUE).
 const crypto = require("crypto");
+const FMT = require("./reply-format.js");   // the formatting markers (**bold**, *italic*, "- " lists)
 
 // Domain allowlist for any URL allowed to appear in an outgoing reply. Kept in sync with
 // engine.js URL_ALLOW by intent; duplicated deliberately so the send path has its own
@@ -72,6 +74,37 @@ function acceptTypedRecipient(addr) {
   return EMAIL_RE.test(lower) ? lower : "";
 }
 
+// ---- Cc (round 2, request 8) ------------------------------------------------------------------
+// The Cc a human put on the item (work_items.cc_json, written only by POST /item/:id/cc through
+// cc-list.js), screened again here at send time. Nothing is dropped silently: an address that no
+// longer passes the screen, equals the To, is one of our own mailboxes, a duplicate, or a list over
+// the cap refuses the send with the reason, so the salesperson fixes the Cc and sends again.
+// Our own domains: the same list as outlook-block.js OUR_DOMAINS, kept here as well (like URL_ALLOW)
+// so this pure module needs no database and the send path has its own check.
+const OWN_DOMAINS = ["budget-parts.nl", "roverparts.eu"];
+const MAX_CC = 5;
+function isOwnAddress(addr) {
+  const d = String(addr || "").trim().toLowerCase().split("@")[1] || "";
+  return OWN_DOMAINS.some((x) => d === x || d.endsWith("." + x));
+}
+function itemCc(workItem, to) {
+  let list;
+  try { list = JSON.parse(workItem.cc_json || "[]") ?? []; } catch (e) { list = null; }   // a stored "null" is no Cc
+  if (!Array.isArray(list)) throw new Error("refused: the Cc list could not be read - remove the Cc addresses and add them again");
+  const out = [];
+  for (const e of list) {
+    const raw = String((e && e.addr) || "").slice(0, 80);
+    const a = acceptTypedRecipient(e && e.addr);
+    if (!a) throw new Error(`refused: the Cc address ${raw} is not a valid email address - remove it from Cc`);
+    if (a === to) throw new Error(`refused: the Cc address ${a} is the same as the To - remove it from Cc`);
+    if (isOwnAddress(a)) throw new Error(`refused: the Cc address ${a} is one of our own mailboxes - remove it from Cc`);
+    if (out.includes(a)) throw new Error(`refused: the Cc address ${a} is listed twice - remove one`);
+    out.push(a);
+  }
+  if (out.length > MAX_CC) throw new Error(`refused: Cc holds more than ${MAX_CC} addresses - remove some`);
+  return out;
+}
+
 // Strip trailing punctuation a writer might butt against a URL (".", ",", ")", etc.).
 function cleanUrl(u) { return u.replace(/[).,;:!?'"]+$/, ""); }
 
@@ -94,30 +127,23 @@ function escapeHtml(s) {
 //     allowlisted domains, so it can never be used to disguise a link to an attacker site.
 //   * bare URLs -> rendered as themselves (href === visible text).
 // Throws if any off-allowlist URL is present.
-const MD_OR_URL = /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)<>"']+)/g;
+// Round 2 (request 3): the stored text may carry formatting markers (**bold**, *italic*, "- " list
+// lines; grammar in reply-format.js). They become <b>, <i> and <ul><li> here, still escape-first:
+// the markers are read from the plain text, never HTML from anywhere. Text without a marker gives
+// exactly the HTML it gave before.
+// Links, bare URLs and image tokens are found by reply-format.js tokens(), the one tokeniser the
+// display and the editor use too. An image token stays text here (applyInlineImages swaps it).
+function linkHtml(tok) {
+  if (tok.type === "image") return escapeHtml(tok.raw);
+  if (!urlAllowed(tok.url)) throw new Error(`refused: off-allowlist URL in ${tok.type === "link" ? "link" : "body"}: ` + tok.url);
+  return `<a href="${escapeHtml(tok.url)}">${escapeHtml(tok.type === "link" ? tok.text : tok.url)}</a>`;
+}
 function toSafeHtml(plainText) {
   const text = String(plainText || "");
   const bad = findDisallowedUrls(text);
   if (bad.length) throw new Error("refused: off-allowlist URL in body: " + bad.join(", "));
-  let out = "", last = 0, m;
-  MD_OR_URL.lastIndex = 0;
-  while ((m = MD_OR_URL.exec(text)) !== null) {
-    out += escapeHtml(text.slice(last, m.index));
-    if (m[1] !== undefined) {                              // markdown link: m[1]=text, m[2]=url
-      const url = cleanUrl(m[2]);
-      if (!urlAllowed(url)) throw new Error("refused: off-allowlist URL in link: " + url);
-      out += `<a href="${escapeHtml(url)}">${escapeHtml(m[1])}</a>`;
-    } else {                                               // bare URL: m[3]
-      const raw = m[3], url = cleanUrl(raw);
-      if (!urlAllowed(url)) throw new Error("refused: off-allowlist URL in body: " + url);
-      out += `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
-      out += escapeHtml(raw.slice(url.length));            // any trailing punctuation we trimmed
-    }
-    last = m.index + m[0].length;
-  }
-  out += escapeHtml(text.slice(last));
-  const withBreaks = out.replace(/\r?\n/g, "<br>\n");
-  return `<div style="font-family:system-ui,Arial,sans-serif;font-size:14px;white-space:normal">${withBreaks}</div>`;
+  const html = FMT.emailHtml(text, { esc: escapeHtml, atom: linkHtml });
+  return `<div style="font-family:system-ui,Arial,sans-serif;font-size:14px;white-space:normal">${html}</div>`;
 }
 
 function replySubject(subject) {
@@ -196,7 +222,7 @@ function quotedHistory(workItem) {
 }
 
 // Assemble and validate a send from a work item + the FINAL reply body the human approved.
-// Returns { to, subject, text, html, sha256, workItemId } or throws.
+// Returns { to, cc, subject, text, html, sha256, workItemId } or throws.
 // The body is whatever the salesperson chose to send (AI draft, edited, or hand-written) -
 // it is passed in explicitly and sent verbatim; the sha256 ties the approved text to what
 // goes out. The body is validated here in code regardless of who wrote it: an injection-
@@ -245,6 +271,7 @@ function assembleSend(workItem, body, stagedAtts = []) {
 
   const to = acceptTypedRecipient(workItem.recipient || workItem.sender_email);
   if (!to) throw new Error("refused: work item has no valid recipient address to reply to");
+  const cc = itemCc(workItem, to);
 
   const text = String(body == null ? "" : body);
   if (!text.trim()) throw new Error("refused: reply body is empty");
@@ -258,7 +285,7 @@ function assembleSend(workItem, body, stagedAtts = []) {
   return {
     workItemId: workItem.id,
     to,                                   // single screened recipient: w.recipient, else the sender
-    cc: [], bcc: [],                      // never any CC/BCC
+    cc, bcc: [],                          // the item's Cc, re-screened (itemCc); never any BCC
     subject: replySubject(workItem.subject),
     text,                                              // verbatim plain text (our reply, tokens included)
     html: inline.html + quotedHistory(workItem),       // our reply (tokens -> cid imgs) + quoted thread
@@ -272,7 +299,7 @@ function assembleSend(workItem, body, stagedAtts = []) {
 // this sends a FRESH email to the CODE-HELD, human-confirmed recipient (workItem.recipient) - set
 // only by the deterministic resolver + pickRecipient at the route, never by the model, the email
 // body, or any inbound "sender". Same deterministic guarantees: a flagged item can never send,
-// single To / no CC-BCC, every URL allowlisted, body verbatim (sha256), HTML from escaped text.
+// single To / only the human-set Cc / no BCC, every URL allowlisted, body verbatim (sha256), HTML from escaped text.
 // There is NO quoted history (a composed email and a Shopify-mailer notification are both things we
 // must never quote back to the customer). The subject is the human-approved one (fresh, not "Re:").
 function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
@@ -285,6 +312,7 @@ function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
   // outbound with no confirmed recipient must refuse rather than guess.
   const to = acceptTypedRecipient(workItem.recipient);
   if (!to) throw new Error("refused: no confirmed recipient - confirm the recipient first");
+  const cc = itemCc(workItem, to);
 
   const subj = String(subject == null ? "" : subject).trim().slice(0, 200);
   if (!subj) throw new Error("refused: subject is empty");
@@ -299,7 +327,7 @@ function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
   return {
     workItemId: workItem.id,
     to,                       // single recipient: the code-held, human-confirmed customer address
-    cc: [], bcc: [],          // never any CC/BCC
+    cc, bcc: [],              // the item's Cc, re-screened (itemCc); never any BCC
     subject: subj,            // fresh, human-approved subject (NOT "Re:")
     text,                     // verbatim plain text (our reply, tokens included)
     html: inline.html,        // our reply only (tokens -> cid imgs); NO quoted history
@@ -314,6 +342,7 @@ const assembleContactFormSend = assembleNewOutboundSend;
 module.exports = {
   URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256, acceptTypedRecipient,
   escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient, isVoicemailItem,
+  MAX_CC, isOwnAddress, itemCc,
   assembleNewOutboundSend, assembleContactFormSend,
   findImageTokens, applyInlineImages, contentIdFor,
 };

@@ -23,6 +23,7 @@ fakeDb.exports = {
   audit: (...a) => { calls.audit.push(a); },
   acquireSync: () => false, releaseSync() {}, syncStatus: () => ({}),
   getWatermark: () => null, setWatermark() {}, isBlockedSender: () => false,
+  DB_PATH: require("path").join(require("os").tmpdir(), "axle-base-path-test.db"), getMeta: () => "1", setMeta() {},
 };
 require.cache[dbPath] = fakeDb;
 

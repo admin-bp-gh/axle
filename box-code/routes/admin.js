@@ -24,6 +24,17 @@ const itemLink = (id) => (id ? `<a class="wb-link" href="${B}/item/${id}">#${id}
 // A form that posts in place and redraws the page around it (the response is this page again).
 const inPlace = (action, toast) => `method="post" action="${B}${action}" data-inline data-target=".ax-pagewrap" data-select=".ax-pagewrap" data-toast="${esc(toast)}"`;
 
+// The owners' pages, and Sync now (routes/inbox.js). Anyone else gets 403 (an error Banner page,
+// or JSON for an in-place post) and an audit row naming what they tried.
+const requireAdmin = (req, res, what) => {
+  if (req.user.role === "admin") return true;
+  audit(req.user.tailscale_login, what + "_denied", null, null);
+  const lang = req.user.lang;
+  if (inline(req)) res.status(403).json(refusal(t(lang, "owners_only")));
+  else res.status(403).send(bannerPage(t(lang, "forbidden"), req.user, t(lang, "owners_only")));
+  return false;
+};
+
 module.exports = function mountAdmin(app) {
 
 // ---- Block sender (Axle-only suppression, reversible) -------------------------------------
@@ -57,7 +68,7 @@ app.get("/item/:id/block", async (req, res) => {
     const hit = (r && r.customer && r.customer.cardCode) ? r.customer
       : ((r && r.candidates) || []).find((c) => c.cardCode);
     sap = hit
-      ? `<p class="ax-note" data-tone="warn">${icon("alert")}<span>${esc(t(lang, "block_sap_warn").replace("{name}", hit.name || "?").replace("{code}", hit.cardCode))}</span></p>`
+      ? `<p class="ax-note" data-tone="warn">${icon("alert")}<span>${esc(t(lang, "block_sap_warn", { name: hit.name || "?", code: hit.cardCode }))}</span></p>`
       : `<p class="ax-note" data-tone="ok">${icon("check")}<span>${L("block_sap_none")}</span></p>`;
   } catch (e) { /* keep the unknown note */ }
 
@@ -133,7 +144,7 @@ app.get("/blocks", async (req, res) => {
   } catch (e) { olLine = ""; }
 
   const sender = (b) => `${esc(b.pattern)}${b.kind === "address" ? "" : " " + pill(t(lang, "blocks_domain"))}`;
-  const unblock = (b, cls) => `<form ${inPlace(`/blocks/${b.id}/unblock`, t(lang, "unblocked_toast").replace("{x}", b.pattern))}${cls ? ` class="${cls}"` : ""}><button class="wb-btn wb-btn--sm">${L("unblock")}</button></form>`;
+  const unblock = (b, cls) => `<form ${inPlace(`/blocks/${b.id}/unblock`, t(lang, "unblocked_toast", { x: b.pattern }))}${cls ? ` class="${cls}"` : ""}><button class="wb-btn wb-btn--sm">${L("unblock")}</button></form>`;
   const list = rows.length ? tableCard(
     [L("col_sender_b"), L("col_by_b"), L("col_when_b"), L("col_item_b"), `<span class="wb-sr">${L("unblock")}</span>`],
     rows.map((b) => `<tr><td><b>${sender(b)}</b></td><td>${esc(b.who)}</td><td>${esc(fmtDateTime(b.added_at, lang))}</td><td>${itemLink(b.work_item_id)}</td><td class="wb-num">${unblock(b)}</td></tr>`))
@@ -153,17 +164,6 @@ app.post("/blocks/:id/unblock", async (req, res) => {
   }
   res.redirect(BASE.url("/blocks"));
 });
-
-// The owners' pages. Anyone else gets 403 (an error Banner page, or JSON for an in-place post) and
-// an audit row naming what they tried.
-const requireAdmin = (req, res, what) => {
-  if (req.user.role === "admin") return true;
-  audit(req.user.tailscale_login, what + "_denied", null, null);
-  const lang = req.user.lang;
-  if (inline(req)) res.status(403).json(refusal(t(lang, "owners_only")));
-  else res.status(403).send(bannerPage(t(lang, "forbidden"), req.user, t(lang, "owners_only")));
-  return false;
-};
 
 // Adoption dashboard (owners). Computed live from the DB (adoption-report.js), the numbers cached
 // for 5 minutes so the shell button and repeat views cost nothing; drawn per request in the
@@ -295,3 +295,4 @@ app.get("/audit", (req, res) => {
 });
 
 };
+module.exports.requireAdmin = requireAdmin;

@@ -11,6 +11,19 @@
 "use strict";
 const sql = require("mssql");
 const C = require("./connectors.js");
+const { splitEmails } = require("./resolve-customer.js");
+const { splitPhones } = require("./phone-numbers.js");
+
+// The card's contact details as clean lists (round 2, request 13): E_Mail then U_E_Mail, each of
+// which may hold several addresses (split, lower-cased, de-duplicated by resolve-customer's
+// splitEmails), and Phone1 then Phone2, each of which may hold several numbers (splitPhones),
+// trimmed, empty ones and repeats dropped. The numbers stay as SAP writes them.
+function contactLists(row) {
+  return {
+    emails: [...new Set([...splitEmails(row.E_Mail), ...splitEmails(row.U_E_Mail)])],
+    phones: [...new Set([row.Phone1, row.Phone2].flatMap(splitPhones))],
+  };
+}
 
 // "13. Sales - Pro (10%)" -> "Sales - Pro (10%)" (strip Brad's leading sort-number prefix).
 function cleanTier(name) {
@@ -32,7 +45,7 @@ async function summarise(cardCode) {
   const pool = await C.getPool();
   const head = await pool.request().input("cc", sql.NVarChar, cc).query(
     `SELECT T0.CardCode, T0.CardName, T0.CardType, T0.Balance, T0.Currency, T0.Country,
-            T0.frozenFor, T1.GroupName, T2.ListName
+            T0.frozenFor, T0.E_Mail, T0.U_E_Mail, T0.Phone1, T0.Phone2, T1.GroupName, T2.ListName
        FROM OCRD T0
        LEFT JOIN OCRG T1 ON T1.GroupCode = T0.GroupCode
        LEFT JOIN OPLN T2 ON T2.ListNum  = T0.ListNum
@@ -62,6 +75,7 @@ async function summarise(cardCode) {
     openOrdersVal: Number(a.openOrdersVal) || 0,
     openInvoices: a.openInvoices || 0,
     openInvOutstanding: Number(a.openInvOutstanding) || 0,
+    ...contactLists(h),                   // emails: [address], phones: [number]
   };
   _cache.set(cc, { at: Date.now(), data });
   return data;
@@ -102,4 +116,4 @@ async function detail(cardCode) {
   };
 }
 
-module.exports = { summarise, detail, cleanTier };
+module.exports = { summarise, detail, cleanTier, contactLists };

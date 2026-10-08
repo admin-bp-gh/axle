@@ -36,20 +36,28 @@
 .ax-dockwrap .wb-banner { box-shadow: var(--shadow-pop); }
 
 /* ---------- Queue ---------- */
-.ax-qhd { display: flex; align-items: center; gap: var(--s1); min-height: 56px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--border-sub); }
-.ax-qhd > .wb-seg { margin-right: auto; }
-.ax-qt { flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: 600; }
-.ax-qhd > .ax-qback { margin-left: -8px; }
-.ax-qsearch { display: none; flex: 1; }
-.ax-qhd.is-search > * { display: none; }
-.ax-qhd.is-search > .ax-qsearch { display: flex; }
-.ax-qclose { display: none; }
-.ax-qhd.is-search > .ax-qclose { display: inline-flex; }
-.ax-qfind { padding: 10px 14px; border-bottom: 1px solid var(--border-sub); }
+/* The header of both lists: the two segmented controls, then the search field and the icons. The
+   field wraps to a second row wherever it would be narrower than 200 px beside the controls (the
+   queue column, a phone); the segment buttons take their own width, the spare room shared out */
+.ax-qhd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--border-sub); }
+.ax-qsegs { display: flex; gap: 8px; }
+.ax-qsegs .wb-seg > button { flex: 1 1 auto; }
+.ax-qfind { display: flex; align-items: center; gap: 4px; flex: 1 1 200px; min-width: 0; }
+.ax-qfind > .wb-input { flex: 1; min-width: 0; }
 .ax-queue input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+/* The search: a quiet count line, dimmed rows while a newer search is out, a snippet per row */
+.ax-qcount { padding: 10px 14px 0; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-queue .wb-list[aria-busy="true"] { opacity: .5; transition: opacity var(--dur) ease-out; }
+.ax-snip { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-snip > b { font-weight: 500; color: var(--ink); }
+.ax-mark { padding: 0 1px; border-radius: 2px; background: var(--warn-bg); color: var(--ink); font-weight: 600; }
+.ax-qoffers { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: var(--s3); }
 .ax-icons { display: flex; gap: 2px; }
 .ax-queue .wb-row { padding: 12px 14px; color: inherit; text-decoration: none; }
 .ax-queue .wb-row[aria-busy="true"] { background: var(--surface-2); }
+/* A row's pills wrap onto a second line when the status, P1 and the mailbox do not fit the pane
+   (a long closed status in Dutch) */
+.ax-queue .wb-row__end { flex-wrap: wrap; row-gap: 6px; }
 .ax-clip { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; font-size: var(--fs-xs); color: var(--ink-2); vertical-align: -1px; }
 .ax-clip > .wb-i { width: 12px; height: 12px; }
 .ax-new { animation: ax-flash 3s ease-out; }
@@ -78,6 +86,10 @@
 .ax-title { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; line-height: 1.35; }
 .ax-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .ax-cust { font-size: var(--fs-xs); color: var(--ink-2); }
+/* The customer's addresses (selectable text) and numbers (tel: links) under the customer line */
+.ax-contact { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: -4px; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-ci { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow-wrap: anywhere; user-select: text; }
+.ax-ci > .wb-i { width: 12px; height: 12px; }
 .ax-pair, .ax-replycol { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
 .ax-from { display: flex; align-items: center; gap: var(--s2); margin: -4px 0 var(--s3); }
 .ax-from > span { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--ink-2); }
@@ -87,13 +99,33 @@
 .ax-msg { overflow-wrap: anywhere; }
 .ax-msg p { margin: 0 0 10px; }
 .ax-msg > :last-child { margin-bottom: 0; }
-.ax-thumbs { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 2px 0 12px; }
-.ax-thumb { display: grid; place-items: center; width: 112px; height: 84px; border-radius: var(--r-cell); background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-micro); color: var(--ink-2); overflow: hidden; }
+.ax-msg ul { margin: 0 0 10px; padding-left: 1.4em; }
+.ax-msg p:has(+ ul) { margin-bottom: 0; }
 .ax-to { display: flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 6px 16px; border-bottom: 1px solid var(--border-sub); }
 .ax-to > .wb-label { width: 22px; }
+/* The end of the To line: Add Cc and Translate, right-aligned, on a line of their own when the
+   address leaves no room; the Cc row under it: removable pills, Add */
+.ax-to__end { display: flex; gap: 2px; margin: 0 -11px 0 auto; }
+.ax-cc > .wb-pill { max-width: 100%; }
+.ax-cc > .wb-pill > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ax-to .wb-input { width: 260px; }
-.ax-text { margin: 8px 5px 0; }
-.ax-text > textarea { min-height: 9em; }
+/* The reply editor (assets/axle-editor.js): a quiet toolbar over a quiet field, as the round 1 text
+   area (no border until hover or focus); lists inside, the placeholder while empty */
+.ax-text { margin: 4px 5px 0; }
+.ax-edbar { display: flex; gap: 2px; padding: 0 0 2px; }
+.ax-edbar > .wb-btn[aria-pressed="true"] { background: var(--surface-2); }
+.ax-edbar > .wb-btn[aria-pressed="true"] .wb-i { color: var(--ink); }
+.ax-ed {
+  position: relative; min-height: 9em; padding: 7px 10px; border: 1px solid transparent; border-radius: var(--r-cell);
+  font-size: var(--fs-base); line-height: 1.5; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; outline: 0;
+  transition: border-color var(--dur) ease-out;
+}
+.ax-ed:hover { border-color: var(--border-2); }
+.ax-ed:focus { border-color: var(--ring); outline: 2px solid var(--ring); outline-offset: 1px; }
+.ax-ed ul { margin: 0; padding-left: 1.4em; }
+.ax-ed[data-empty]::before { content: attr(data-placeholder); position: absolute; top: 7px; left: 10px; color: var(--faint); pointer-events: none; }
+.ax-ed[contenteditable="false"] { opacity: .45; }
+@media (pointer: coarse) { .ax-ed { font-size: var(--fs-input); } }
 .ax-atts { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px 0; }
 .ax-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 5px 10px; }
 .ax-sugg { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-sub); }
@@ -109,6 +141,8 @@
 .ax-qs { margin: 8px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
 .ax-qs > li { padding-left: 2px; }
 .ax-qs .wb-pill { margin-left: 6px; }
+/* Axle's questions directly above the redraft line, one unit */
+.ax-ask { display: flex; flex-direction: column; gap: var(--s2); }
 .ax-redraft { display: flex; gap: var(--s2); }
 .ax-redraft > .wb-input { flex: 1; }
 .ax-link { display: block; margin-top: 4px; font: var(--fs-xs)/1.4 var(--mono); overflow-wrap: anywhere; }
@@ -125,10 +159,28 @@
 .ax-tr { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--surface-2); }
 .ax-tr > .wb-hint { margin-bottom: 6px; }
 .ax-caller { margin-top: 10px; font-size: var(--fs-xs); color: var(--ink-2); }
-.ax-thumb > img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.ax-mail .ax-thumbs { margin: 14px 0 0; }
-.ax-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.ax-files > .wb-pillbtn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A message's attachments: photo thumbnails (a skeleton until loaded, "Could not load" with Retry
+   when they fail), then file chips; the quiet line naming what Axle could not read */
+.ax-atts-in { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.ax-quoted .ax-atts-in { margin-top: 8px; }
+.ax-thumbs { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.ax-thumb { position: relative; width: 112px; height: 84px; border-radius: var(--r-cell); border: 1px solid var(--border); background: var(--surface-2); overflow: hidden; }
+.ax-thumb__b, .ax-thumb__fail { display: block; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+.ax-thumb__b { cursor: zoom-in; }
+.ax-thumb__b > .wb-skel { position: absolute; inset: 0; height: auto; border-radius: 0; }
+.ax-thumb__b > img { position: relative; display: block; width: 100%; height: 100%; object-fit: cover; }
+.ax-thumb__b:focus-visible, .ax-thumb__fail:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: var(--r-cell); }
+.ax-thumb__fail, .ax-thumb[data-failed] > .ax-thumb__b { display: none; }
+.ax-thumb[data-failed] > .ax-thumb__fail { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; text-align: center; font-size: var(--fs-micro); line-height: 1.3; color: var(--ink-2); }
+.ax-thumb__fail > .wb-i { width: 14px; height: 14px; color: var(--warn-fg); }
+.ax-thumb__fail > .wb-link { font-weight: 500; }
+.ax-files { display: flex; flex-wrap: wrap; gap: 6px; }
+.ax-file { max-width: 100%; min-width: 0; text-decoration: none; }
+.ax-file > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-file > small { flex: none; font-size: var(--fs-micro); color: var(--ink-2); }
+.ax-unread { display: flex; align-items: flex-start; gap: 6px; font-size: var(--fs-xs); color: var(--ink-2); }
+.ax-unread > .wb-i { width: 12px; height: 12px; margin-top: 2px; }
+.ax-quoted > .ax-qfrom { margin-bottom: 6px; font-size: var(--fs-xs); }
 /* The customer line's pills and the voicemail's people */
 .ax-cust > .wb-pill { vertical-align: 1px; }
 .ax-people { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--ink-2); }
@@ -160,7 +212,12 @@
   .ax-fb { min-height: var(--h-ctl); }
   .ax-more { padding: 13px 0; margin: -7px 0 -13px; }
   .ax-chipact { padding-top: 12.5px; padding-bottom: 12.5px; margin-top: -12.5px; margin-bottom: -12.5px; }
+  .ax-file, .ax-cc > .wb-pillbtn { height: var(--tap); }
+  .ax-ci > a { display: inline-block; padding: 14px 0; margin: -14px 0; }
 }
+/* The camera beside Attach, on touch devices only */
+.ax-cam { display: none; }
+@media (pointer: coarse) { .ax-cam { display: inline-flex; } }
 .ax-tools .wb-count { margin-left: 2px; }
 .ax-wait > .wb-banner { margin: 0; }
 /* The redraft line: one field that grows from one line */
@@ -210,6 +267,32 @@
 .ax-void { display: grid; place-items: center; min-height: calc(100vh - var(--ax-top, 0px)); padding: var(--s6); text-align: center; color: var(--ink-2); }
 .ax-void__empty, .ax[data-empty] .ax-void__pick { display: none; }
 .ax[data-empty] .ax-void__empty { display: block; }
+
+/* ---------- The photo viewer: fixed over everything, the photo fitted to the window (no text input
+   inside, so a fixed box is fine on a phone too, where it is full screen: axle.css phone block) ---------- */
+.ax-viewing { overflow: hidden; }
+.ax-viewer {
+  position: fixed; inset: 0; z-index: var(--z-dialog); display: grid; grid-template-rows: auto minmax(0, 1fr);
+  background: color-mix(in srgb, var(--ink) 94%, transparent); color: var(--on-brand); outline: 0; animation: wb-fade var(--dur) ease-out;
+}
+.ax-viewer__hd { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 20px; }
+.ax-viewer__n { flex: none; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; opacity: .8; }
+.ax-viewer__name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ax-viewer__name > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-viewer__name > b { font-weight: 600; }
+.ax-viewer__name > span { font-size: var(--fs-xs); opacity: .8; }
+/* The photo always fits: the stage is the grid row (a definite height); the photo is placed in it
+   with all four insets (room for Previous and Next at the sides) and margin auto, at its own size up
+   to the room left, so a large one shrinks with its aspect ratio and a small one is never blown up */
+.ax-viewer__stage { --fit-x: 76px; --fit-b: 24px; position: relative; min-height: 0; }
+.ax-viewer__stage > img {
+  position: absolute; inset: 0 var(--fit-x) var(--fit-b); margin: auto; display: block;
+  max-width: calc(100% - 2 * var(--fit-x)); max-height: calc(100% - var(--fit-b));
+  border-radius: var(--r-cell); background: var(--surface);
+}
+.ax-viewer__go { position: fixed; top: 50%; translate: 0 -50%; width: var(--tap); height: var(--tap); border-radius: 50%; }
+.ax-viewer__go[data-go="-1"] { left: 16px; }
+.ax-viewer__go[data-go="1"] { right: 16px; }
 
 /* ---------- Overlays: one markup, drawn as the vocabulary's dialog, drawer, page or sheet ---------- */
 .ax-ov__x, .ax-ov__back { flex: none; }
@@ -344,10 +427,11 @@
   .ax-ptop > .wb-pill { margin: 0 8px 0 auto; }
   .ax-ptop .ax-icons { margin-left: auto; }
   .ax-ptop .wb-page__t { min-width: 0; }
-  .ax-doc:not(.is-framed) :is(.ax-back, .ax-qhd > .ax-icons, .ax-st) { display: none !important; }
-  .ax-qhd { padding: 8px 16px; min-height: 0; }
-  .ax-qhd > .wb-seg { flex: 1; margin: 0; }
-  .ax-qfind { padding: 10px 16px; }
+  .ax-doc:not(.is-framed) :is(.ax-back, .ax-qfind > .ax-icons, .ax-st) { display: none !important; }
+  .ax-qhd { padding: 8px 16px; }
+  .ax-qsegs { flex: 1 1 100%; }
+  .ax-qsegs > .wb-seg { flex: 1 1 auto; }
+  .ax-qcount { padding: 10px 16px 0; }
   .ax-queue .wb-row { padding: 14px 16px; }
   .ax-queue .wb-row__title, .ax-queue .wb-row__line { font-size: var(--fs-md); }
   .ax-queue .wb-row__meta, .ax-queue .wb-row__sum { font-size: var(--fs-base); }
@@ -358,6 +442,15 @@
   .ax-to .wb-input { width: auto; flex: 1; }
   .ax-to { scroll-margin: calc(var(--bar-h) + 16px) 0 calc(var(--h-ctl) + 40px + env(safe-area-inset-bottom)); }
   .ax-thumb { width: 96px; height: 72px; }
+  .ax-viewer { background: var(--ink); grid-template-rows: auto minmax(0, 1fr) calc(var(--tap) + 32px + env(safe-area-inset-bottom)); }
+  .ax-viewer__hd { padding: calc(10px + env(safe-area-inset-top)) 16px 10px; }
+  .ax-viewer__stage { --fit-x: 0px; --fit-b: 0px; }
+  .ax-viewer__open, .ax-viewer__x { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .ax-viewer__open { left: 16px; }
+  .ax-viewer__x { right: 16px; }
+  .ax-viewer__go { top: auto; bottom: calc(16px + env(safe-area-inset-bottom)); translate: none; }
+  .ax-viewer__go[data-go="-1"] { left: calc(50% - 52px); }
+  .ax-viewer__go[data-go="1"] { right: calc(50% - 52px); }
   .ax-dockwrap { position: static; }
   .ax-dockwrap .wb-banner { scroll-margin-bottom: 80px; }
   .ax-msg[data-clamp]:not(.is-open) { max-height: 18em; overflow: hidden; }

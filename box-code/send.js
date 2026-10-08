@@ -50,10 +50,10 @@ async function findSentId(tok, mailbox, subject, to) {
 }
 
 // Send the reply. `to` is already locked to the customer by send-guard; we set it as the
-// sole recipient and send no CC/BCC. `html` is the safe HTML from send-guard (verbatim).
+// sole To. `cc` is the item's Cc as send-guard screened it (round 2); never any BCC. `html` is the safe HTML from send-guard (verbatim).
 // `attachments` (optional) is [{name, contentType, contentBytes(base64)}] - sent as Graph
 // fileAttachments inline (no upload session, so keep the total well under ~3 MB).
-async function sendReply({ mailbox, originalMessageId, to, subject, html, attachments }) {
+async function sendReply({ mailbox, originalMessageId, to, cc, subject, html, attachments }) {
   if (!mailbox) throw new Error("send: no mailbox");
   if (!to) throw new Error("send: no recipient");
   const tok = await token();
@@ -63,7 +63,7 @@ async function sendReply({ mailbox, originalMessageId, to, subject, html, attach
     subject,
     body: { contentType: "HTML", content: html },
     toRecipients: [{ emailAddress: { address: to } }],
-    ccRecipients: [],
+    ccRecipients: (cc || []).map((address) => ({ emailAddress: { address } })),
     bccRecipients: [],
   };
   if (Array.isArray(attachments) && attachments.length) {

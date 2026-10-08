@@ -1176,6 +1176,7 @@
     replyEd();
     if (ccOpened.has(em.dataset.email)) ccShow(false);
     foldCheck();
+    dockFold();
     resetVisible();
     const id = em.dataset.email, pend = $("[data-tr-pending]", em), qs = $$("[data-trq]", em);
     if (!pend && !qs.length) return;
@@ -1202,6 +1203,26 @@
     });
   }
   PHONE.addEventListener("change", foldCheck);
+  // The dock rule (Vocabulary.md): when the slots do not fit, the lowest-priority slot folds into
+  // More, one at a time, and shows there as its row. Slots that may fold carry data-fold (1 folds
+  // first), their rows in m-more data-fold-row; More shows when it holds a row. Measured, never
+  // scrolled; the phone has its own bar (the dock is not drawn there).
+  function dockFold() {
+    const dock = $("#workpane .ax-email .wb-dock"), tpl = D.getElementById("m-more");
+    if (!dock || !tpl) return;
+    const more = $('[data-menu="more"]', dock), rows = tpl.content;
+    const slots = $$("[data-fold]", dock).sort((a, b) => a.dataset.fold - b.dataset.fold);
+    const fixed = !!$(".wb-menu__item:not([data-fold-row])", rows);
+    const fold = (n) => {
+      slots.forEach((s, k) => { s.hidden = k < n; $(`[data-fold-row="${s.dataset.fold}"]`, rows).hidden = k >= n; });
+      const sep = $("[data-fold-sep]", rows);
+      if (sep) sep.hidden = !n;
+      if (more) more.hidden = !n && !fixed;
+    };
+    let n = 0;
+    fold(0);
+    if (dock.offsetParent) while (n < slots.length && dock.scrollWidth > dock.clientWidth + 1) fold(++n);
+  }
   // Reset to draft shows only while the text differs from Axle's draft.
   function resetVisible() {
     const b = $("#workpane [data-reset]"), seed = D.getElementById("ai_seed"), r = replyBox();
@@ -1511,7 +1532,7 @@
     e.stopImmediatePropagation();
     $('button[name="action"][value="redraft"]', e.target.form)?.click();
   }, true);
-  W.addEventListener("resize", foldCheck);
+  W.addEventListener("resize", () => { foldCheck(); dockFold(); });
 
   /* ---------- Wiring: one click listener, in order ---------- */
   D.addEventListener("click", (e) => {

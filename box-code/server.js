@@ -30,7 +30,7 @@ const MS = require("./message-store.js");           // stored messages and attac
 const BASE = require("./base-path.js");             // AXLE_BASE_PATH: "" or the URL prefix, e.g. "/axle"
 const { esc, t, page, langOK, workPanes } = require("./views/ui.js");
 const { MAILBOX_OF, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, runRedraft, markReadSafe,
-        isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, defaultMailbox } = require("./routes/shared.js");
+        isContactFormItem, isReturnNotificationItem, itemKind, customerEmails, saveWorkInputs, defaultMailbox } = require("./routes/shared.js");
 const mountInbox = require("./routes/inbox.js");
 const mountItem = require("./routes/item.js");
 const mountAdmin = require("./routes/admin.js");
@@ -392,11 +392,13 @@ app.post("/item/:id/return-recipient", knownOnly);
 // POST /item/:id/cc (addr) adds one address, POST /item/:id/cc/remove (addr) removes one. The only
 // writers of work_items.cc_json besides the send (which clears it) and ingest (which clears it when
 // the correspondent changes). Adding is refused, like setting a recipient, on an injection-flagged
-// or closed item. A suggested address (the known set, or one the customer copied on their own email)
-// keeps its source; anything else must pass the typed-To screen and is stored as typed. Never one of
-// our own mailboxes, never the To, no duplicates, at most CC.MAX_CC (cc-list.js). In place: a
+// or closed item. A suggested address (the known set, the customer's SAP card, one the customer
+// copied on their own email, or one of our internal mailboxes) keeps its source; anything else must
+// pass the typed-To screen and is stored as typed. On our own domains only info@, drachten@ and
+// admin@, never the mailbox the reply is sent from; never the To, no duplicates, at most CC.MAX_CC
+// (cc-list.js). In place: a
 // refusal is JSON with the X-Axle-Inline pattern plus `reason`; success redirects to the item.
-const CC_MSG = { item: "cc_refused", bad_address: "recip_bad_address", own: "cc_own", same_as_to: "cc_same_as_to",
+const CC_MSG = { item: "cc_refused", bad_address: "recip_bad_address", sending_box: "cc_sending_box", own: "cc_own", same_as_to: "cc_same_as_to",
   duplicate: "cc_duplicate", too_many: "cc_too_many" };
 async function changeCc(req, res, op) {
   const lang = req.user.lang;
@@ -425,7 +427,7 @@ async function changeCc(req, res, op) {
   if (w.injection_flag) return refuse("item", "injection-flagged item");
   if (w.status === "done" || w.status === "archived") return refuse("item", `item ${w.status}`);
   const to = RSET.activeRecipient(w, itemKind(w));
-  const r = CC.add(w, posted, CC.suggestions(w, await knownAddresses(w), MS.itemThread(w.id), to), to);
+  const r = CC.add(w, posted, CC.suggestions(w, { known: await knownAddresses(w), card: await customerEmails(w), thread: MS.itemThread(w.id), to }), to);
   if (r.refuse) return refuse(r.refuse);
   save(r.cc);
   audit(login, "cc_set", w.id, `added=${r.entry.addr} source=${r.entry.source} cc=${r.cc.length}`);

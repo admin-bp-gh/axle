@@ -7,9 +7,12 @@
 //   *italic*        italic
 //   ***both***      bold and italic; bold may contain italic and italic may contain bold:
 //                   "**a *b* c**" and "*a **b** c*"
+//   __underline__   underline (round 3): exactly two underscores. It nests with bold and italic in
+//                   any order ("__a **b**__", "**a __b__**", "__*a*__"). A single underscore and a
+//                   run of three or more are always literal ("LR_012345", "foto_1.jpg", "___").
 //   - item          a line starting with "- " (hyphen, space, at the very start of the line) is a
 //                   bulleted list item; consecutive such lines form one list. The item text may carry
-//                   bold and italic. Nested lists do not exist.
+//                   bold, italic and underline. Nested lists do not exist.
 //   \* and \\*      backslashes are special only in a run that stands directly before an asterisk:
 //                   in such a run each pair "\\" is one literal backslash and a final single "\"
 //                   makes the asterisk literal ("\*" shows "*", "\\*x*" shows "\" then italic x,
@@ -18,12 +21,23 @@
 //                   changed by a backslash. A Windows path ending in an asterisk is therefore read
 //                   as escaping it ("C:\dir\*.txt" shows "C:\dir*.txt"); typed in the editor it
 //                   is stored "C:\dir\\\*.txt" and shows as typed.
+//   \__ and \\__    the same backslash rule before a "__", but only for a "__" that pairs as a marker
+//                   when the backslashes before it are read as ordinary characters (and the escapes
+//                   found so far applied, repeated until no further one is found): then "\__a__"
+//                   shows "__a__", "\\__a__" shows "\" then underlined a, and "__a \__b__" is
+//                   underlined "a __b". Before a "__" that pairs with nothing the backslashes are
+//                   ordinary ("C:\__temp" shows as typed), so text without a "__" pair is never
+//                   changed.
+//                   Two such paths on one line hold a pair and lose those backslashes ("C:\__a and
+//                   C:\__b" shows "C:__a and C:__b"), as a path before an asterisk does.
 // Rules:
 //   - markers apply within one line, never across a line break (CRLF and LF are both line breaks);
 //   - an opening marker must be followed by a non-space and a closing marker preceded by a non-space,
 //     so "5 * 3 = 15" and "a ** b" stay literal;
-//   - a run of more than three asterisks is literal; a marker that finds no partner stays literal
-//     text ("**a" shows "**a"; "**a *b**" is bold "a *b", the unpaired "*" literal);
+//   - a run of more than three asterisks is literal, as is a run of underscores other than two; a
+//     marker that finds no partner stays literal text ("**a" shows "**a"; "**a *b**" is bold "a *b",
+//     the unpaired "*" literal); a pair that closes makes every unpaired opener inside it literal
+//     ("**a __b** c__" is bold "a __b" then " c__");
 //   - links "[text](https://...)", bare URLs and image tokens "[image:N]" are atoms (tokens() below,
 //     the ONE tokeniser for the send path, the display and the editor) and may sit inside formatted
 //     text ("**see [our page](https://www.roverparts.eu/x)**"); markers inside an atom are not
@@ -37,9 +51,11 @@
 //   - a line that is "- " and nothing more (white space aside) is not a list item and renders as
 //     nothing: it is what the editor's Enter leaves at the end of a list;
 //   - text with no marker renders as it did before markers existed (round 1), apart from three URL
-//     ends: a "*" or "]" directly after a bare URL is text, and a URL keeps a ")" closing its "(".
+//     ends: a "*" or "]" directly after a bare URL is text, and a URL keeps a ")" closing its "(";
+//     underline markers in text that has no "__" pair change nothing (round 2 rendering kept);
+//     a word like "__init__" or "x__y__z" holds a pair and is now underlined.
 // The HTML built here is escape-first: every character of the text is escaped by the caller's
-// escaper and the only tags ever produced are <b>, <i>, <ul>, <li>, <br>, <p> and the caller's own
+// escaper and the only tags ever produced are <b>, <i>, <u>, <ul>, <li>, <br>, <p> and the caller's own
 // link markup. Nothing the text contains can open another tag or attribute.
 "use strict";
 
@@ -91,27 +107,32 @@ function tokens(line) {
 }
 
 // One line as units: { c } a character, { lit } an escaped character (or a backslash of an escaping
-// run), { star: n } a run of n
-// unescaped asterisks, { tok } an atom (a tokens() entry other than text).
-function units(line) {
+// run), { star: n } a run of n unescaped asterisks, { us: n, at } a run of n underscores starting at
+// offset at of the line, { tok } an atom (a tokens() entry other than text). esc holds the offsets of
+// the "__" runs whose backslash run is special (see inline()).
+function units(line, esc) {
   const out = [];
+  let base = 0;
   const pushText = (s) => {
     for (let i = 0; i < s.length; i++) {
       const ch = s[i];
       if (ch === "\\") {
-        // a run of backslashes: special only directly before an asterisk (see the rules above)
+        // a run of backslashes: special only directly before an asterisk or an escaping "__"
         let n = 1;
         while (s[i + n] === "\\") n++;
-        const star = s[i + n] === "*";
-        for (let k = 0; k < (star ? n >> 1 : n); k++) out.push(star ? { lit: "\\" } : { c: "\\" });
-        if (star && n % 2) { out.push({ lit: "*" }); i += n; }
-        else i += n - 1;
+        const star = s[i + n] === "*", us = esc.has(base + i + n);
+        const special = star || us;
+        for (let k = 0; k < (special ? n >> 1 : n); k++) out.push(special ? { lit: "\\" } : { c: "\\" });
+        if (special && n % 2) {
+          out.push(...(star ? [{ lit: "*" }] : [{ lit: "_" }, { lit: "_" }]));
+          i += n + (us ? 1 : 0);
+        } else i += n - 1;
         continue;
       }
-      if (ch === "*") {
-        const last = out[out.length - 1];
-        if (last && last.star) { last.star++; continue; }
-        out.push({ star: 1 });
+      if (ch === "*" || ch === "_") {
+        const last = out[out.length - 1], key = ch === "*" ? "star" : "us";
+        if (last && last[key] && last.end === base + i) { last[key]++; last.end++; continue; }
+        out.push({ [key]: 1, at: base + i, end: base + i + 1 });
         continue;
       }
       out.push({ c: ch });
@@ -120,57 +141,75 @@ function units(line) {
   for (const tok of tokens(line)) {
     if (tok.type === "text") pushText(tok.raw);
     else out.push({ tok });
+    base += tok.raw.length;
   }
   return out;
 }
 
 const isSpace = (u) => !u || (u.c !== undefined && /\s/.test(u.c));
 
-// Pair the asterisk runs of one line. Each run gets .close (kinds closed, in order), .open (kinds
-// opened, in order) and .literal (asterisks shown as text). Kinds: "b" (two stars), "i" (one).
+const WIDTH = { b: 2, i: 1, u: 2 };
+
+// Pair the marker runs of one line. Each run gets .close (kinds closed, in order), .open (kinds
+// opened, in order) and .literal (marker characters shown as text). Kinds: "b" (two stars), "i"
+// (one), "u" (exactly two underscores). All kinds share one stack, so they nest in any order and a
+// pair that closes makes every opener inside it literal.
 function pair(us) {
   const stack = [];   // open entries: { run, kind, ok }
+  const open = (run, kind) => { const e = { run, kind, ok: false }; run.open.push(e); stack.push(e); };
   for (let k = 0; k < us.length; k++) {
     const run = us[k];
-    if (!run.star) continue;
-    run.close = []; run.open = []; run.literal = run.star;
-    if (run.star > MAX_RUN) continue;
-    let rem = run.star;
+    if (!run.star && !run.us) continue;
+    const n = run.star || run.us;
+    run.close = []; run.open = []; run.literal = n;
+    if (run.us) {
+      if (n !== 2) continue;
+      const j = isSpace(us[k - 1]) ? -1 : stack.map((e) => e.kind).lastIndexOf("u");
+      if (j >= 0) { stack[j].ok = true; stack.length = j; run.close.push("u"); }
+      else if (!isSpace(us[k + 1])) open(run, "u");
+      continue;
+    }
+    if (n > MAX_RUN) continue;
+    let rem = n;
     if (!isSpace(us[k - 1])) {
       while (rem > 0 && stack.length) {
-        // Three stars close whatever is innermost; two prefer a bold, one wants an italic.
+        // Three stars close whatever star pair is innermost; two prefer a bold, one wants an italic.
+        const want = rem === 3 ? null : rem === 2 && stack.some((e) => e.kind === "b") ? "b" : "i";
         let j = stack.length - 1;
-        if (rem < 3) {
-          const want = rem === 2 && stack.some((e) => e.kind === "b") ? "b" : "i";
-          while (j >= 0 && stack[j].kind !== want) j--;
-        }
+        while (j >= 0 && (stack[j].kind === "u" || (want && stack[j].kind !== want))) j--;
         if (j < 0) break;
         const e = stack[j];
-        const need = e.kind === "b" ? 2 : 1;
-        if (need > rem) break;
+        if (WIDTH[e.kind] > rem) break;
         stack.length = j;          // openers inside the pair never found a partner: literal
         e.ok = true;
         run.close.push(e.kind);
-        rem -= need;
+        rem -= WIDTH[e.kind];
       }
     }
-    if (rem > 0 && !isSpace(us[k + 1])) {
-      for (const kind of rem === 1 ? ["i"] : rem === 2 ? ["b"] : ["b", "i"]) {
-        const e = { run, kind, ok: false };
-        run.open.push(e);
-        stack.push(e);
-      }
-    }
+    if (rem > 0 && !isSpace(us[k + 1])) for (const kind of rem === 1 ? ["i"] : rem === 2 ? ["b"] : ["b", "i"]) open(run, kind);
   }
-  // Settle: literal asterisks are those neither closing nor in a paired opener.
+  // Settle: literal markers are those neither closing nor in a paired opener.
   for (const u of us) {
-    if (!u.star || !u.close) continue;
-    const used = u.close.reduce((n, kind) => n + (kind === "b" ? 2 : 1), 0)
-      + u.open.filter((e) => e.ok).reduce((n, e) => n + (e.kind === "b" ? 2 : 1), 0);
-    u.literal = u.star - used;
+    if (!u.close) continue;
+    const width = (n, kind) => n + WIDTH[kind];
     u.open = u.open.filter((e) => e.ok).map((e) => e.kind);
+    u.literal = (u.star || u.us) - u.close.reduce(width, 0) - u.open.reduce(width, 0);
   }
   return us;
+}
+
+// The units of one line, paired. A backslash run directly before "__" is special only when that
+// "__" pairs as a marker: the line is first paired with every such backslash read as an ordinary
+// character, then again with the escapes of the "__" that paired applied, until no further "__"
+// right after a backslash pairs.
+function paired(line) {
+  const s = String(line == null ? "" : line), esc = new Set();
+  for (;;) {
+    const us = pair(units(s, esc));
+    const more = us.filter((u) => u.us && (u.open.length || u.close.length) && s[u.at - 1] === "\\" && !esc.has(u.at));
+    if (!more.length) return us;
+    for (const u of more) esc.add(u.at);
+  }
 }
 
 // One line as HTML. o.esc escapes text; o.atom(token) returns the HTML of a link, URL or image
@@ -180,13 +219,13 @@ function inline(line, o) {
   const tag = (kind, close) => (o.tags === false ? "" : `<${close ? "/" : ""}${kind}>`);
   let out = "", buf = "";
   const flush = () => { out += o.esc(buf); buf = ""; };
-  for (const u of pair(units(line))) {
+  for (const u of paired(line)) {
     if (u.c !== undefined) buf += u.c;
     else if (u.lit !== undefined) buf += u.lit;
     else if (u.tok) { flush(); out += o.atom(u.tok); }
     else {
       flush();
-      out += u.close.map((k) => tag(k, true)).join("") + o.esc("*".repeat(u.literal)) + u.open.map((k) => tag(k, false)).join("");
+      out += u.close.map((k) => tag(k, true)).join("") + o.esc((u.star ? "*" : "_").repeat(u.literal)) + u.open.map((k) => tag(k, false)).join("");
     }
   }
   flush();

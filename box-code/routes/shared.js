@@ -20,6 +20,8 @@ const SAPDOC = require("../sap-doc-pdf.js");       // read-only Boyum print rend
 const C = require("../connectors.js");             // MyParcel + SAP reads for the claim dossier
 const SEARCH = require("../search.js");           // the compose subject is searchable
 const DM = require("../draft-media.js");          // the customer's images and PDFs shown to the drafter
+const SG = require("../send-guard.js");            // isVoicemailItem: a voicemail's card is the caller's
+const CUSTSUM = require("../customer-summary.js"); // the customer's SAP card (cached), for its addresses
 const { db, audit } = require("../db.js");
 const { t, fmtSize } = require("../views/ui.js");
 
@@ -313,6 +315,40 @@ function itemKind(w) {
   return "reply";
 }
 
+// FR-0002: the item's customer CardCode, resolved on the TRUSTED side only (moved here from
+// routes/item.js in round 3, so the Cc route reads the same customer as the page): compose_customer
+// for a compose item, else the inbound sender via customerByEmail. Never derived from email content,
+// so this can only ever read the email's own customer. Contact-form items (sender = Shopify's
+// mailer) get none. A KPN voicemail item's sender is KPN, never the customer: its card is the one
+// ingest chose from the caller's number (work_items.caller_card, Change A), read from SAP by our own
+// lookup only.
+async function itemCardCode(w) {
+  let cc = null; try { cc = JSON.parse(w.compose_customer || "null"); } catch (e) { cc = null; }
+  if (cc && cc.cardCode) return cc.cardCode;
+  if (SG.isVoicemailItem(w)) return w.caller_card || null;
+  if (w.origin !== "compose" && !isContactFormItem(w) && !isReturnNotificationItem(w) && w.sender_email) {
+    try { const m = await SAPDOC.customerByEmail(w.sender_email); if (m && m.cardCode) return m.cardCode; }
+    catch (e) { /* unknown sender -> no card */ }
+  }
+  return null;
+}
+
+// The addresses SAP holds for the customer the page shows (OCRD E_Mail and U_E_Mail, several
+// possible; customer-summary.js emails): the card of itemCardCode, else the card a contact form or
+// return request matched (its information card shows it). Offered as Cc "on file" (cc-list.js).
+// Best effort: [] when there is no card or SAP fails.
+async function customerEmails(w) {
+  try {
+    let card = await itemCardCode(w);
+    if (!card) {
+      const src = JSON.parse((isContactFormItem(w) ? w.contact_form_json : isReturnNotificationItem(w) ? w.return_json : null) || "null");
+      if (src && src.resolved && src.resolved.matched) card = src.resolved.cardCode || null;
+    }
+    const s = card ? await CUSTSUM.summarise(card) : null;
+    return (s && s.emails) || [];
+  } catch (e) { return []; }
+}
+
 // Persist the editable inputs shared by /work and /send: feedback (the ONE consolidated
 // response box - answers to Axle's questions plus any guidance) and the edited reply
 // (draft_edit). TRUSTED staff input. Per-question answer_<id> fields were removed in the
@@ -436,6 +472,6 @@ async function stageWantedDocs(itemId, suggestions) {
 module.exports = {
   MAILBOX_OF, anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL,
   persistResult, runRedraft, markReadSafe, defaultMailbox,
-  isContactFormItem, isReturnNotificationItem, itemKind, saveWorkInputs, addAttachment,
+  isContactFormItem, isReturnNotificationItem, itemKind, itemCardCode, customerEmails, saveWorkInputs, addAttachment,
   claimDeps, runClaim, stageWantedDocs, latestWithdrawn, latestDraftVersion,
 };

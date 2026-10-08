@@ -1,17 +1,18 @@
 /* assets/axle-editor.js: the reply editor (round 2, request 3). Plain JavaScript, no library, no build.
-   The stored reply stays plain text with the markers of reply-format.js (**bold**, *italic*, "- "
-   list lines, \* and \\ for a literal asterisk or backslash). The editor shows that text as rich text
-   in a contenteditable box and writes it back as text on every input, into the hidden reply field
-   that autosave, the phone's draft protection and Send read.
+   The stored reply stays plain text with the markers of reply-format.js (**bold**, *italic*,
+   __underline__, "- " list lines, \*, \__ and \\ for a literal asterisk, double underscore or
+   backslash). The editor shows that text as rich text in a contenteditable box and writes it back
+   as text on every input, into the hidden reply field that autosave, the phone's draft protection
+   and Send read.
      1. The model, pure (plain node loads this part for the tests: axle-editor.test.js): a reply is
-        lines, each { list, runs: [{ t, b, i }] }. parse() reads stored text with the grammar itself
+        lines, each { list, runs: [{ t, b, i, u }] }. parse() reads stored text with the grammar itself
         (reply-format.js inline, never a copy of it); serialise() writes the markers back and proves
         each line by reading it again; toHtml() is the editor's DOM as markup (the server renders the
         first view with it, so the page opens already formatted).
-     2. The DOM, in the browser: the editor's DOM is held to div lines, ul > li list lines, b, i and
-        br. readDom() reads any DOM (strong, em, bold or italic spans, p and nested blocks, foreign
+     2. The DOM, in the browser: the editor's DOM is held to div lines, ul > li list lines, b, i, u
+        and br. readDom() reads any DOM (strong, em, bold, italic or underlined spans, p and nested blocks, foreign
         markup unwrapped to its text); a DOM holding anything else is rebuilt from what it reads,
-        lazily (on input, never while a composition is open). Bold, italic and the list are
+        lazily (on input, never while a composition is open). Bold, italic, underline and the list are
         document.execCommand, the one route that works the same in Chromium, Safari and iOS Safari and
         keeps undo and redo; paste and drop insert plain text through insertText for the same reason.
    Browser surface: window.AxleEditor.mount(element, field) -> { setText, insert, focus, caret,
@@ -27,26 +28,27 @@
   const WS = /\s/;
   const enc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const dec = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
-  const MARK = { b: "**", i: "*" };
+  const MARK = { b: "**", i: "*", u: "__" };
+  // The kinds, in the order markers that open together are written: underline outside, then bold
+  // outside italic (the grammar reads "***" so).
+  const KINDS = ["u", "b", "i"];
 
-  function push(runs, t, b, i) {
+  function push(runs, t, b, i, u) {
     if (!t) return;
     const last = runs[runs.length - 1];
-    if (last && last.b === b && last.i === i) last.t += t;
-    else runs.push({ t, b, i });
+    if (last && last.b === b && last.i === i && last.u === u) last.t += t;
+    else runs.push({ t, b, i, u });
   }
 
   // One line (without its "- ") as runs, read by reply-format.js: its HTML, escaped by enc, split at
   // the only tags it makes.
   function runsOf(line) {
     const runs = [];
-    let b = 0, i = 0;
-    for (const part of FMT.inline(line, { esc: enc, atom: (t) => enc(t.raw) }).split(/(<\/?[bi]>)/)) {
-      if (part === "<b>") b++;
-      else if (part === "</b>") b--;
-      else if (part === "<i>") i++;
-      else if (part === "</i>") i--;
-      else push(runs, dec(part), b > 0, i > 0);
+    const n = { b: 0, i: 0, u: 0 };
+    for (const part of FMT.inline(line, { esc: enc, atom: (t) => enc(t.raw) }).split(/(<\/?[biu]>)/)) {
+      const tag = /^<(\/?)([biu])>$/.exec(part);
+      if (tag) n[tag[2]] += tag[1] ? -1 : 1;
+      else push(runs, dec(part), n.b > 0, n.i > 0, n.u > 0);
     }
     return runs;
   }
@@ -55,15 +57,15 @@
     .map((l) => (LIST.test(l) ? { list: true, runs: runsOf(l.slice(2)) } : { list: false, runs: runsOf(l) }));
 
   // A line's characters (UTF-16 units, as the DOM counts them), each with its formatting.
-  const chars = (runs) => runs.flatMap((r) => r.t.split("").map((c) => ({ c, b: r.b, i: r.i })));
+  const chars = (runs) => runs.flatMap((r) => r.t.split("").map((c) => ({ c, b: r.b, i: r.i, u: r.u })));
   // Equal characters, and equal formatting wherever it shows (formatting on white space never does).
-  const same = (a, z) => a.length === z.length && a.every((x, p) => x.c === z[p].c && (WS.test(x.c) || (x.b === z[p].b && x.i === z[p].i)));
-  const merge = (cs) => cs.reduce((runs, x) => { push(runs, x.c, x.b, x.i); return runs; }, []);
+  const same = (a, z) => a.length === z.length && a.every((x, p) => x.c === z[p].c && (WS.test(x.c) || KINDS.every((k) => x[k] === z[p][k])));
+  const merge = (cs) => cs.reduce((runs, x) => { push(runs, x.c, x.b, x.i, x.u); return runs; }, []);
 
   // The stretches of one kind of formatting: [{ k, p, q }] (characters p to q - 1).
   function stretches(cs) {
     const out = [];
-    for (const k of ["b", "i"]) {
+    for (const k of KINDS) {
       for (let p = 0; p < cs.length;) {
         if (!cs[p][k]) { p++; continue; }
         let q = p;
@@ -94,79 +96,90 @@
     return mask;
   }
 
-  // The stored text of one line's characters. Markers: bold and italic opening together open as
-  // "***", which the grammar reads as bold outside italic; at a change the stretches that end close
-  // innermost first, and one that must close only because an inner one ends opens again before its
-  // next non-space character (across white space that is always possible). gaps: everything open
-  // also closes before each white space and opens again after it, which expresses a crossing at a
-  // word gap ("*c* ***d*e**"). Literal
-  // asterisks, a run of them at a time: as typed with white space or the line's edge on both sides
-  // (the grammar never reads a marker there: "5 * 3"); escaped "\*" next to a marker or a backslash;
-  // otherwise as typed when raw names it (rawSets in lineText: "Price* excl." stays as typed).
-  // A literal backslash is doubled only in a run of them that stands directly before an asterisk
-  // (a marker or an escaped literal one): elsewhere the grammar reads backslashes as typed.
-  function emit(cs, atoms, raw, gaps) {
+  // The stored text of one line's characters. Markers: those opening together are written
+  // underline outside bold outside italic (KINDS; the grammar reads "***" as bold outside italic);
+  // at a change the stretches that end close innermost first, and one that must close only because
+  // an inner one ends opens again before its next non-space character (across white space that is
+  // always possible). gaps: everything open also closes before each white space and opens again
+  // after it, which expresses a crossing at a word gap ("*c* ***d*e**").
+  // Literal asterisks, a run of them at a time: as typed with white space or the line's edge on both
+  // sides (the grammar never reads a marker there: "5 * 3"); escaped "\*" next to a star marker or a
+  // backslash; otherwise as typed when alt names it (altSets in lineText: "Price* excl." stays as
+  // typed). Literal underscores: a run of one, of three or more, or with white space on both sides
+  // is always as typed (the grammar never reads a marker there); a run of two is escaped "\__" when
+  // alt names it, which the grammar honours only where that "__" would pair ("__a \__b__").
+  // A literal backslash is doubled only in a run of them that stands directly before an asterisk, a
+  // "__" marker or an escaped "\__": elsewhere the grammar reads backslashes as typed.
+  function emit(cs, atoms, alt, gaps) {
     const runs = [];
     cs.forEach((x, p) => {
-      const f = (x.b ? "b" : "") + (x.i ? "i" : ""), r = runs[runs.length - 1];
+      const f = KINDS.filter((k) => x[k]).join(""), r = runs[runs.length - 1];
       if (r && r.f === f) r.end = p + 1;
       else runs.push({ f, start: p, end: p + 1 });
     });
-    const STAR = {}, BS = {};
-    const parts = [], stack = [];
+    const STAR = {}, USC = {}, BS = {};
+    const flat = [], stack = [];
+    const marks = (ks) => ks.map((k) => ({ m: MARK[k] }));
     let pending = [];
     runs.forEach((run) => {
       const at = stack.findIndex((k) => !run.f.includes(k));
       if (at >= 0) {
         const shut = stack.splice(at).reverse().filter((k) => (pending.includes(k) ? (pending = pending.filter((x) => x !== k), false) : true));
-        parts.push(shut.map((k) => MARK[k]).join(""));
+        flat.push(...marks(shut));
       }
-      const open = ["b", "i"].filter((k) => run.f.includes(k) && !stack.includes(k));
+      const open = KINDS.filter((k) => run.f.includes(k) && !stack.includes(k));
       stack.push(...open);
       pending.push(...open);
       for (let p = run.start; p < run.end; p++) {
         const c = cs[p].c;
         if (gaps && WS.test(c) && stack.length > pending.length) {
-          parts.push(stack.slice(0, stack.length - pending.length).reverse().map((k) => MARK[k]).join(""));
+          flat.push(...marks(stack.slice(0, stack.length - pending.length).reverse()));
           pending = [...stack];
         }
         if (pending.length && !WS.test(c)) {
-          const order = ["b", "i"].filter((k) => pending.includes(k));   // as the grammar reads "***"
+          const order = KINDS.filter((k) => pending.includes(k));
           stack.splice(stack.length - pending.length, pending.length, ...order);
-          parts.push(order.map((k) => MARK[k]).join(""));
+          flat.push(...marks(order));
           pending = [];
         }
-        parts.push(atoms[p] ? { a: c } : c === "*" ? STAR : c === "\\" ? BS : c);
+        flat.push(atoms[p] ? { a: c } : c === "*" ? STAR : c === "_" ? USC : c === "\\" ? BS : c);
       }
     });
-    parts.push(stack.filter((k) => !pending.includes(k)).reverse().map((k) => MARK[k]).join(""));
-    const flat = parts.filter((x) => x !== "");
+    flat.push(...marks(stack.filter((k) => !pending.includes(k)).reverse()));
+    // Each piece as [text, protects]: protects says a backslash run right before it is special.
+    const w = flat.map((x) => (x === BS ? ["\\", false] : x === STAR ? ["*", true] : x === USC ? ["_", false]
+      : x.a !== undefined ? [x.a, false] : x.m !== undefined ? [x.m, true] : [x, false]));
+    const ws = (n) => n < 0 || n >= w.length || WS.test(w[n][0][0] || "");
+    const starMark = (n) => flat[n] === BS || (flat[n] && flat[n].m && flat[n].m[0] === "*");
     const groups = [];
     for (let n = 0; n < flat.length; n++) {
-      if (flat[n] !== STAR) continue;
+      const g = flat[n];
+      if (g !== STAR && g !== USC) continue;
       let z = n;
-      while (flat[z] === STAR) z++;
-      // a neighbour: a marker (a string of stars), a literal backslash, an atom's character or text
-      const near = (x) => (x === undefined ? "" : x === BS ? "\\" : x.a !== undefined ? x.a : x);
-      const before = near(flat[n - 1]), after = near(flat[z]);
-      const ws = (c) => !c || WS.test(c);
-      const mark = (x) => x === BS || (typeof x === "string" && /^\*+$/.test(x));
-      groups.push({ n, z, loose: ws(before.slice(-1)) && ws(after[0]), marker: mark(flat[n - 1]) || mark(flat[z]) });
-      n = z;
+      while (flat[z] === g) z++;
+      const loose = ws(n - 1) && ws(z);
+      groups.push({ n, z, star: g === STAR, loose, fixed: g === STAR ? loose || starMark(n - 1) || starMark(z) : loose || z - n !== 2 });
+      n = z - 1;
     }
-    const free = groups.filter((g) => !g.loose && !g.marker);
+    const free = groups.filter((g) => !g.fixed);
     for (const g of groups) {
-      const keep = g.loose || raw.has(free.indexOf(g));
-      for (let k = g.n; k < g.z; k++) flat[k] = keep ? "*" : "\\*";
+      const on = alt.has(free.indexOf(g));
+      if (g.star) for (let k = g.n; k < g.z; k++) w[k] = [g.loose || on ? "*" : "\\*", true];
+      else if (on) { w[g.n] = ["\\__", true]; w[g.n + 1] = ["", false]; }
     }
-    let out = "";
-    for (let n = flat.length - 1; n >= 0; n--) out = (flat[n] === BS ? (/^\\*\*/.test(out) ? "\\\\" : "\\") : flat[n].a ?? flat[n]) + out;
+    let out = "", guard = false;
+    for (let n = flat.length - 1; n >= 0; n--) {
+      if (flat[n] === BS) { out = (guard ? "\\\\" : "\\") + out; continue; }
+      out = w[n][0] + out;
+      guard = w[n][1];
+    }
     return { out, free: free.length };
   }
 
-  // The runs of free asterisks (see emit) to try writing as typed, in order of preference: the one
-  // run when there is one ("Price* excl."), else none ("\*lit\*"), then the fewest that work.
-  function rawSets(n) {
+  // The free runs (see emit) to write the other way (an asterisk run as typed, a "__" escaped), in
+  // order of preference: the one run when there is one ("Price* excl."), else none ("\*lit\*",
+  // "a__b"), then the fewest that work.
+  function altSets(n) {
     const sets = n === 1 ? [new Set([0]), new Set()] : [new Set()];
     if (n > 1 && n <= 6) for (let size = 1; size <= n; size++) for (let mask = 1; mask < 1 << n; mask++) {
       const set = new Set([...Array(n).keys()].filter((k) => mask & (1 << k)));
@@ -178,14 +191,15 @@
   // One line's characters as stored text, proven: the text is read back by the grammar and must give
   // the same characters and the same formatting wherever it shows. Formatting the grammar cannot
   // hold (a bold that starts inside an italic word) is dropped one stretch at a time, nearest the
-  // first difference, so the text never shows a stray marker.
+  // first difference, so the text never shows a stray marker. (Underline next to a literal
+  // underscore cannot be held either: "__foo___bar" is a run of three, which is text.)
   function lineText(cs) {
     trim(cs);
     const atoms = atomMask(cs);
     for (let guard = 0; ; guard++) {
       for (const gaps of [false, true]) {
-        for (const raw of rawSets(emit(cs, atoms, new Set(), gaps).free)) {
-          const { out } = emit(cs, atoms, raw, gaps);
+        for (const alt of altSets(emit(cs, atoms, new Set(), gaps).free)) {
+          const { out } = emit(cs, atoms, alt, gaps);
           if (same(chars(runsOf(out)), cs)) return out;
         }
       }
@@ -202,20 +216,22 @@
 
   // The model as it shows: formatting on white space dropped (it never shows, and no marker can start
   // or end on it), runs merged. Two models that normalise alike look alike and store alike.
-  const normalise = (lines) => lines.map((l) => ({ list: l.list, runs: merge(chars(l.runs).map((x) => (WS.test(x.c) ? { c: x.c, b: false, i: false } : x))) }));
+  const normalise = (lines) => lines.map((l) => ({ list: l.list, runs: merge(chars(l.runs).map((x) => (WS.test(x.c) ? { c: x.c, b: false, i: false, u: false } : x))) }));
 
-  // The editor's DOM: a div per line, a ul of li for consecutive list lines, b around i, an empty
-  // line holding a br (so it has a height and takes the caret).
-  function lineHtml(runs) {
+  // The editor's DOM: a div per line, a ul of li for consecutive list lines, b around i around u, an
+  // empty line holding a br (so it has a height and takes the caret).
+  function wrap(runs, kinds) {
+    if (!kinds.length) return runs.map((r) => enc(r.t)).join("");
+    const [k, ...rest] = kinds;
     let out = "";
-    for (let n = 0; n < runs.length;) {
-      const b = runs[n].b;
-      let inner = "";
-      for (; n < runs.length && runs[n].b === b; n++) inner += runs[n].i ? `<i>${enc(runs[n].t)}</i>` : enc(runs[n].t);
-      out += b ? `<b>${inner}</b>` : inner;
+    for (let n = 0, m; n < runs.length; n = m) {
+      for (m = n; m < runs.length && runs[m][k] === runs[n][k]; m++);
+      const inner = wrap(runs.slice(n, m), rest);
+      out += runs[n][k] ? `<${k}>${inner}</${k}>` : inner;
     }
-    return out || "<br>";
+    return out;
   }
+  const lineHtml = (runs) => wrap(runs, ["b", "i", "u"]) || "<br>";
   function toHtml(lines) {
     let out = "", ul = false;
     for (const l of lines) {
@@ -248,7 +264,8 @@
   }
 
   // Any DOM as lines. sel { node, offset }: the caret, returned as { line, at } (characters into
-  // that line). Formatting: b, strong and a bold span; i, em and an italic span. Every other element
+  // that line). Formatting: b, strong and a bold span; i, em and an italic span; u and an underlined
+  // span (text-decoration). Every other element
   // gives its text; images, scripts, styles and form controls give nothing.
   function readDom(root, sel) {
     const lines = [];
@@ -264,7 +281,7 @@
           if (!cur) line(f.list);
           caret = { line: lines.length - 1, at: len() + sel.offset - off };
         }
-        if (s) { if (!cur) line(f.list); push(cur.runs, s, f.b, f.i); fresh = false; }
+        if (s) { if (!cur) line(f.list); push(cur.runs, s, f.b, f.i, f.u); fresh = false; }
         off += s.length + 1;
       });
     }
@@ -284,6 +301,7 @@
         const g = {
           b: f.b || tag === "B" || tag === "STRONG" || /^(bold|bolder|[6-9]00)$/.test(st.fontWeight || ""),
           i: f.i || tag === "I" || tag === "EM" || st.fontStyle === "italic",
+          u: f.u || tag === "U" || /underline/.test(st.textDecorationLine || st.textDecoration || ""),
           list: f.list || tag === "LI",
         };
         if (!BLOCK.test(tag)) { walk(n, g); continue; }
@@ -294,7 +312,7 @@
         cur = null;
       }
     }
-    walk(root, { b: false, i: false, list: false });
+    walk(root, { b: false, i: false, u: false, list: false });
     if (!lines.length) lines.push({ list: false, runs: [] });
     // A line that starts "- " is a list item when stored, so it is one here too (a paste of a list).
     for (const l of lines) {
@@ -307,9 +325,9 @@
 
   // The DOM is the editor's own set: div and ul lines straight in the editor (Chromium's commands go
   // wrong on text loose in it, which it leaves after everything was deleted), or a ul inside such a
-  // div (where Chromium's list command puts it); li in a ul, b, i and br inside them; no attributes;
+  // div (where Chromium's list command puts it); li in a ul, b, i, u and br inside them; no attributes;
   // no div line starting "- " (a list item, see readDom). Anything else is rebuilt.
-  const OWN = /^(DIV|UL|LI|B|I|BR)$/;
+  const OWN = /^(DIV|UL|LI|B|I|U|BR)$/;
   const clean = (root) => [...root.childNodes].every((n) => n.nodeType === 1 && (n.tagName === "DIV" || n.tagName === "UL"))
     && [...root.querySelectorAll("*")].every((n) => OWN.test(n.tagName) && !n.attributes.length
       && (n.tagName === "UL" ? n.parentNode === root || (n.parentNode.tagName === "DIV" && n.parentNode.parentNode === root)
@@ -386,9 +404,10 @@
       el.innerHTML = toHtml(lines || got.lines);
       if (s && got.caret) setCaret(el, got.caret);
     }
-    // What the editor shows must be what the stored text renders. The only formatting serialise
-    // cannot store is italic that goes on while bold starts or ends inside the same word ("a" italic,
-    // "b" bold italic, no space between): the grammar has no way to write it. Shortly after the last
+    // What the editor shows must be what the stored text renders. Formatting serialise cannot store:
+    // italic that goes on while bold starts or ends inside the same word ("a" italic, "b" bold
+    // italic, no space between), underline that starts or ends next to a literal underscore, and
+    // formatting that changes inside or right after a link or URL: the grammar has no way to write it. Shortly after the last
     // input (never during a composition) the editor is compared with the stored text read back, and
     // where they differ it is redrawn from the stored text, so that formatting goes at once rather
     // than at send.
@@ -461,8 +480,8 @@
     el.addEventListener("keydown", (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.isComposing) return;
       const k = e.key.toLowerCase();
-      if (k === "b" || k === "i") { e.preventDefault(); format(k === "b" ? "bold" : "italic"); }
-      else if (k === "u") e.preventDefault();   // underline cannot be stored
+      const cmd = { b: "bold", i: "italic", u: "underline" }[k];
+      if (cmd) { e.preventDefault(); format(cmd); }
     });
     // Paste is plain text. A paste with no text (an image) is left to the reply's file path (axle.js).
     el.addEventListener("paste", (e) => {

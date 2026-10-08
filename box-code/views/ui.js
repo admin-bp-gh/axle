@@ -130,7 +130,8 @@ const STRINGS = {
     cf_matched: "Matched in SAP", cf_not_matched: "No SAP match: replying to the address from the form.",
     cf_order: "Order", cf_recipient_rejected: "That address is not one of the resolved options. Pick one of the listed addresses.",
     recip_bad_address: "That isn't a single valid email address. Enter one address, with no commas, semicolons or angle brackets.",
-    cc_refused: "Cc can't be changed on this email.", cc_own: "Our own mailboxes can't be copied.",
+    cc_refused: "Cc can't be changed on this email.", cc_own: "Only info@, drachten@ and admin@ can be copied from our own domain.",
+    cc_sending_box: "This reply is sent from that mailbox, so it can't be copied.",
     cc_same_as_to: "That address is already the To.", cc_duplicate: "That address is already in Cc.",
     cc_too_many: "Cc holds at most {n} addresses.", sent_to_cc: "Sent to {to}, cc {cc}",
     recip_change: "Change recipient", recip_other: "Other address...", recip_use: "Use address",
@@ -233,9 +234,9 @@ const STRINGS = {
     media_unread: "Axle could not read: {list}", media_too_large: "too large", media_too_many: "too many attachments",
     media_total_limit: "too many attachments", media_type: "file type not supported", media_unavailable: "could not be fetched",
     viewer_title: "Photo", viewer_count: "{i} of {n}", viewer_prev: "Previous photo", viewer_next: "Next photo", viewer_open: "Open original",
-    fmt_toolbar: "Formatting", fmt_bold: "Bold", fmt_italic: "Italic", fmt_list: "Bulleted list", reply_ph: "Write your reply",
+    fmt_toolbar: "Formatting", fmt_bold: "Bold", fmt_italic: "Italic", fmt_underline: "Underline", fmt_list: "Bulleted list", reply_ph: "Write your reply",
     camera: "Take photo", reply_tr_note: "Translated for you: the reply is in {lang}.",
-    cc_add: "Add Cc", cc_label: "Cc", cc_more: "Add", cc_menu: "Add to Cc", cc_src_copied: "copied by the customer", cc_remove: "Remove {addr} from Cc",
+    cc_add: "Add Cc", cc_label: "Cc", cc_more: "Add", cc_menu: "Add to Cc", cc_src_copied: "copied by the customer", cc_src_internal: "internal", cc_remove: "Remove {addr} from Cc",
     contact_email: "Email", contact_phone: "Phone",
     ad_thresholds: "Unchanged: 97 % or more of the draft kept. Light edit 80 %, moderate 45 %, heavy below 45 %. Drachten is the shared Rob and Huub login.",
   },
@@ -345,7 +346,8 @@ const STRINGS = {
     cf_matched: "Gekoppeld in SAP", cf_not_matched: "Geen SAP-koppeling: antwoord naar het adres uit het formulier.",
     cf_order: "Order", cf_recipient_rejected: "Dat adres is geen van de gevonden opties. Kies een van de getoonde adressen.",
     recip_bad_address: "Dat is geen geldig e-mailadres. Vul één adres in, zonder komma's, puntkomma's of punthaken.",
-    cc_refused: "De Cc van deze e-mail kan niet worden gewijzigd.", cc_own: "Onze eigen mailboxen kunnen niet in Cc.",
+    cc_refused: "De Cc van deze e-mail kan niet worden gewijzigd.", cc_own: "Van ons eigen domein kunnen alleen info@, drachten@ en admin@ in Cc.",
+    cc_sending_box: "Dit antwoord gaat uit vanuit die mailbox, dus die kan niet in Cc.",
     cc_same_as_to: "Dat adres staat al bij Aan.", cc_duplicate: "Dat adres staat al in Cc.",
     cc_too_many: "In Cc passen hoogstens {n} adressen.", sent_to_cc: "Verstuurd naar {to}, cc {cc}",
     recip_change: "Ontvanger wijzigen", recip_other: "Ander adres...", recip_use: "Adres gebruiken",
@@ -449,9 +451,9 @@ const STRINGS = {
     media_unread: "Axle kon niet lezen: {list}", media_too_large: "te groot", media_too_many: "te veel bijlagen",
     media_total_limit: "te veel bijlagen", media_type: "bestandstype niet ondersteund", media_unavailable: "kon niet worden opgehaald",
     viewer_title: "Foto", viewer_count: "{i} van {n}", viewer_prev: "Vorige foto", viewer_next: "Volgende foto", viewer_open: "Origineel openen",
-    fmt_toolbar: "Opmaak", fmt_bold: "Vet", fmt_italic: "Cursief", fmt_list: "Opsomming", reply_ph: "Schrijf je antwoord",
+    fmt_toolbar: "Opmaak", fmt_bold: "Vet", fmt_italic: "Cursief", fmt_underline: "Onderstrepen", fmt_list: "Opsomming", reply_ph: "Schrijf je antwoord",
     camera: "Foto maken", reply_tr_note: "Voor je vertaald: het antwoord is in het {lang}.",
-    cc_add: "Cc toevoegen", cc_label: "Cc", cc_more: "Toevoegen", cc_menu: "Toevoegen aan Cc", cc_src_copied: "door de klant in kopie", cc_remove: "{addr} uit Cc halen",
+    cc_add: "Cc toevoegen", cc_label: "Cc", cc_more: "Toevoegen", cc_menu: "Toevoegen aan Cc", cc_src_copied: "door de klant in kopie", cc_src_internal: "intern", cc_remove: "{addr} uit Cc halen",
     contact_email: "E-mail", contact_phone: "Telefoon",
     ad_thresholds: "Ongewijzigd: 97 % of meer van het concept behouden. Kleine aanpassing 80 %, matig 45 %, herschreven onder 45 %. Drachten is de gedeelde login van Rob en Huub.",
   },
@@ -745,6 +747,7 @@ const ICONS = {
   // and photo chips, the customer's phone
   bold: [2.4, '<path d="M7 4h6.5a4 4 0 0 1 0 8H7zM7 12h7.5a4 4 0 0 1 0 8H7z"/>'],
   italic: [2.2, '<path d="M10 4h8M6 20h8M14.5 4l-5 16"/>'],
+  underline: [2.2, '<path d="M7 4v6a5 5 0 0 0 10 0V4M5 20h14"/>'],
   list: [2.2, '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'],
   camera: [2, '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/>'],
   file: [2, '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>'],
@@ -768,7 +771,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax12";  // 2026-10-08: round 2 last fix round (URL ends, backslashes, queue row pills wrap)
+const ASSET_V = "ax14";  // 2026-10-08: round 3 polish (phone To line column, Cc pills stay while typing)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

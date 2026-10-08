@@ -103,8 +103,8 @@
 .ax-msg p:has(+ ul) { margin-bottom: 0; }
 .ax-to { display: flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 6px 16px; border-bottom: 1px solid var(--border-sub); }
 .ax-to > .wb-label { width: 22px; }
-/* The end of the To line: Add Cc and Translate, right-aligned, on a line of their own when the
-   address leaves no room; the Cc row under it: removable pills, Add */
+/* The end of the To line: Translate, right-aligned, on a line of its own when the address and Add
+   Cc leave no room; the Cc row under it: removable pills, Add */
 .ax-to__end { display: flex; gap: 2px; margin: 0 -11px 0 auto; }
 .ax-cc > .wb-pill { max-width: 100%; }
 .ax-cc > .wb-pill > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -205,6 +205,7 @@
 .ax-chipact:hover { background: var(--surface); }
 /* Touch: the text toggles (Insert in text, Show full message, the folds) and the Inbox back link get
    a 44 px hit area; the padding is taken back by negative margins, so nothing around them moves.
+   The language pill keeps the owner pill's look and gets its 44 px from an invisible ::after.
    The redraft field is at least the touch control height. */
 @media (pointer: coarse) {
   .ax-fold > summary, :is(.ax-reply, .ax-flagform) .wb-details > summary { padding: 14px 0; margin: -14px 0; }
@@ -213,6 +214,8 @@
   .ax-more { padding: 13px 0; margin: -7px 0 -13px; }
   .ax-chipact { padding-top: 12.5px; padding-bottom: 12.5px; margin-top: -12.5px; margin-bottom: -12.5px; }
   .ax-file, .ax-cc > .wb-pillbtn { height: var(--tap); }
+  .ax-pills > [data-menu="lang"] { position: relative; }
+  .ax-pills > [data-menu="lang"]::after { content: ""; position: absolute; inset: -7px -1px; }
   .ax-ci > a { display: inline-block; padding: 14px 0; margin: -14px 0; }
 }
 /* The camera beside Attach, on touch devices only */
@@ -422,6 +425,12 @@
 
 /* ---------- Phone: Axle standalone, its own top bar, pages and sheets ---------- */
 @media (max-width: 639.98px) {
+  /* The To and Cc lines: a wrapped line starts in the address column (the label sits in the
+     padding through its negative margin, still centred on the first line); Add Cc there shows its
+     text at that edge and keeps the line as tight as a pill (its 44 px stays as touch area) */
+  .ax-to { padding-left: 46px; }
+  .ax-to > .wb-label { margin-left: -30px; }
+  .ax-to > [data-cc-open] { padding-inline: 0; margin-block: -6px; }
   .ax-doc:not(.is-framed) .ax-ptop { display: flex; }
   .ax-doc:has(.ax-ptop) > .ax-top { display: none; }
   .ax-ptop > .wb-pill { margin: 0 8px 0 auto; }
@@ -439,7 +448,7 @@
   .ax-col { padding: var(--s4) var(--s4) var(--s5); }
   .ax-from { align-items: flex-start; }
   .ax-from > .wb-btn--ghost { margin: -10px -12px 0 0; }
-  .ax-to .wb-input { width: auto; flex: 1; }
+  .ax-to .wb-input { width: auto; flex: 1 1 180px; }   /* a typed field never squeezes in beside a pill */
   .ax-to { scroll-margin: calc(var(--bar-h) + 16px) 0 calc(var(--h-ctl) + 40px + env(safe-area-inset-bottom)); }
   .ax-thumb { width: 96px; height: 72px; }
   .ax-viewer { background: var(--ink); grid-template-rows: auto minmax(0, 1fr) calc(var(--tap) + 32px + env(safe-area-inset-bottom)); }

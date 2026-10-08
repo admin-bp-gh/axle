@@ -1,6 +1,8 @@
 // cc-list.test.js - the Cc of a reply (round 2, request 8): the suggestion set, what may be added and
-// removed, the cap, our own mailboxes refused, the screen again at send time, and that a send with
-// Cc hands Graph exactly those addresses. Pure: no database, Graph is a stubbed fetch.
+// removed, the cap, our own domains refused except the three internal mailboxes (round 3) minus the
+// one the reply is sent from, the customer's SAP card addresses offered on file (round 3), the
+// screen again at send time, and that a send with Cc hands Graph exactly those addresses. Pure: no
+// database, Graph is a stubbed fetch.
 // Run: node cc-list.test.js
 "use strict";
 const test = require("node:test");
@@ -8,7 +10,7 @@ const assert = require("node:assert");
 const CC = require("./cc-list.js");
 const SG = require("./send-guard.js");
 
-const item = (cc, extra) => ({ id: 9, sender_email: "anna@klant.test", subject: "Brake discs", email_text: "Hello", injection_flag: 0,
+const item = (cc, extra) => ({ id: 9, mailbox: "info", sender_email: "anna@klant.test", subject: "Brake discs", email_text: "Hello", injection_flag: 0,
   cc_json: cc ? JSON.stringify(cc) : null, ...extra });
 const known = [{ addr: "anna@klant.test", source: "sender" }, { addr: "inkoop@klant.test", source: "onfile" }, { addr: "typed@else.test", source: "typed" }];
 const thread = [
@@ -18,21 +20,84 @@ const thread = [
     cc: [{ address: "INKOOP@klant.test" }, { address: "drachten@budget-parts.nl" }, { address: "boss@klant.test" }, { address: "not an address" }] },
 ];
 
-test("suggestions: the known set as on file, then what the customer copied on their newest email", () => {
-  assert.deepStrictEqual(CC.suggestions(item(), known, thread, "anna@klant.test"), [
+const INTERNAL = [{ addr: "drachten@budget-parts.nl", source: "internal" }, { addr: "admin@budget-parts.nl", source: "internal" }];
+const sugg = (w, to, card) => CC.suggestions(w, { known, card, thread, to });
+
+test("suggestions: on file (the known set, then the SAP card), copied by the customer, internal", () => {
+  assert.deepStrictEqual(sugg(item(), "anna@klant.test"), [
     { addr: "inkoop@klant.test", source: "onfile" },
     { addr: "piet@klant.test", source: "copied" },
     { addr: "boss@klant.test", source: "copied" },
+    ...INTERNAL,
   ]);
   // Already in Cc and the current To are left out; a redirected To frees the sender as a suggestion.
-  assert.deepStrictEqual(CC.suggestions(item([{ addr: "piet@klant.test", source: "copied" }]), known, thread, "inkoop@klant.test").map((e) => e.addr),
-    ["anna@klant.test", "boss@klant.test"]);
+  assert.deepStrictEqual(sugg(item([{ addr: "piet@klant.test", source: "copied" }]), "inkoop@klant.test").map((e) => e.addr),
+    ["anna@klant.test", "boss@klant.test", "drachten@budget-parts.nl", "admin@budget-parts.nl"]);
   assert.strictEqual(CC.newestCustomerMessage(thread), thread[2]);
-  assert.deepStrictEqual(CC.suggestions(item(), [], [], "anna@klant.test"), []);
+  assert.deepStrictEqual(CC.suggestions(item(), { known: [], thread: [], to: "anna@klant.test" }), INTERNAL);
+});
+
+test("suggestions: the customer's SAP card addresses are on file, whatever resolved the customer", () => {
+  // the card's E_Mail and U_E_Mail (customer-summary.js emails): deduplicated against the known set,
+  // never the To, never an address already in Cc, never one on our own domains
+  const card = ["Inkoop@klant.test", "facturen@klant.test", "anna@klant.test", "boss@klant.test", "x@budget-parts.nl", "cc@klant.test"];
+  assert.deepStrictEqual(sugg(item([{ addr: "cc@klant.test", source: "typed" }]), "anna@klant.test", card).filter((e) => e.source === "onfile").map((e) => e.addr),
+    ["inkoop@klant.test", "facturen@klant.test", "boss@klant.test"]);
+  // a compose, voicemail or contact-form item has no thread sender in the known set: the card alone
+  assert.deepStrictEqual(CC.suggestions(item(null, { mailbox: "drachten" }), { known: [], card: ["a@k.test", "b@k.test"], thread: [], to: "a@k.test" }), [
+    { addr: "b@k.test", source: "onfile" }, { addr: "info@budget-parts.nl", source: "internal" }, { addr: "admin@budget-parts.nl", source: "internal" }]);
+});
+
+test("internal: info@, drachten@ and admin@ may be copied, never the mailbox the reply is sent from", () => {
+  for (const [mailbox, from, others] of [["info", "info@budget-parts.nl", ["drachten@budget-parts.nl", "admin@budget-parts.nl"]],
+    ["drachten", "drachten@budget-parts.nl", ["info@budget-parts.nl", "admin@budget-parts.nl"]]]) {
+    const w = item(null, { mailbox });
+    assert.deepStrictEqual(SG.internalCc(mailbox), others);
+    assert.strictEqual(SG.sendingAddress(mailbox), from);
+    for (const a of others) {
+      // offered or typed, in any case: accepted as internal (no amber pill), and it goes out
+      assert.deepStrictEqual(CC.add(w, a.toUpperCase(), [], "anna@klant.test").entry, { addr: a, source: "internal" }, a);
+      assert.deepStrictEqual(SG.assembleSend(item([{ addr: a, source: "internal" }], { mailbox }), "Hi").cc, [a]);
+    }
+    assert.ok(!CC.suggestions(w, { known: [], thread: [], to: "anna@klant.test" }).some((e) => e.addr === from), "the sending mailbox is not offered");
+    assert.deepStrictEqual(CC.add(w, " " + from.replace("budget", "Budget") + " ", [], "anna@klant.test"), { refuse: "sending_box" });
+    assert.throws(() => SG.assembleSend(item([{ addr: from }], { mailbox }), "Hi"), /the mailbox this reply is sent from/);
+  }
+  // every other address on our own domains stays refused, typed or stored
+  for (const a of ["tom@budget-parts.nl", "Info@RoverParts.eu", "x@shop.roverparts.eu", "info@sub.budget-parts.nl"]) {
+    assert.deepStrictEqual(CC.add(item(), a, [], "anna@klant.test"), { refuse: "own" }, a);
+    assert.throws(() => SG.assembleSend(item([{ addr: a }]), "Hi"), /only info@, drachten@ and admin@ may be copied/, a);
+  }
+});
+
+test("own-domain look-alikes: trailing dots are refused, the rest is ours or refused", () => {
+  // [typed, add() result, send-time result]: a domain ending in a dot is no Cc address at all
+  const forms = [
+    ["info@budget-parts.nl.", { refuse: "bad_address" }, /not a valid email address/],
+    ["x@budget-parts.nl.", { refuse: "bad_address" }, /not a valid email address/],
+    ["x@budget-parts.nl...", { refuse: "bad_address" }, /not a valid email address/],
+    ["X@BUDGET-PARTS.NL.", { refuse: "bad_address" }, /not a valid email address/],
+    ["x@sub.budget-parts.nl.", { refuse: "bad_address" }, /not a valid email address/],
+    ["Admin@RoverParts.eu.", { refuse: "bad_address" }, /not a valid email address/],
+    ["x@.budget-parts.nl", { refuse: "own" }, /only info@, drachten@ and admin@ may be copied/],
+    ["  X@Budget-Parts.NL  ", { refuse: "own" }, /only info@, drachten@ and admin@ may be copied/],
+    [" INFO@budget-parts.nl ", { refuse: "sending_box" }, /the mailbox this reply is sent from/],
+  ];
+  for (const [addr, added, sent] of forms) {
+    assert.deepStrictEqual(CC.add(item(), addr, [], "anna@klant.test"), added, addr);
+    assert.throws(() => SG.assembleSend(item([{ addr }]), "Hi"), sent, addr);
+  }
+  // upper case and white space round an internal mailbox: accepted, stored clean
+  assert.deepStrictEqual(CC.add(item(), " DRACHTEN@Budget-Parts.NL ", [], "anna@klant.test").entry, { addr: "drachten@budget-parts.nl", source: "internal" });
+  // the own-domain test itself ignores trailing dots, so nothing else can slip through that form
+  for (const a of ["x@budget-parts.nl.", "x@roverparts.eu..", "x@sub.budget-parts.nl.", "X@BUDGET-PARTS.NL."]) assert.ok(SG.isOwnAddress(a), a);
+  assert.ok(!SG.isOwnAddress("x@notbudget-parts.nl.") && !SG.isOwnAddress("x@klant.test."));
+  // a customer address with a trailing dot is not offered either
+  assert.deepStrictEqual(CC.suggestions(item(), { known: [], card: ["a@klant.test."], thread: [], to: "anna@klant.test" }).filter((e) => e.source === "onfile"), []);
 });
 
 test("add: a suggestion keeps its source, anything else is screened and typed", () => {
-  const offered = CC.suggestions(item(), known, thread, "anna@klant.test");
+  const offered = sugg(item(), "anna@klant.test");
   assert.deepStrictEqual(CC.add(item(), " Piet@Klant.test ", offered, "anna@klant.test").entry, { addr: "piet@klant.test", source: "copied" });
   assert.deepStrictEqual(CC.add(item(), "inkoop@klant.test", offered, "anna@klant.test").entry, { addr: "inkoop@klant.test", source: "onfile" });
   const r = CC.add(item([{ addr: "piet@klant.test", source: "copied" }]), "new@else.test", offered, "anna@klant.test");
@@ -40,11 +105,11 @@ test("add: a suggestion keeps its source, anything else is screened and typed", 
   assert.deepStrictEqual(r.cc.map((e) => e.addr), ["piet@klant.test", "new@else.test"]);
 });
 
-test("add refuses: bad address, our own mailboxes, the To, a duplicate, a sixth", () => {
+test("add refuses: bad address, our own domains, the To, a duplicate, a sixth", () => {
   for (const bad of ["", "nope", "a@b.nl, c@d.nl", "Jan <jan@x.nl>", "a@b.nl\nBcc: x@evil.test", "a b@c.nl"]) {
     assert.deepStrictEqual(CC.add(item(), bad, [], "anna@klant.test"), { refuse: "bad_address" }, bad);
   }
-  assert.deepStrictEqual(CC.add(item(), "drachten@budget-parts.nl", [], "anna@klant.test"), { refuse: "own" });
+  assert.deepStrictEqual(CC.add(item(), "jack@budget-parts.nl", [], "anna@klant.test"), { refuse: "own" });
   assert.deepStrictEqual(CC.add(item(), "x@shop.roverparts.eu", [], "anna@klant.test"), { refuse: "own" });
   assert.deepStrictEqual(CC.add(item(), "ANNA@klant.test", [], "anna@klant.test"), { refuse: "same_as_to" });
   assert.deepStrictEqual(CC.add(item([{ addr: "piet@klant.test", source: "copied" }]), "piet@klant.test", [], "anna@klant.test"), { refuse: "duplicate" });
@@ -74,7 +139,7 @@ test("send: the Cc goes out as stored, screened again; empty unless set", () => 
 test("send refuses a Cc that went stale, never dropping it silently", () => {
   const refusals = [
     [[{ addr: "anna@klant.test" }], /same as the To/],
-    [[{ addr: "x@budget-parts.nl" }], /our own mailboxes/],
+    [[{ addr: "x@budget-parts.nl" }], /our own domain/],
     [[{ addr: "a@b.nl,c@d.nl" }], /not a valid email address/],
     [[{ addr: "p@klant.test" }, { addr: "P@klant.test" }], /listed twice/],
     [["a", "b", "c", "d", "e", "f"].map((x) => ({ addr: `${x}@klant.test` })), /more than 5/],

@@ -1,4 +1,4 @@
-// reply-format.test.js - the formatting markers of a stored reply (round 2, request 3): the grammar,
+// reply-format.test.js - the formatting markers of a stored reply (round 2, request 3; underline round 3): the grammar,
 // HTML safety for any input, the plain-text strip, the read-only display, and that a reply without
 // markers produces exactly the email HTML it produced before (the round 1 toSafeHtml, kept in
 // _ref/r1/send-guard.js, when that copy is present). Run: node reply-format.test.js
@@ -59,6 +59,50 @@ test("backslashes are special only in a run directly before an asterisk", () => 
   assert.strictEqual(body("C:\\dir\\\\\\*.txt"), "C:\\dir\\*.txt");
 });
 
+test("underline: exactly two underscores, same strictness, nests with bold and italic", () => {
+  assert.strictEqual(body("a __underlined__ b"), "a <u>underlined</u> b");
+  assert.strictEqual(body("in__side__word"), "in<u>side</u>word");
+  assert.strictEqual(body("__a **b**__ and **a __b__** and __*a*__ and *__a__*"),
+    "<u>a <b>b</b></u> and <b>a <u>b</u></b> and <u><i>a</i></u> and <i><u>a</u></i>");
+  assert.strictEqual(body("__***all***__"), "<u><b><i>all</i></b></u>");
+  assert.strictEqual(body("a __ b __ c"), "a __ b __ c");
+  assert.strictEqual(body("__open only"), "__open only");
+  assert.strictEqual(body("close only__"), "close only__");
+  assert.strictEqual(body("**a __b** c__"), "<b>a __b</b> c__", "an opener inside a closed pair is literal");
+  assert.strictEqual(body("__one\ntwo__".replace("\\n", "\n")), "__one<br>\ntwo__");
+});
+
+test("underscores: a single one and runs of three or more are text, also in part numbers and URLs", () => {
+  for (const t of ["LR_012345", "foto_1.jpg", "SO_2026_00123", "snake_case_name", "_a_", "___a___", "____a____", "a___b___c", "____", "__", "x__"])
+    assert.strictEqual(body(t), t, t);
+  const href = (t) => (body(t).match(/href="([^"]+)"/) || [])[1];
+  assert.strictEqual(href("see https://www.roverparts.eu/a__b__c ok"), "https://www.roverparts.eu/a__b__c");
+  assert.strictEqual(body("[__x__](https://www.roverparts.eu/__y__)"), '<a href="https://www.roverparts.eu/__y__">__x__</a>', "never markers inside atoms");
+  assert.strictEqual(body("__see https://www.roverparts.eu/x__"),
+    '__see <a href="https://www.roverparts.eu/x__">https://www.roverparts.eu/x__</a>', "underscores after a URL belong to the URL");
+  assert.strictEqual(body("__see https://www.roverparts.eu/x __"), '__see <a href="https://www.roverparts.eu/x">https://www.roverparts.eu/x</a> __');
+  assert.strictEqual(body("__[image:3]__"), "<u>[image:3]</u>");
+});
+
+test("a backslash run before __ is special only when that __ pairs", () => {
+  assert.strictEqual(body("\\__a__"), "__a__");
+  assert.strictEqual(body("\\\\__a__"), "\\<u>a</u>");
+  assert.strictEqual(body("\\\\\\__a__"), "\\__a__");
+  assert.strictEqual(body("__a \\__b__"), "<u>a __b</u>");
+  // before a __ that pairs with nothing the backslashes are ordinary: text without a pair never changes
+  assert.strictEqual(body("C:\\__temp and \\\\nas\\share"), "C:\\__temp and \\\\nas\\share");
+  // two such paths on one line hold a pair ("__temp ... \__"), so their backslashes escape it
+  assert.strictEqual(body("C:\\__a and C:\\__b"), "C:__a and C:__b");
+  assert.deepStrictEqual([1, 2, 3, 4].map((n) => body("x" + "\\".repeat(n) + "__ y")), [1, 2, 3, 4].map((n) => "x" + "\\".repeat(n) + "__ y"));
+  assert.strictEqual(body("\\_a_"), "\\_a_");
+});
+
+test("underline: hostile input and the plain-text strip", () => {
+  assert.strictEqual(body("__<u onclick=x>__ __</u>__"), "<u>&lt;u onclick=x&gt;</u> <u>&lt;/u&gt;</u>");
+  assert.strictEqual(F.toPlain("__a__ LR_01 \\__b__ __ c ___d___"), "a LR_01 __b__ __ c ___d___");
+  assert.strictEqual(replyParas("Hi __Jan__,\n- __a__"), "<p>Hi <u>Jan</u>,</p><ul><li><u>a</u></li></ul>");
+});
+
 test("a bare URL ends at a ) that closes nothing; a link's URL is taken as written", () => {
   const href = (t) => (body(t).match(/href="([^"]+)"/) || [])[1];
   assert.strictEqual(href("Paren mid (https://www.roverparts.eu/products/abc)and more"), "https://www.roverparts.eu/products/abc");
@@ -96,16 +140,17 @@ test("hostile input: escaped first, only our own tags come out", () => {
     "***a** **b* *c***",
     "**a *b** c* <a href=\"https://www.roverparts.eu\">x</a>",
     "\\<b>\\</b>\\*",
+    "__<u>__ **__a** b__ __*c__* \\__</u>__",
   ];
   for (const t of hostile) {
     const h = body(t);
     const tags = (h.match(/<\/?[a-z][^>]*>/gi) || []).map((x) => x.replace(/\s.*$/, "").replace(/>$/, "").toLowerCase());
-    for (const tag of tags) assert.ok(["<b", "</b", "<i", "</i", "<ul", "</ul", "<li", "</li", "<br", "<a", "</a"].includes(tag), `${tag} from ${t}`);
+    for (const tag of tags) assert.ok(["<b", "</b", "<i", "</i", "<u", "</u", "<ul", "</ul", "<li", "</li", "<br", "<a", "</a"].includes(tag), `${tag} from ${t}`);
     assert.ok(!/href="javascript/i.test(h), t);
     assert.ok(!/<(script|img|svg)/i.test(h), t);
-    // Balanced: every <b>/<i>/<ul>/<li> we open is closed, in order.
+    // Balanced: every <b>/<i>/<u>/<ul>/<li> we open is closed, in order.
     const stack = [];
-    for (const m of h.matchAll(/<(\/?)(b|i|ul|li)\b[^>]*>/g)) {
+    for (const m of h.matchAll(/<(\/?)(b|i|u|ul|li)\b[^>]*>/g)) {
       if (!m[1]) stack.push(m[2]); else assert.strictEqual(stack.pop(), m[2], t);
     }
     assert.deepStrictEqual(stack, [], t);
@@ -187,5 +232,19 @@ test("text without markers gives exactly the round 1 email HTML", () => {
   for (const [s, want] of changed) {
     assert.notStrictEqual(OLD.toSafeHtml(s), SG.toSafeHtml(s), s);
     assert.strictEqual(body(s), want, s);
+  }
+});
+
+test("text without a __ pair gives exactly the round 2 output", () => {
+  const r2 = path.join(__dirname, "..", "_ref", "r2", "send-guard.js");
+  if (!fs.existsSync(r2)) return;   // the reference copy lives beside the repo, not on the box
+  const OLD = require(r2), OLDF = require(path.join(__dirname, "..", "_ref", "r2", "reply-format.js"));
+  const D = { esc: (x) => x, atom: (t) => t.raw };
+  const samples = ["LR_012345 foto_1.jpg", "C:\\__temp", "\\\\__x y", "a __ b __", "___x___ ____", "__open", "**a __b** c__",
+    "https://www.roverparts.eu/a__b__ x", "[__x__](https://www.roverparts.eu/__y__)", "\\_a_ \\\\_b_", "*a __b* c__", "x___y___z"];
+  for (const t of samples) {
+    assert.strictEqual(SG.toSafeHtml(t), OLD.toSafeHtml(t), t);
+    assert.strictEqual(F.displayHtml(t, D), OLDF.displayHtml(t, D), t);
+    assert.strictEqual(F.toPlain(t), OLDF.toPlain(t), t);
   }
 });

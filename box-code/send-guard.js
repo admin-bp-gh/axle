@@ -33,7 +33,8 @@
 //     URL (no href/text mismatch) and no <img> or other tags can be injected;
 //   * one send per approved draft is enforced by the caller via the sends table (UNIQUE).
 const crypto = require("crypto");
-const FMT = require("./reply-format.js");   // the formatting markers (**bold**, *italic*, "- " lists)
+const R = require("./rules.js");             // our three mailbox addresses (rules.js reads env lazily, no IO)
+const FMT = require("./reply-format.js");   // the formatting markers (**bold**, *italic*, __underline__, "- " lists)
 
 // Domain allowlist for any URL allowed to appear in an outgoing reply. Kept in sync with
 // engine.js URL_ALLOW by intent; duplicated deliberately so the send path has its own
@@ -77,16 +78,29 @@ function acceptTypedRecipient(addr) {
 // ---- Cc (round 2, request 8) ------------------------------------------------------------------
 // The Cc a human put on the item (work_items.cc_json, written only by POST /item/:id/cc through
 // cc-list.js), screened again here at send time. Nothing is dropped silently: an address that no
-// longer passes the screen, equals the To, is one of our own mailboxes, a duplicate, or a list over
-// the cap refuses the send with the reason, so the salesperson fixes the Cc and sends again.
+// longer passes the screen, equals the To, is on our own domains (other than the internal copies
+// below), a duplicate, or a list over the cap refuses the send with the reason, so the salesperson
+// fixes the Cc and sends again.
 // Our own domains: the same list as outlook-block.js OUR_DOMAINS, kept here as well (like URL_ALLOW)
 // so this pure module needs no database and the send path has its own check.
+// Internal copies (round 3): our three mailboxes (info@, drachten@, admin@: rules.js
+// ourMailboxAddresses, env with fallbacks) may be copied, except the one the reply is sent from.
 const OWN_DOMAINS = ["budget-parts.nl", "roverparts.eu"];
 const MAX_CC = 5;
+// The domain is compared without trailing dots ("x@budget-parts.nl." is ours too).
 function isOwnAddress(addr) {
-  const d = String(addr || "").trim().toLowerCase().split("@")[1] || "";
+  const d = (String(addr || "").trim().toLowerCase().split("@")[1] || "").replace(/\.+$/, "");
   return OWN_DOMAINS.some((x) => d === x || d.endsWith("." + x));
 }
+// A Cc address: the To's screen, and no domain ending in a dot ("" when refused).
+const acceptCcAddress = (addr) => { const a = acceptTypedRecipient(addr); return a.endsWith(".") ? "" : a; };
+// The address the item's replies are sent from ("" for a mailbox outside OWNER_HOME).
+function sendingAddress(mailbox) {
+  const label = Object.keys(R.OWNER_HOME).find((k) => R.OWNER_HOME[k].box === mailbox);
+  return label ? R.ownerHome(label).address : "";
+}
+// The own-domain addresses a Cc on an item of this mailbox may hold.
+const internalCc = (mailbox) => R.ourMailboxAddresses().filter((a) => a !== sendingAddress(mailbox));
 function itemCc(workItem, to) {
   let list;
   try { list = JSON.parse(workItem.cc_json || "[]") ?? []; } catch (e) { list = null; }   // a stored "null" is no Cc
@@ -94,10 +108,11 @@ function itemCc(workItem, to) {
   const out = [];
   for (const e of list) {
     const raw = String((e && e.addr) || "").slice(0, 80);
-    const a = acceptTypedRecipient(e && e.addr);
+    const a = acceptCcAddress(e && e.addr);
     if (!a) throw new Error(`refused: the Cc address ${raw} is not a valid email address - remove it from Cc`);
     if (a === to) throw new Error(`refused: the Cc address ${a} is the same as the To - remove it from Cc`);
-    if (isOwnAddress(a)) throw new Error(`refused: the Cc address ${a} is one of our own mailboxes - remove it from Cc`);
+    if (a === sendingAddress(workItem.mailbox)) throw new Error(`refused: the Cc address ${a} is the mailbox this reply is sent from - remove it from Cc`);
+    if (isOwnAddress(a) && !internalCc(workItem.mailbox).includes(a)) throw new Error(`refused: the Cc address ${a} is on our own domain, and only info@, drachten@ and admin@ may be copied - remove it from Cc`);
     if (out.includes(a)) throw new Error(`refused: the Cc address ${a} is listed twice - remove one`);
     out.push(a);
   }
@@ -127,8 +142,8 @@ function escapeHtml(s) {
 //     allowlisted domains, so it can never be used to disguise a link to an attacker site.
 //   * bare URLs -> rendered as themselves (href === visible text).
 // Throws if any off-allowlist URL is present.
-// Round 2 (request 3): the stored text may carry formatting markers (**bold**, *italic*, "- " list
-// lines; grammar in reply-format.js). They become <b>, <i> and <ul><li> here, still escape-first:
+// Round 2 (request 3): the stored text may carry formatting markers (**bold**, *italic*, __underline__
+// (round 3), "- " list lines; grammar in reply-format.js). They become <b>, <i>, <u> and <ul><li> here, still escape-first:
 // the markers are read from the plain text, never HTML from anywhere. Text without a marker gives
 // exactly the HTML it gave before.
 // Links, bare URLs and image tokens are found by reply-format.js tokens(), the one tokeniser the
@@ -342,7 +357,7 @@ const assembleContactFormSend = assembleNewOutboundSend;
 module.exports = {
   URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256, acceptTypedRecipient,
   escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient, isVoicemailItem,
-  MAX_CC, isOwnAddress, itemCc,
+  MAX_CC, isOwnAddress, acceptCcAddress, sendingAddress, internalCc, itemCc,
   assembleNewOutboundSend, assembleContactFormSend,
   findImageTokens, applyInlineImages, contentIdFor,
 };

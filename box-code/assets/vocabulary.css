@@ -96,6 +96,7 @@
 
 /* ---------- Fields: one chrome for text, number, date, select and textarea ---------- */
 .wb-field { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.wb-field > .wb-label { white-space: normal; } /* a long field label wraps instead of widening the page (W5) */
 .wb-label { font-size: var(--fs-micro); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); line-height: 1.4; white-space: nowrap; }
 .wb-input {
   box-sizing: border-box; position: relative; display: flex; align-items: center; gap: 6px; min-width: 0;
@@ -332,6 +333,7 @@
   animation: wb-pop 180ms ease-out;
 }
 .wb-dialog--lg { width: min(600px, calc(100% - 32px)); }
+.wb-dialog--xl { width: min(760px, calc(100% - 32px)); }
 .wb-drawer {
   box-sizing: border-box; position: fixed; top: 0; right: 0; bottom: 0; z-index: var(--z-drawer);
   width: min(480px, 100%); display: flex; flex-direction: column;

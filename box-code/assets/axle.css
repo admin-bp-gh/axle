@@ -123,6 +123,8 @@
 .ax-ed:hover { border-color: var(--border-2); }
 .ax-ed:focus { border-color: var(--ring); outline: 2px solid var(--ring); outline-offset: 1px; }
 .ax-ed ul { margin: 0; padding-left: 1.4em; }
+/* A link shows as the customer's mail shows it; one piece, double-click to edit its text. */
+.ax-ed a[data-raw] { color: var(--link); text-decoration: underline; cursor: pointer; }
 .ax-ed[data-empty]::before { content: attr(data-placeholder); position: absolute; top: 7px; left: 10px; color: var(--faint); pointer-events: none; }
 .ax-ed[contenteditable="false"] { opacity: .45; }
 @media (pointer: coarse) { .ax-ed { font-size: var(--fs-input); } }

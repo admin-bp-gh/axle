@@ -480,17 +480,23 @@
   W.addEventListener("pagehide", () => flush(true));
   D.addEventListener("visibilitychange", () => { if (D.hidden) flush(true); });
 
-  // Next email: after Send or Mark done (or anything that closes the email) the next row of the
-  // list opens and a toast confirms; with none left the work area says so. Then the queue refreshes.
+  // After Send, Mark done, Phone or a handover (anything that closes the email): nothing opens by
+  // itself. The work area clears, a toast confirms, and the Open list comes back unsearched and at
+  // the top (Mine | All and the mailbox stay as chosen), so the next pick is the reader's own.
   function next(msg) {
-    const rows = $$("#qlist .wb-row");
-    const cur = openId() || $('#qlist .wb-row[aria-selected="true"]')?.dataset.id;
-    const i = rows.findIndex((r) => r.dataset.id === cur);
-    const nx = rows.slice(i + 1).concat(rows.slice(0, Math.max(i, 0)))[0] || null;
-    if (nx) nx.click();
-    else showVoid(true);
+    showVoid(false);
+    markSelected("");
     if (msg) toast(msg);
-    refreshQueue({ sel: nx?.dataset.id || 0, force: true });
+    const field = D.getElementById("q");
+    if (field) { field.value = ""; const c = $("[data-q-clear]"); if (c) c.hidden = true; }
+    const qs = setParams(Q.qs, { show: "open", q: "" });
+    Q.listY = 0;
+    Q.listUrl = "";
+    history.pushState({ htmx: true }, "", B + "/?" + qs);
+    const pane = qp();
+    if (pane) pane.scrollTop = 0;
+    scrollTo(0, 0);
+    refreshQueue({ qs, sel: 0, skeleton: qs !== Q.qs });
   }
 
   // Keyboard: Ctrl+Enter (Cmd+Enter) sends ([data-send] of the field's form, or the old Send
@@ -590,8 +596,17 @@
     W.htmx.ajax("GET", `${B}/queue?${qs}&sel=${opts.sel ?? (openId() || 0)}`, { target: pane, swap: "innerHTML" });
   }
   // A switch of Mine | All, Open | History or Mailbox (or an offer of an empty search): in place,
-  // the open email and the search text stay.
+  // the search text stays. Open | History (even the one already chosen) also closes the open email,
+  // so the work area never shows an email from the list that is not on screen; Mine | All and
+  // Mailbox keep it.
   function switchFilter(more) {
+    if (new URLSearchParams(more).has("show") && !$("#workpane > .ax-void")) {
+      flush(true);
+      draftFlush();
+      if (Q.rowReq && W.htmx) { W.htmx.trigger(Q.rowReq, "htmx:abort"); Q.rowReq = null; }
+      showVoid(true);
+      markSelected("");
+    }
     const field = D.getElementById("q");
     const qs = setParams(setParams(Q.qs, more), { q: field ? field.value.trim() : searchOf(Q.qs) });
     if (qs === Q.qs) return;
@@ -1557,7 +1572,7 @@
     if (ov) { const src = D.getElementById(ov.dataset.overlay); if (src) openOverlay(src, ov); return; }
     if (tg.closest("[data-compose]")) { wireCompose(); if (cmp()) openOverlay(cmp(), tg.closest("[data-compose]")); return; }
     const q = tg.closest("[data-q]");
-    if (q) { if (q.getAttribute("aria-checked") !== "true") switchFilter(q.dataset.q); return; }
+    if (q) { if (q.getAttribute("aria-checked") !== "true" || /(^|&)show=/.test(q.dataset.q)) switchFilter(q.dataset.q); return; }
     if (tg.closest("[data-sync]")) return syncNow();
     if (tg.closest("[data-q-clear]")) { const f = D.getElementById("q"); f.value = ""; f.focus(); return findLater(); }
     if (tg.closest("#qupd")) { tg.closest("#qupd").hidden = true; qp().scrollTop = 0; scrollTo(0, 0); return refreshQueue(); }

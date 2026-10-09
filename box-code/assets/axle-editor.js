@@ -8,7 +8,9 @@
         lines, each { list, runs: [{ t, b, i, u }] }. parse() reads stored text with the grammar itself
         (reply-format.js inline, never a copy of it); serialise() writes the markers back and proves
         each line by reading it again; toHtml() is the editor's DOM as markup (the server renders the
-        first view with it, so the page opens already formatted).
+        first view with it, so the page opens already formatted). A link or bare URL shows as the
+        recipient sees it: an <a data-raw contenteditable="false"> holding the link's text, read back
+        as its stored text (data-raw), so it is one piece to the caret and to Backspace.
      2. The DOM, in the browser: the editor's DOM is held to div lines, ul > li list lines, b, i, u
         and br. readDom() reads any DOM (strong, em, bold, italic or underlined spans, p and nested blocks, foreign
         markup unwrapped to its text); a DOM holding anything else is rebuilt from what it reads,
@@ -27,6 +29,7 @@
   const LIST = /^- /;
   const WS = /\s/;
   const enc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const attr = (s) => enc(s).replace(/"/g, "&quot;");
   const dec = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
   const MARK = { b: "**", i: "*", u: "__" };
   // The kinds, in the order markers that open together are written: underline outside, then bold
@@ -36,7 +39,7 @@
   function push(runs, t, b, i, u) {
     if (!t) return;
     const last = runs[runs.length - 1];
-    if (last && last.b === b && last.i === i && last.u === u) last.t += t;
+    if (last && !last.a && last.b === b && last.i === i && last.u === u) last.t += t;
     else runs.push({ t, b, i, u });
   }
 
@@ -221,7 +224,7 @@
   // The editor's DOM: a div per line, a ul of li for consecutive list lines, b around i around u, an
   // empty line holding a br (so it has a height and takes the caret).
   function wrap(runs, kinds) {
-    if (!kinds.length) return runs.map((r) => enc(r.t)).join("");
+    if (!kinds.length) return runs.map((r) => (r.a ? atomHtml(r.a) : enc(r.t))).join("");
     const [k, ...rest] = kinds;
     let out = "";
     for (let n = 0, m; n < runs.length; n = m) {
@@ -231,7 +234,20 @@
     }
     return out;
   }
-  const lineHtml = (runs) => wrap(runs, ["b", "i", "u"]) || "<br>";
+  // A line's runs with each link and bare URL as one run of its own ({ a: token }), formatted as its
+  // first character (the grammar holds no change of formatting inside one).
+  function atomRuns(runs) {
+    const cs = chars(runs), out = [];
+    let p = 0;
+    for (const tok of FMT.tokens(cs.map((x) => x.c).join(""))) {
+      const seg = cs.slice(p, (p += tok.raw.length));
+      if (tok.type === "link" || tok.type === "url") out.push({ t: tok.raw, b: seg[0].b, i: seg[0].i, u: seg[0].u, a: tok });
+      else for (const x of seg) push(out, x.c, x.b, x.i, x.u);
+    }
+    return out;
+  }
+  const atomHtml = (tok) => `<a href="${attr(tok.url)}" data-raw="${attr(tok.raw)}" contenteditable="false" title="${attr(tok.url)}">${enc(tok.type === "link" ? tok.text : tok.url)}</a>`;
+  const lineHtml = (runs) => wrap(atomRuns(runs), ["b", "i", "u"]) || "<br>";
   function toHtml(lines) {
     let out = "", ul = false;
     for (const l of lines) {
@@ -294,6 +310,13 @@
         if (n.nodeType === 3) { text(n, f); continue; }
         if (n.nodeType !== 1 || SKIP.test(n.tagName)) continue;
         const tag = n.tagName, st = n.style || {};
+        if (tag === "A" && n.hasAttribute("data-raw")) {   // a link as shown: its stored text
+          if (!cur) line(f.list);
+          push(cur.runs, n.getAttribute("data-raw"), f.b, f.i, f.u);
+          fresh = false;
+          if (sel && !caret && n.contains(sel.node)) caret = { line: lines.length - 1, at: len() };
+          continue;
+        }
         if (tag === "BR") {
           if (!filler(n, root)) { if (!cur) line(f.list); line(f.list); }
           continue;
@@ -325,27 +348,43 @@
 
   // The DOM is the editor's own set: div and ul lines straight in the editor (Chromium's commands go
   // wrong on text loose in it, which it leaves after everything was deleted), or a ul inside such a
-  // div (where Chromium's list command puts it); li in a ul, b, i, u and br inside them; no attributes;
+  // div (where Chromium's list command puts it); li in a ul, b, i, u, br and our links (a data-raw,
+  // text only) inside them; no other attributes;
   // no div line starting "- " (a list item, see readDom). Anything else is rebuilt.
-  const OWN = /^(DIV|UL|LI|B|I|U|BR)$/;
+  const OWN = /^(DIV|UL|LI|B|I|U|BR|A)$/;
+  const ownAttrs = (n) => (n.tagName === "A"
+    ? n.hasAttribute("data-raw") && !n.children.length && [...n.attributes].every((a) => /^(href|data-raw|contenteditable|title)$/.test(a.name))
+    : !n.attributes.length);
   const clean = (root) => [...root.childNodes].every((n) => n.nodeType === 1 && (n.tagName === "DIV" || n.tagName === "UL"))
-    && [...root.querySelectorAll("*")].every((n) => OWN.test(n.tagName) && !n.attributes.length
+    && [...root.querySelectorAll("*")].every((n) => OWN.test(n.tagName) && ownAttrs(n)
       && (n.tagName === "UL" ? n.parentNode === root || (n.parentNode.tagName === "DIV" && n.parentNode.parentNode === root)
         : n.tagName === "LI" ? n.parentNode.tagName === "UL" : n.tagName !== "DIV" || !LIST.test(n.textContent)));
 
-  // The caret at { line, at } in a DOM toHtml made.
-  function setCaret(root, c) {
+  // The caret at { line, at } in a DOM toHtml made, as a range; a link counts as its stored text, and
+  // a caret that would fall inside one goes after it.
+  function caretRange(root, c) {
     const els = root.querySelectorAll(":scope > div, :scope > ul > li");
     const el = els[Math.min(c.line, els.length - 1)];
-    if (!el) return;
-    let at = c.line >= els.length ? Infinity : c.at, node, last = null;
-    const w = D.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    while ((node = w.nextNode())) { if (at <= node.data.length) break; at -= node.data.length; last = node; }
+    if (!el) return null;
+    let at = c.line >= els.length ? Infinity : c.at, last = null, placed = false;
     const r = D.createRange();
-    if (node) r.setStart(node, at);
-    else if (last) r.setStart(last, last.data.length);
-    else r.setStart(el, 0);
+    const w = D.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+      { acceptNode: (n) => (n.parentElement.closest("a[data-raw]") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    for (let n; !placed && (n = w.nextNode());) {
+      if (n.nodeType === 3) {
+        if (at <= n.data.length) { r.setStart(n, at); placed = true; } else { at -= n.data.length; last = n; }
+      } else if (n.matches("a[data-raw]")) {
+        const k = n.getAttribute("data-raw").length;
+        if (at < k) { if (at) r.setStartAfter(n); else r.setStartBefore(n); placed = true; } else { at -= k; last = n; }
+      }
+    }
+    if (!placed) { if (!last) r.setStart(el, 0); else if (last.nodeType === 3) r.setStart(last, last.data.length); else r.setStartAfter(last); }
     r.collapse(true);
+    return r;
+  }
+  function setCaret(root, c) {
+    const r = caretRange(root, c);
+    if (!r) return;
     const s = getSelection();
     s.removeAllRanges();
     s.addRange(r);
@@ -503,6 +542,36 @@
       el.focus({ preventScroll: true });
       if (r && el.contains(r.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
       D.execCommand("insertText", false, text.replace(/\r\n?/g, "\n"));
+    });
+    // A link is one piece. A click does not follow it (Ctrl or Cmd + click opens it in a new tab); a
+    // double click turns it back into its stored text to edit; leaving the editor shows any link
+    // typed, pasted or edited as text as the link again (the caret's place kept for an insert).
+    const linkOf = (e) => (e.target.closest ? e.target : e.target.parentElement).closest("a[data-raw]");
+    el.addEventListener("click", (e) => {
+      const a = linkOf(e);
+      if (!a) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) window.open(a.href, "_blank", "noopener");
+    });
+    el.addEventListener("dblclick", (e) => {
+      const a = linkOf(e);
+      if (!a || el.contentEditable !== "true") return;
+      e.preventDefault();
+      const tx = D.createTextNode(a.getAttribute("data-raw"));
+      a.replaceWith(tx);
+      const r = D.createRange();
+      r.selectNodeContents(tx);
+      const s = getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    });
+    el.addEventListener("blur", () => {
+      if (composing || el.contentEditable !== "true") return;
+      const want = parse(field.value), html = toHtml(want);
+      if ((html.match(/<a /g) || []).length === el.querySelectorAll("a[data-raw]").length) return;
+      const c = saved && el.contains(saved.startContainer) ? readDom(el, { node: saved.startContainer, offset: saved.startOffset }).caret : null;
+      el.innerHTML = html;
+      saved = c ? caretRange(el, c) : null;
     });
     if (bar) {
       // The toolbar keeps the focus and the selection in the editor (no blur, so the iOS keyboard stays).

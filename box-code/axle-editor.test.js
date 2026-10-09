@@ -191,7 +191,7 @@ test("(h) lists: consecutive '- ' lines, empty items, no nesting", () => {
 
 // What the editor shows (toHtml) against what the read-only display shows (displayHtml), line by
 // line, as characters with their formatting: the same words, the same bold, italic and underline,
-// the same list lines. Links stay their text on both sides (the display's anchors are compared as typed).
+// the same list lines. Links show their text on both sides, as the recipient sees them.
 function shown(html, kind) {
   const out = [];
   let cur = null, b = 0, i = 0, u = 0, list = false;
@@ -209,8 +209,9 @@ function shown(html, kind) {
   for (const l of out) while (l.cs.length && /^\s$/.test(l.cs[l.cs.length - 1])) l.cs.pop();
   return out.filter((l) => l.cs.length).map((l) => (l.list ? "- " : "") + l.cs.join("|"));
 }
+// The display with links as the recipient sees them (send-guard linkHtml): the link's text, a URL as itself.
+const disp = (t) => F.displayHtml(t, { esc, atom: (tok) => esc(tok.type === "link" ? tok.text : tok.raw) });
 test("cross-check: the editor shows what reply-format.js displays", () => {
-  const disp = (t) => F.displayHtml(t, { esc, atom: (t) => esc(t.raw) });
   for (const t of [
     "Beste Anna,\n\n**Dit is vet** en *dit cursief*, met **vet en *cursief* samen**:\n- [SEE123 - Remklauw](https://www.roverparts.eu/products/see123)\n- *tweede regel*\n\nFoto: [image:4]\n\nPrijs 5 * 3 = 15 en een \\*sterretje\\*.\n\nMet vriendelijke groet,\nTeam Budget Parts",
     "in**side**word and ***all***", "**a *b**", "*a*b*", "\\\\* and \\x", "- a\n- **b *c***\ntext\n- d",
@@ -228,7 +229,6 @@ test("cross-check: the editor shows what reply-format.js displays", () => {
 // model)); the display of the stored text must equal that redrawn view, always, and the model
 // itself whenever it holds nothing the grammar cannot write (inexpressible below; and a plain line
 // starting "- ", which the editor shows as a list item anyway).
-const disp = (t) => F.displayHtml(t, { esc, atom: (tok) => esc(tok.raw) });
 // What the grammar cannot write: italic going on while bold starts or ends inside a word; formatting
 // changing next to a literal underscore while underline is on ("__foo___bar" is a run of three, text,
 // and an underline closes and opens again where bold or italic inside it ends); formatting
@@ -289,4 +289,12 @@ test("invariant: what the editor shows is what the stored text renders", () => {
     else { redrawn++; assert.ok(inexpressible(m) || dashLine, `formatting dropped without a reason: ${JSON.stringify(m)} -> ${JSON.stringify(stored)}`); }
   }
   console.log(`# invariant: ${models} models, ${exact} kept exactly, ${redrawn} redrawn (each an intraword italic crossing, underline against a literal underscore, formatting changing inside a link or URL, or a plain "- " line)`);
+});
+
+test("links show as the recipient sees them, one piece holding the stored text", () => {
+  const t = '**zie [SEE123 - Remklauw](https://www.roverparts.eu/products/see123)** of https://www.roverparts.eu/a?b=1&c=2 [image:4]';
+  assert.strictEqual(E.toHtml(E.parse(t)),
+    '<div><b>zie <a href="https://www.roverparts.eu/products/see123" data-raw="[SEE123 - Remklauw](https://www.roverparts.eu/products/see123)" contenteditable="false" title="https://www.roverparts.eu/products/see123">SEE123 - Remklauw</a></b> of '
+    + '<a href="https://www.roverparts.eu/a?b=1&amp;c=2" data-raw="https://www.roverparts.eu/a?b=1&amp;c=2" contenteditable="false" title="https://www.roverparts.eu/a?b=1&amp;c=2">https://www.roverparts.eu/a?b=1&amp;c=2</a> [image:4]</div>');
+  assert.strictEqual(round(t), t);
 });

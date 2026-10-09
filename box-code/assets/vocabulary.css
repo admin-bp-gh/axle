@@ -407,6 +407,7 @@
 }
 .wb-toast:not(:has(.wb-btn)) { padding-right: 16px; }
 .wb-toast > .wb-i { width: 16px; height: 16px; color: var(--ok-on-ink); }
+.wb-toast > .wb-spin { width: 14px; height: 14px; scale: 1; }
 .wb-toast > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-toast > .wb-btn { height: 28px; min-height: 0; border-radius: var(--r-round); background: transparent; border-color: transparent; color: var(--on-brand); }
 .wb-toast > .wb-btn:not(:disabled):hover { background: rgba(255, 255, 255, .12); }

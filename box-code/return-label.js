@@ -16,6 +16,7 @@
 // Everything else (the parcel being outside the country, the customer never having had an order)
 // comes back as a refusal the salesperson reads, never a label that will not work.
 const C = require("./connectors.js");
+const sql = require("mssql");
 
 const RELATED_CT = "application/vnd.return_shipment+json;charset=utf-8;version=1.1";
 const UNRELATED_CT = "application/vnd.unrelated_return_shipment+json;charset=utf-8;version=1.1";
@@ -92,4 +93,23 @@ async function create(p, deps = {}) {
   return { id: Number(id), barcode, pdf, shop: acct.shop };
 }
 
-module.exports = { mode, plan, create, usable, RELATED_CT, UNRELATED_CT };
+// The SAP order numbers the thread's documents point at: orders as they are, invoices through
+// the order they were drawn from (INV1.BaseEntry, BaseType 17). MyParcel labels carry the ORDER
+// number, so an invoice alone would never find the shipment. Read-only; [] when SAP is unreachable.
+async function orderNumbersFor(docs) {
+  const orders = docs.filter((d) => d.type === "order").map((d) => String(d.docNum));
+  const inv = docs.filter((d) => d.type === "invoice").map((d) => parseInt(d.docEntry, 10)).filter((n) => n > 0);
+  if (!inv.length) return [...new Set(orders)];
+  try {
+    const pool = await C.getPool();
+    const req = pool.request();
+    inv.forEach((e, i) => req.input("e" + i, sql.Int, e));
+    const r = await req.query(
+      `SELECT DISTINCT O.DocNum FROM INV1 I JOIN ORDR O ON O.DocEntry = I.BaseEntry
+       WHERE I.BaseType = 17 AND I.DocEntry IN (${inv.map((_, i) => "@e" + i).join(",")})`);
+    orders.push(...r.recordset.map((x) => String(x.DocNum)));
+  } catch (e) { /* the orders named directly still count */ }
+  return [...new Set(orders)];
+}
+
+module.exports = { mode, plan, create, usable, orderNumbersFor, RELATED_CT, UNRELATED_CT };

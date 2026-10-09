@@ -966,9 +966,9 @@ app.post("/item/:id/return-label", async (req, res) => {
   } catch (e) { audit(login, "return_label_error", w.id, String(e.message || e).slice(0, 150)); }
   const email = RSET.activeRecipient(w, itemKind(w)) || w.sender_email || "";
   if (!name) name = w.sender_name || email;
-  const orderNums = (await computeItemSuggestions(w)).suggestions
+  const orderNums = await RL.orderNumbersFor((await computeItemSuggestions(w)).suggestions
     .filter((x) => x.status === "in_scope")
-    .flatMap((x) => x.docs.filter((d) => docTypeOf(d.objectId) === "order").map((d) => String(d.docNum)));
+    .flatMap((x) => x.docs.map((d) => ({ type: docTypeOf(d.objectId), docNum: d.docNum, docEntry: d.docEntry }))));
 
   const p = await RL.plan({ orderNums, country, name, email });
   if (p.kind === "refused") {

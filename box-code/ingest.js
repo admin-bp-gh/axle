@@ -40,6 +40,7 @@ const MS = require("./message-store.js");        // every message of the thread 
 const SEARCH = require("./search.js");           // the search index row of each item touched
 const DM = require("./draft-media.js");          // the customer's images and PDFs shown to the drafter
 const HO = require("./handover.js");             // owner handover: skip our own forward, carry the note into a redraft
+const SEND = require("./send.js");               // markRead: the skipped forward copy is marked read so the sweep lets it go
 const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
@@ -135,7 +136,12 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (!existing && rule.id === "internal_forward") {
     const recent = db.prepare("SELECT id, subject, handover_json FROM work_items WHERE handover_json IS NOT NULL AND updated_at >= datetime('now', '-2 days')").all();
     const dup = HO.isOwnForward(email, boxName, recent);
-    if (dup) { audit("system", "handover_copy_skipped", dup, `forward ${String(email.id).slice(0, 24)} in ${boxName}`); return { skip: "handover_copy" }; }
+    if (dup) {
+      // Marked read here, or the unread sweep offers it to every later run (skipped each time).
+      const r = await SEND.markRead(MAILBOX, email.id);
+      audit("system", "handover_copy_skipped", dup, `forward ${String(email.id).slice(0, 24)} in ${boxName}${r.ok ? ", marked read" : ""}`);
+      return { skip: "handover_copy" };
+    }
   }
   if (existing && existing.latest_message_id === email.id) {
     // Nothing new to draft, but the thread is still stored and a failed listing or fetch retried.

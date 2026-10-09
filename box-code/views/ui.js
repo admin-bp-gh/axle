@@ -797,7 +797,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax15";  // 2026-10-09: live refresh no longer held by a focused row; handover note, return label
+const ASSET_V = "ax16";  // 2026-10-09: clean Open list after send/close, links shown as links in the editor, in-app PDF viewer
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

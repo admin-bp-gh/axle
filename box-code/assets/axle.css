@@ -295,6 +295,12 @@
   max-width: calc(100% - 2 * var(--fit-x)); max-height: calc(100% - var(--fit-b));
   border-radius: var(--r-cell); background: var(--surface);
 }
+.ax-viewer__stage > iframe {
+  position: absolute; inset: 0 24px 24px; width: calc(100% - 48px); height: calc(100% - 24px);
+  border: 0; border-radius: var(--r-cell); background: var(--surface);
+}
+/* In the home-screen app a new tab is the trap the PDF viewer exists to avoid: no Open there */
+@media (display-mode: standalone) { .ax-viewer--pdf .ax-viewer__open { display: none; } }
 .ax-viewer__go { position: fixed; top: 50%; translate: 0 -50%; width: var(--tap); height: var(--tap); border-radius: 50%; }
 .ax-viewer__go[data-go="-1"] { left: 16px; }
 .ax-viewer__go[data-go="1"] { right: 16px; }
@@ -456,6 +462,7 @@
   .ax-viewer { background: var(--ink); grid-template-rows: auto minmax(0, 1fr) calc(var(--tap) + 32px + env(safe-area-inset-bottom)); }
   .ax-viewer__hd { padding: calc(10px + env(safe-area-inset-top)) 16px 10px; }
   .ax-viewer__stage { --fit-x: 0px; --fit-b: 0px; }
+  .ax-viewer__stage > iframe { inset: 0; width: 100%; height: 100%; border-radius: 0; }
   .ax-viewer__open, .ax-viewer__x { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom)); }
   .ax-viewer__open { left: 16px; }
   .ax-viewer__x { right: 16px; }

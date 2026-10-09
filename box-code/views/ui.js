@@ -630,14 +630,14 @@ const replyParas = (text) => FMT.displayHtml(text, { esc, atom: linkAnchor });
 // that open the viewer in axle.js (data-photo; data-meta names the message: sender and time), each
 // a skeleton until it loads and a "could not load" tile with Retry when it fails or its fetch is
 // known to have failed; then the other files as chips with a type icon, name and size: a PDF opens in
-// a new tab, anything else downloads. atts: [{ name, size, url, image, pdf, contentType, failed }].
+// Axle's PDF viewer (axle.js; Ctrl or Cmd + click: a new tab), anything else downloads. atts: [{ name, size, url, image, pdf, contentType, failed }].
 function attachmentsHtml(atts, meta, lang) {
   if (!atts.length) return "";
   const L = (k) => esc(t(lang, k));
   const photos = atts.filter((a) => a.image).map((a) => `<div class="ax-thumb"${a.failed ? " data-failed" : ""}>
     <button type="button" class="ax-thumb__b" data-photo="${esc(a.url)}" data-name="${esc(a.name)}" data-meta="${esc(meta)}" aria-label="${esc(t(lang, "att_open", { name: a.name }))}" title="${esc(a.name)} (${fmtSize(a.size)})"><span class="wb-skel" aria-hidden="true"></span><img ${a.failed ? "data-src" : "src"}="${esc(a.url)}" alt="${esc(a.name)}" loading="lazy"></button>
     <button type="button" class="ax-thumb__fail" data-photo-retry title="${esc(a.name)}">${icon("alert")}<span>${L("att_failed")}</span><span class="wb-link">${L("retry")}</span></button></div>`);
-  const files = atts.filter((a) => !a.image).map((a) => `<a class="wb-pillbtn ax-file" href="${esc(a.url)}"${a.pdf ? ' target="_blank" rel="noopener"' : " download"} title="${esc(a.name)}">${icon(/^image\//i.test(a.contentType || "") ? "image" : "file")}<span>${esc(a.name)}</span><small>${fmtSize(a.size)}</small></a>`);
+  const files = atts.filter((a) => !a.image).map((a) => `<a class="wb-pillbtn ax-file" href="${esc(a.url)}"${a.pdf ? ' target="_blank" rel="noopener" data-pdf' : " download"} title="${esc(a.name)}">${icon(/^image\//i.test(a.contentType || "") ? "image" : "file")}<span>${esc(a.name)}</span><small>${fmtSize(a.size)}</small></a>`);
   return `<div class="ax-atts-in">${photos.length ? `<div class="ax-thumbs">${photos.join("")}</div>` : ""}${files.length ? `<div class="ax-files">${files.join("")}</div>` : ""}</div>`;
 }
 // The quiet line under the newest message's attachments naming what Axle's drafter could not read

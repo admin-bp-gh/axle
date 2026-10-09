@@ -1410,6 +1410,25 @@
     const ly = layer(el, () => { el.remove(); D.body.classList.remove("ax-viewing"); });
     el.focus({ preventScroll: true });
   }
+  // The PDF viewer: a PDF file chip opens in an overlay with the file name, Open (a new tab) and
+  // Close, never as a page of its own. A page of its own has no way back in the home-screen app
+  // (iPad, phone): it fills the app with no browser bar. Ctrl, Cmd or Shift + click: the browser's own.
+  D.addEventListener("click", (e) => {
+    const a = e.target.closest?.("a[data-pdf]");
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    const name = a.getAttribute("title") || "", size = $("small", a)?.textContent || "";
+    const [el] = nodes(`<div class="ax-viewer ax-viewer--pdf" role="dialog" aria-modal="true" aria-label="${esc(name)}" tabindex="-1">
+      <div class="ax-viewer__hd"><span class="ax-viewer__name"><b>${esc(name)}</b><span>${esc(size)}</span></span>
+        <a class="wb-btn wb-btn--sm ax-viewer__open" href="${esc(a.href)}" target="_blank" rel="noopener">${esc(t("viewer_open"))}</a>
+        <button type="button" class="wb-btn wb-btn--icon ax-viewer__x" aria-label="${esc(t("close"))}" title="${esc(t("close"))}">${icon("x")}</button></div>
+      <div class="ax-viewer__stage"><iframe src="${esc(a.href)}" title="${esc(name)}"></iframe></div></div>`);
+    el.addEventListener("click", (ev) => { if (ev.target === el || ev.target.closest(".ax-viewer__x")) ly.close(); });
+    D.body.append(el);
+    D.body.classList.add("ax-viewing");
+    const ly = layer(el, () => { el.remove(); D.body.classList.remove("ax-viewing"); });
+    el.focus({ preventScroll: true });
+  });
   // A thumbnail's skeleton goes once its photo is in; a photo that fails shows "Could not load" with
   // Retry, which asks for it again (the server fetches a missing file from Graph on the way).
   D.addEventListener("load", (e) => { if (e.target.matches?.(".ax-thumb img")) e.target.previousElementSibling?.remove(); }, true);

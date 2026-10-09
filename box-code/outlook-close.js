@@ -131,7 +131,7 @@ const enabled = () => process.env.AXLE_ACTION_OUTLOOK_CLOSE === "on";
 function candidates(box) {
   return db.prepare(
     `SELECT id, mailbox, latest_message_id, status, subject, sender_email, owner,
-            injection_flag, email_received, updated_at
+            injection_flag, email_received, updated_at, handover_json
        FROM work_items
       WHERE mailbox = ?
         AND origin = 'inbound'
@@ -306,6 +306,14 @@ async function reopenPass(box, mailbox, opts = {}) {
 //   flagged          -> injection-flagged item: 'moved' and 'gone' still close it (both are
 //                       deliberate human acts), but 'read' does NOT — a reading-pane preview is
 //                       not a decision, and a flagged email must not vanish before a real look.
+// A handed-over item (2026-10-09): the Graph forward that carries it to the other mailbox marks
+// the source message read, so 'read' alone would close it on the very next pass, out from under
+// the colleague it was just handed to. It stays open on 'read' like a flagged item; 'moved' and
+// 'gone' still close it. (Found live on item 2610, the first handover under the new model.)
+function handedOver(w) {
+  if (!w || !w.handover_json) return false;
+  try { return !!JSON.parse(w.handover_json).forwarded_to; } catch (e) { return false; }
+}
 function decide(state, monitoredIds, flagged = false) {
   if (!state) return null;
   if (state.gone) return "gone";
@@ -405,7 +413,7 @@ async function reconcileBox(box, opts = {}) {
     if (back.live.has(w.id)) { report.held_open++; report.open++; continue; }
     const state = states.get(w.latest_message_id);
     if (!state) { report.unknown++; continue; }        // 403 / 429 / 5xx — never guess
-    let reason = decide(state, monitored, !!w.injection_flag);
+    let reason = decide(state, monitored, !!w.injection_flag || handedOver(w));
     // If the unread read failed we do not KNOW whether the thread has unread mail, so the one
     // reason that depends on it is withheld this run. 'moved' and 'gone' are facts about the
     // message itself and still stand. Same "never guess" instinct as the empty-folder fail-safe.
@@ -524,7 +532,7 @@ async function explain(itemId) {
     return out;
   }
 
-  const reason = decide(state, monitored, !!w.injection_flag);
+  const reason = decide(state, monitored, !!w.injection_flag || handedOver(w));
   out.verdict = reason ? `WOULD CLOSE (${reason})` : "stays open";
   // Name the flagged rule explicitly — otherwise "stays open" on a read, in-folder flagged item
   // looks like a bug rather than the deliberate rule it is.
@@ -619,6 +627,7 @@ async function missingBox(box, days = 30) {
 }
 
 module.exports = {
+  handedOver,
   reconcileBox, reconcileBoxes, candidates, decide, explain, auditBox, missingBox, enabled,
   reopenPass, canReopen, whyNotReopen, markedReadByAxle, itemForMessage,
   MAX_ITEMS, REOPEN_DAYS, HUMAN_CLOSES,

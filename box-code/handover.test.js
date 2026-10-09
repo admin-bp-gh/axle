@@ -66,3 +66,19 @@ test("isOwnForward matches a recent handover to this box by subject once FW: is 
 });
 
 console.log(`\n${pass} passed`);
+
+// The outlook-close guard: a forwarded handover is not closed on 'read' (the forward marks it read).
+const OC = require("./outlook-close.js");
+test("outlook-close keeps a forwarded handover open on 'read', closes it on 'moved' and 'gone'", () => {
+  const fwd = { handover_json: JSON.stringify(HO.record({ note: "n", byLogin: "a", toOwner: "Drachten", forwardedTo: "drachten@budget-parts.nl", forwardedBox: "drachten" })) };
+  const same = { handover_json: JSON.stringify(HO.record({ note: "n", byLogin: "a", toOwner: "Tom" })) };
+  assert.ok(OC.handedOver(fwd));
+  assert.ok(!OC.handedOver(same), "a same-mailbox handover sent nothing, so 'read' is still the team's gesture");
+  assert.ok(!OC.handedOver({ handover_json: null }));
+  const mon = new Set(["inbox"]);
+  assert.strictEqual(OC.decide({ isRead: true, folderId: "inbox" }, mon, OC.handedOver(fwd)), null);
+  assert.strictEqual(OC.decide({ isRead: true, folderId: "inbox" }, mon, OC.handedOver(same)), "read");
+  assert.strictEqual(OC.decide({ isRead: true, folderId: "other" }, mon, true), "moved");
+  assert.strictEqual(OC.decide({ gone: true }, mon, true), "gone");
+});
+console.log(`\n${pass} passed (with outlook-close guard)`);

@@ -67,6 +67,8 @@
 .wb-btn[aria-busy="true"] { cursor: progress; }
 .wb-spin { flex: none; width: var(--icon); height: var(--icon); border: 1.75px solid currentColor; border-right-color: transparent; border-radius: 50%; scale: .8; animation: wb-spin .7s linear infinite; }
 .wb-btn:not(:is(.wb-btn--primary, .wb-btn--commit, .wb-btn--danger)) .wb-spin { color: var(--ink-2); }
+/* A keyboard hint after the label (Approve and post, Enter): beside the text, never over it. */
+.wb-btn__kbd { flex: none; margin-left: 2px; line-height: 14px; color: inherit; background: transparent; border-color: currentColor; opacity: .7; }
 /* Label plus detail (Send now with the recipient): one line at the desk, two lines on touch. */
 .wb-btn__lbl { display: flex; align-items: baseline; gap: 6px; min-width: 0; text-align: left; }
 .wb-btn__lbl small { display: block; min-width: 0; max-width: 300px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-base); font-weight: 400; opacity: .75; }
@@ -113,7 +115,8 @@
 .wb-input--sm { height: var(--h-sm); }
 .wb-input:focus-within { border-color: var(--ring); outline: 2px solid var(--ring); outline-offset: 1px; }
 .wb-input:has([aria-invalid="true"]) { border-color: var(--bad-fg); }
-.wb-input:has(:disabled) { opacity: .45; }
+/* Only the field's own control: a stepper at its floor (minus disabled) or a disabled placeholder option is not a disabled field. */
+.wb-input:has(> input:disabled, > select:disabled, > textarea:disabled) { opacity: .45; }
 .wb-input--num > input { text-align: right; font-variant-numeric: tabular-nums; }
 .wb-readonly { display: flex; align-items: center; min-height: var(--h-ctl); font-size: var(--fs-base); font-variant-numeric: tabular-nums; }
 /* Adornments: muted, inside the field */
@@ -344,7 +347,7 @@
 .wb-ov__hd { display: flex; align-items: center; gap: var(--s2); min-height: 56px; padding: 0 12px 0 20px; }
 .wb-ov__t { margin: 0; font-size: var(--fs-md); font-weight: 600; flex: 1; min-width: 0; }
 .wb-ov__bd { flex: 1; overflow: auto; padding: 0 20px 20px; display: flex; flex-direction: column; gap: var(--s3); }
-.wb-ov__ft { display: flex; justify-content: flex-end; gap: var(--s2); padding: 12px 16px; border-top: 1px solid var(--border-sub); }
+.wb-ov__ft { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s2); padding: 12px 16px; border-top: 1px solid var(--border-sub); }
 .wb-drawer > .wb-ov__hd { border-bottom: 1px solid var(--border-sub); }
 .wb-drawer > .wb-ov__bd { padding-top: 16px; }
 /* Sheet: phone, anything without a text input. Auto height up to 85 %, grab handle, swipe down. */
@@ -428,6 +431,7 @@
   /* Label plus detail goes to two lines. */
   .wb-btn__lbl { flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.2; }
   .wb-btn__lbl small { font-size: var(--fs-micro); }
+  .wb-btn__kbd { display: none; }
   .wb-menu .wb-menu__item { min-height: var(--tap); }
   /* A removable pill's cross: the tap area is the pill's full height and a little either side;
      the cross and the pill look the same. */

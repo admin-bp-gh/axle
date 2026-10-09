@@ -36,6 +36,8 @@ const FMT = require("../reply-format.js");        // formatting markers: the rep
 const CC = require("../cc-list.js");               // the reply's Cc (list, suggestions); routes in server.js
 const DM = require("../draft-media.js");           // the customer files the latest draft could not be shown
 const ED = require("../assets/axle-editor.js");    // the reply editor's model: its first view is rendered here
+const RL = require("../return-label.js");          // "+ Return label": a MyParcel return label on the reply (gated)
+const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
 const fs = require("fs");
 const path = require("path");
 
@@ -415,14 +417,30 @@ app.get("/item/:id", async (req, res) => {
   // the email to their mailbox and closes this item. Those rows say so and ask first in a dialog
   // (data-confirm, read as data, never compiled as JS). forward-guard is the single source of that
   // decision, so the menu and the route agree.
-  const ownerRow = (o) => {
+  // Every change of owner opens a small form (a Sheet on a phone): the new owner, a note for them
+  // (required when the email also moves to another mailbox, optional otherwise), Hand over. The item
+  // itself moves to their queue with the note on top; see POST /item/:id/owner.
+  const ownerRow = (o, i) => {
     const on = o === (w.owner || "");
     const target = !on && ACTION_OWNER_FORWARD ? FG.forwardTargetFor(w.mailbox, o) : null;
-    const act = on ? "" : ` data-submit="ax-f-owner" name="owner" value="${esc(o)}"` + (target
-      ? ` data-confirm="${esc(t(lang, "owner_handover_confirm", { owner: o, address: target.address }))}" data-confirm-ok="${L("owner_handover_ok")}" data-next data-toast="${esc(t(lang, "handed_over", { owner: o }))}"` : "");
-    return `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${on}"${act}><span>${esc(o)}${target ? `<small>${L("owner_handover_hint")}</small>` : ""}</span>${on ? icon("check", "wb-menu__mark") : ""}</button>`;
+    return `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${on}"${on ? "" : ` data-overlay="ax-ho-${i}"`}><span>${esc(o)}${target ? `<small>${L("owner_handover_hint")}</small>` : ""}</span>${on ? icon("check", "wb-menu__mark") : ""}</button>`;
+  };
+  const ownerDialog = (o, i) => {
+    if (o === (w.owner || "")) return "";
+    const target = ACTION_OWNER_FORWARD ? FG.forwardTargetFor(w.mailbox, o) : null;
+    return overlay(`ax-ho-${i}`, t(lang, "handover_title", { owner: o }), lang,
+      `<form class="ax-ov__bd" id="ax-f-ho-${i}" method="post" action="${U("/owner")}" data-inline data-next data-toast="${esc(t(lang, "handed_over", { owner: o }))}"><div data-ax-banner></div>
+        <input type="hidden" name="owner" value="${esc(o)}">
+        ${target ? `<p class="wb-hint">${esc(t(lang, "handover_forward_note", { address: target.address }))}</p>` : ""}
+        <div class="wb-field"><label class="wb-label" for="ax-ho-t-${i}">${L("handover_note_label")}</label><div class="wb-input wb-input--area"><textarea id="ax-ho-t-${i}" name="note" rows="4" maxlength="${HO.MAX_NOTE}" placeholder="${L("handover_note_ph")}"${target ? " required" : ""} data-autofocus></textarea></div></div>
+        <p class="wb-hint">${L("handover_redraft_hint")}</p></form>`,
+      `<button type="button" class="wb-btn ax-ov-desk" data-close>${L("cancel")}</button><button type="submit" form="ax-f-ho-${i}" class="wb-btn wb-btn--primary">${L("owner_handover_ok")}</button>`,
+      { form: true, bodyTag: true });
   };
   const ownerEditable = editable && ownerOpts.some((o) => o !== (w.owner || ""));
+  // A handed-over item says so above the email: who, when, from which queue, and their note.
+  const ho = HO.read(w);
+  const hoBanner = ho && !closed ? `<div class="wb-banner ax-handover" data-tone="info">${icon("info")}<div class="wb-banner__body"><b>${esc(t(lang, "handover_banner", { by: ho.by, from: ho.from_owner || t(lang, "unassigned") }))}</b> · ${esc(fmtDateTime(ho.at, lang))}${ho.note ? `<p class="ax-honote">${esc(ho.note)}</p>` : ""}</div></div>` : "";
   const ownerPill = ownerEditable
     ? `<button type="button" class="wb-pillbtn" data-menu="owner" aria-haspopup="menu" aria-expanded="false" title="${L("owner_fix")}">${esc(ownerLabel(w))}${icon("chevron-down")}</button>`
     : pill(ownerLabel(w));
@@ -450,7 +468,7 @@ app.get("/item/:id", async (req, res) => {
   const ptop = `<header class="wb-page__hd ax-ptop"><a class="wb-btn wb-btn--ghost wb-btn--icon" href="${BASE.path}/" data-back aria-label="${L("inbox")}" title="${L("inbox")}">${icon("back")}</a><h1 class="wb-page__t">${esc(sender)}</h1>${statusPill()}</header>`;
   const head = `<div class="ax-head"><h1 class="ax-title">${esc(w.subject || t(lang, "no_subject"))}</h1><div class="ax-pills">${pills}</div>${custHtml}</div>`;
   const banner = (tone, html) => `<div class="wb-banner" data-tone="${tone}"${tone === "bad" ? ' role="alert"' : ""}>${icon(tone === "info" ? "info" : "alert")}<div class="wb-banner__body">${html}</div></div>`;
-  const flagBanner = w.injection_flag && !closed ? banner("bad", `<b>${L("injection_chip")}.</b> ${L("send_disabled_inj")}`) : "";
+  const flagBanner = (w.injection_flag && !closed ? banner("bad", `<b>${L("injection_chip")}.</b> ${L("send_disabled_inj")}`) : "") + hoBanner;
   const voiceBanner = isVoicemail && !closed ? banner("info", L("voicemail_phone_only")) : "";
 
   // --- The email: the customer's message (compose items have none: their information card
@@ -582,6 +600,11 @@ app.get("/item/:id", async (req, res) => {
   // moves anything when it appears. In the dock from 640 up, at the end of the reply's tool row on
   // a phone.
   const saveMark = `<span class="ax-savemark"><span class="ax-saved" data-ax-saved>${icon("check")}${L("saved")}</span><span class="ax-saved ax-savefail" data-ax-savefail hidden title="${L("save_failed_tip")}">${icon("alert")}${L("save_failed")}</span></span>`;
+  // "+ Return label" (gated by AXLE_ACTION_RETURN_LABEL): one per item; the button goes once the
+  // label is on the draft. Asks first: the label costs money once the customer uses it.
+  const retLabel = RL.mode() !== "off" && !isContactForm && !isVoicemail ? (() => { try { return JSON.parse(w.return_label_json || "null"); } catch (e) { return null; } })() : undefined;
+  const retLabelBtn = retLabel === undefined || (retLabel && atts.some((a) => a.name === retLabel.attachment)) ? ""
+    : `<button type="submit" form="ax-f-retlabel" class="wb-btn wb-btn--ghost wb-btn--sm" data-inline data-confirm="${L("return_label_confirm")}" data-confirm-ok="${L("return_label_ok")}" data-toast="${L("return_label_toast")}">${icon("plus")}<span>${L("return_label")}</span></button>`;
   const teachFlags = db.prepare("SELECT * FROM teach_flags WHERE work_item_id = ? ORDER BY id").all(w.id);
   const teachBtn = `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-teach">${icon("note")}<span>${L("teach_title")}</span>${teachFlags.length ? `<span class="wb-count">${teachFlags.length}</span>` : ""}</button>`;
   const docsRow = editable && !isContactForm && !isRN ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
@@ -593,7 +616,7 @@ app.get("/item/:id", async (req, res) => {
     ${aiSeed ? `<textarea id="ai_seed" hidden readonly>${esc(aiSeed.body)}</textarea>` : ""}
     ${needContent ? `<div class="ax-tr" id="replytr" hidden><p class="wb-hint">${esc(t(lang, "reply_tr_note").replace("{lang}", langDisplay(lang, custLang)))}</p><div class="ax-msg">${TR_SKEL(lang)}</div></div>` : ""}
     <div class="ax-atts"${atts.length ? "" : " hidden"}>${atts.map((a) => attChip(a, true)).join("")}</div>
-    <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>
+    <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>${retLabelBtn}
       <button type="button" class="wb-btn wb-btn--ghost wb-btn--sm ax-cam" data-camera>${icon("camera")}<span>${L("camera")}</span></button><input type="file" id="att_cam" accept="image/*" capture="environment" hidden>
       ${teachBtn}
       ${aiSeed ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-reset data-confirm="${L("reset_ai_confirm")}" data-confirm-ok="${L("reset_ai")}" hidden>${icon("refresh")}<span>${L("reset_ai")}</span></button>` : ""}${saveMark}</div>
@@ -667,7 +690,7 @@ app.get("/item/:id", async (req, res) => {
   const templates = [
     !closed && !busy ? `<template id="m-more" data-title="${L("more")}" data-align="end">${foldRows}${foldRows && checkedRow ? sepRow(" data-fold-sep hidden") : ""}${checkedRow}</template><template id="m-pmore" data-title="${L("more")}" data-align="end">${pmoreRows}</template>` : "",
     langMenu,
-    ownerEditable ? `<template id="m-owner" data-title="${L("owner_fix")}" data-align="start">${ownerOpts.map(ownerRow).join("")}</template>` : "",
+    ownerEditable ? `<template id="m-owner" data-title="${L("owner_fix")}" data-align="start">${ownerOpts.map(ownerRow).join("")}</template>${ownerOpts.map(ownerDialog).join("")}` : "",
     toMenu,
     ccMenu,
     admin && !busy ? overlay("ax-brief", t(lang, "what_checked"), lang, `<pre class="ax-brief">${esc(w.brief_md || t(lang, "none_paren"))}</pre>`, "", { kind: "drawer" }) : "",
@@ -688,12 +711,12 @@ app.get("/item/:id", async (req, res) => {
   ].join("");
   const hiddenForms = `<div hidden>
     <form id="ax-f-status" method="post" action="${U("/status")}" data-inline></form>
-    ${ownerEditable ? `<form id="ax-f-owner" method="post" action="${U("/owner")}" data-inline></form>` : ""}
     ${canPick ? `<form id="ax-f-recip" method="post" action="${U("/recipient")}" data-inline><input type="hidden" name="mode" value="known"><input type="hidden" name="use" value="1"></form>
     <form id="ax-f-typed" method="post" action="${U("/recipient")}" data-inline novalidate><input type="hidden" name="mode" value="typed"><input type="hidden" name="use" value="1"></form>
     <form id="ax-f-cc" method="post" action="${U("/cc")}" data-inline></form><form id="ax-f-cctyped" method="post" action="${U("/cc")}" data-inline novalidate></form>
     <form id="ax-f-ccrm" method="post" action="${U("/cc/remove")}" data-inline></form>` : ""}
     ${editable ? `<form id="ax-f-lang" method="post" action="${U("/language")}" data-inline></form>` : ""}
+    ${retLabelBtn ? `<form id="ax-f-retlabel" method="post" action="${U("/return-label")}" data-inline></form>` : ""}
     ${sugg ? sugg.forms : ""}
     ${teachFlags.filter((f) => f.status === "pending").map((f) => `<form id="ax-f-tw-${f.id}" method="post" action="${U(`/teach/${f.id}/withdraw`)}" data-inline></form>`).join("")}
   </div>`;
@@ -849,64 +872,129 @@ app.post("/item/:id/language", (req, res) => {
   res.redirect(BASE.url("/item/" + w.id));
 });
 
-// Reassign an item's owner. The new owner must be one of the mailbox's own labels (see
-// ownerChoices) - never free text - so the inbox "mine" queues stay consistent. Closed items are
-// immutable (reopen first), matching the other metadata edits.
+// Reassign an item's owner, with a note for them (2026-10-09). The new owner must be one of the
+// mailbox's own labels (see ownerChoices) - never free text - so the inbox "mine" queues stay
+// consistent. Closed items are immutable (reopen first).
 //
-// TWO OUTCOMES, decided in code by forward-guard.forwardTargetFor:
+// THE ITEM MOVES, IT IS NOT PUSHED. Whatever the destination, the item keeps its id, thread,
+// messages, attachments and drafts and stays open under the new owner, who sees it in their Mine
+// queue with a banner carrying the note. Axle then redrafts with the note and the whole thread in
+// context, so the receiver starts where the colleague left off.
 //
-//  * SAME MAILBOX (Sales(Gouda) -> Tom) - a pure relabel, exactly as before. Nothing is sent.
+// TWO SHAPES, decided in code by forward-guard.forwardTargetFor:
 //
-//  * DIFFERENT MAILBOX (info@ item -> Brad, drachten@ item -> Sales(Gouda)) - a HANDOVER. The
-//    email is forwarded to that owner's mailbox, then the Axle item is closed as 'forwarded' and
-//    the source message marked read, so the work leaves the handing-over team's queue AND their
-//    Outlook unread list rather than sitting somewhere nobody is watching. Where an owner works
-//    comes from the fixed rules.OWNER_HOME table, so the destination is always one of our own
-//    three mailboxes and can never be influenced by an email, a tool result or the model.
+//  * SAME MAILBOX (Sales(Gouda) -> Tom) - the note is optional; nothing is sent.
+//
+//  * DIFFERENT MAILBOX (info@ item -> Drachten, drachten@ item -> Brad) - the note is required and
+//    the email is ALSO forwarded to that owner's mailbox (with the note on top), so it is in their
+//    Outlook too. Where an owner works comes from the fixed rules.OWNER_HOME table, so the
+//    destination is always one of our own three mailboxes and can never be influenced by an email,
+//    a tool result or the model. The item is NOT closed and the source message is NOT marked read:
+//    the item lives on under the new owner, and a read mark would let outlook-close close it.
+//    Ingest skips the forward's copy in the receiving mailbox (handover.isOwnForward).
 //
 // ORDER MATTERS: forward first, write second. A Graph failure throws to the global error handler
-// with the item untouched, so a handover is never recorded as done when the mail did not move.
-// The DB write is guarded on the item still being open, so a human pressing Done in the same
-// instant cannot be overwritten.
+// with the item untouched, so a handover is never recorded when the mail did not move.
 //
 // Governed by allow-list action #6 (env AXLE_ACTION_OWNER_FORWARD). While it is off, a
-// cross-mailbox reassign degrades to the old relabel and says so in the audit log.
+// cross-mailbox reassign still moves the item (with the note) but sends nothing, and says so.
 app.post("/item/:id/owner", async (req, res) => {
   const login = req.user.tailscale_login;
+  const lang = req.user.lang;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).send(notFoundPage(req.user));
+  const inline = req.get("X-Axle-Inline") === "1";
+  const refuse = (message) => inline ? res.status(400).json({ ok: false, kind: "refused", message, unchanged: true })
+    : res.status(400).send(resultPage(req, w, t(lang, "owner_fix"), message));
   const to = String(req.body.owner || "");
   const allowed = ownerChoices(w.mailbox).includes(to) && to !== (w.owner || "") && !["done", "archived"].includes(w.status);
   if (!allowed) return res.redirect(BASE.url("/item/" + w.id));
-
-  const relabel = () => {
-    db.prepare("UPDATE work_items SET owner = ?, updated_at = datetime('now') WHERE id = ?").run(to, w.id);
-    audit(login, "owner_changed", w.id, `${ownerLabel(w)} -> ${to}`);
-  };
-
+  const note = HO.cleanNote(req.body.note);
   const target = FG.forwardTargetFor(w.mailbox, to);
-  if (!target) { relabel(); return res.redirect(BASE.url("/item/" + w.id)); }
+  if (target && !note) return refuse(t(lang, "handover_note_required"));
 
-  if (!ACTION_OWNER_FORWARD) {
-    relabel();
-    audit(login, "owner_forward_skipped", w.id, `${to} <${target.address}> - AXLE_ACTION_OWNER_FORWARD not enabled`);
-    return res.redirect(BASE.url("/item/" + w.id));
+  let forwardedTo = null, forwardedBox = null;
+  if (target && ACTION_OWNER_FORWARD) {
+    const fwd = FG.assembleForward(w, { toOwner: to, byName: req.user.display_name, byLogin: login });
+    await FWD.forwardMessage({
+      mailbox: MAILBOX_OF[w.mailbox], messageId: fwd.messageId, to: fwd.to, comment: HO.forwardComment(fwd.comment, note),
+    });
+    forwardedTo = fwd.to; forwardedBox = fwd.box;
   }
-
-  const fwd = FG.assembleForward(w, { toOwner: to, byName: req.user.display_name, byLogin: login });
-  await FWD.forwardMessage({
-    mailbox: MAILBOX_OF[w.mailbox], messageId: fwd.messageId, to: fwd.to, comment: fwd.comment,
-  });
+  const rec = HO.record({ note, byName: req.user.display_name, byLogin: login, fromOwner: w.owner || null, toOwner: to, forwardedTo, forwardedBox });
   const info = db.prepare(
-    `UPDATE work_items SET owner = ?, status = 'done', resolution = 'forwarded', updated_at = datetime('now')
+    `UPDATE work_items SET owner = ?, handover_json = ?, updated_at = datetime('now')
      WHERE id = ? AND status NOT IN ('done', 'archived')`
-  ).run(to, w.id);
-  audit(login, "owner_changed", w.id, `${ownerLabel(w)} -> ${to}`);
-  audit(login, "email_forwarded", w.id,
-    `${to} <${fwd.to}> from ${w.mailbox} msg=${String(fwd.messageId).slice(0, 24)}${info.changes ? "" : " (item already closed by someone else)"}`);
-  await markReadSafe(login, w);
+  ).run(to, JSON.stringify(rec), w.id);
+  audit(login, "owner_changed", w.id, `${ownerLabel(w)} -> ${to}${note ? " note: " + note.slice(0, 120) : ""}`);
+  if (forwardedTo) audit(login, "email_forwarded", w.id, `${to} <${forwardedTo}> from ${w.mailbox} (item stays open)${info.changes ? "" : " (item already closed by someone else)"}`);
+  else if (target) audit(login, "owner_forward_skipped", w.id, `${to} <${target.address}> - AXLE_ACTION_OWNER_FORWARD not enabled`);
+  // The receiver's draft: redrafted with the note and the thread in context, unless Axle is busy on
+  // it already or the item has nothing to draft (a compose item keeps its draft).
+  if (info.changes && w.status !== "investigating" && w.origin !== "compose" && !w.injection_flag) {
+    db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
+    audit(login, "redraft_started", w.id, "handover");
+    setImmediate(() => runRedraft(w.id, login));
+  }
   // F6 (mobile fix 1): the phone adds ret=list at submit time and lands on the Open list
   res.redirect(req.body.ret === "list" ? BASE.url("/") : BASE.url("/item/" + w.id));
+});
+
+// "+ Return label" (2026-10-09, gated by AXLE_ACTION_RETURN_LABEL off/dry/on): a prepaid PostNL
+// return label from MyParcel, staged on the draft like any attachment and recorded on the item so
+// the redraft says the label is attached. The customer and their order numbers come from the
+// trusted side only: the SAP card the item resolved to and the in-scope suggested documents,
+// never the email text. Chargeable once used, so the button asks first. See return-label.js.
+app.post("/item/:id/return-label", async (req, res) => {
+  const lang = req.user.lang;
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(notFoundPage(req.user));
+  const inline = req.get("X-Axle-Inline") === "1";
+  const small = (code, kind, message) => inline
+    ? res.status(code).json({ ok: false, kind, message, unchanged: true })
+    : res.status(code).send(resultPage(req, w, t(lang, "return_label"), message));
+  const mode = RL.mode();
+  if (mode === "off" || isContactFormItem(w) || ["done", "archived"].includes(w.status)) return small(400, "refused", t(lang, "return_label_off"));
+  if (w.injection_flag) return small(400, "refused", t(lang, "send_disabled_inj"));
+
+  let card = null, country = "", name = "";
+  try {
+    card = await itemCardCode(w);
+    const s = card ? await CUSTSUM.summarise(card) : null;
+    if (s) { country = s.country || ""; name = s.cardName || ""; }
+  } catch (e) { audit(login, "return_label_error", w.id, String(e.message || e).slice(0, 150)); }
+  const email = RSET.activeRecipient(w, itemKind(w)) || w.sender_email || "";
+  if (!name) name = w.sender_name || email;
+  const orderNums = (await computeItemSuggestions(w)).suggestions
+    .filter((x) => x.status === "in_scope")
+    .flatMap((x) => x.docs.filter((d) => docTypeOf(d.objectId) === "order").map((d) => String(d.docNum)));
+
+  const p = await RL.plan({ orderNums, country, name, email });
+  if (p.kind === "refused") {
+    audit(login, "return_label_refused", w.id, `${p.reason} country=${p.country || "?"} orders=${p.orders.join(",") || "-"}`);
+    return small(200, "refused", t(lang, p.reason === "no_country" ? "return_label_no_country" : "return_label_abroad", { country: p.country }));
+  }
+  if (mode === "dry") {
+    audit(login, "return_label_dry", w.id, `${p.kind} ${p.kind === "related" ? `parent ${p.parentId} order ${p.order} (${p.shop})` : "PostNL NL (gouda)"}`);
+    return small(200, "refused", t(lang, "return_label_dry", { what: p.kind === "related" ? `${p.carrier} · ${p.order}` : "PostNL NL" }));
+  }
+  let made;
+  try { made = await RL.create(p); }
+  catch (e) { audit(login, "return_label_error", w.id, String(e.message || e).slice(0, 180)); return small(502, "failed", t(lang, "return_label_failed")); }
+  const fileName = `Return-label-${made.barcode || made.id}.pdf`;
+  const ares = addAttachment(w, { data: made.pdf.toString("base64"), name: fileName, ctype: "application/pdf" }, login, lang);
+  if (ares.error) { audit(login, "return_label_error", w.id, `created ${made.id} but not attached: ${ares.error}`); return small(413, "failed", ares.error); }
+  const rec = { id: made.id, barcode: made.barcode, kind: p.kind, shop: made.shop, order: p.order || null, country: p.country || null, by: login, at: new Date().toISOString(), attachment: fileName };
+  db.prepare("UPDATE work_items SET return_label_json = ?, updated_at = datetime('now') WHERE id = ?").run(JSON.stringify(rec), w.id);
+  audit(login, "return_label_created", w.id, `${p.kind} shipment ${made.id}${made.barcode ? " " + made.barcode : ""} (${made.shop})${p.order ? " order " + p.order : ""} -> ${fileName}`);
+  // The reply text follows: a redraft with seed.return_label set, unless Axle is busy on the item.
+  if (w.status !== "investigating" && w.origin !== "compose") {
+    db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
+    audit(login, "redraft_started", w.id, "return label");
+    setImmediate(() => runRedraft(w.id, login));
+  }
+  res.redirect(BASE.url("/item/" + w.id));
 });
 
 // On-demand: translate the salesperson's CURRENT (possibly edited) reply into their own

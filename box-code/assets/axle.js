@@ -665,9 +665,13 @@
   // changed. Held back (the "New activity" pill shows instead) while a field in the queue has focus,
   // a menu or overlay is open, the list is paged past its first page, or the list is scrolled away
   // from the top (one-pane: the page scroll or a touch in the last 10 s). A hidden tab pauses it.
+  // Only a field being typed in holds the refresh back, never a row: opening an email leaves the
+  // focus on its row, and until 2026-10-09 that silently froze the live refresh for the rest of
+  // the visit (the list only moved again after a manual reload).
+  const TYPING = 'input:not([type="hidden"]), textarea, select, [contenteditable="true"]';
   function holdBack(pane) {
     const a = D.activeElement;
-    if (a && a !== D.body && pane.contains(a)) return true;
+    if (a && a !== D.body && pane.contains(a) && a.matches(TYPING)) return true;
     if (stack.length) return true;
     if (+(D.getElementById("qlist")?.dataset.page || 1) > 1) return true;
     if (ONEPANE.matches) return Date.now() - Q.touch < 10000 || scrollY > 0;

@@ -431,15 +431,47 @@ async function closePool() {
 async function sapCustomerContext(emailAddress) {
   const pool = await getPool();
   const bp = await pool.request().input("email", sql.NVarChar, "%" + emailAddress + "%")
-    .query("SELECT TOP 1 CardCode, CardName, Phone1, Balance FROM OCRD WHERE E_Mail LIKE @email");
+    .query(`SELECT TOP 1 T0.CardCode, T0.CardName, T0.Phone1, T0.Balance, T0.ListNum, T1.ListName
+            FROM OCRD T0 LEFT JOIN OPLN T1 ON T1.ListNum = T0.ListNum WHERE T0.E_Mail LIKE @email`);
   if (!bp.recordset.length) return { customer: null, recentOrders: [] };
-  const c = bp.recordset[0];
+  const { ListNum, ListName, ...c } = bp.recordset[0];
+  // The customer's SAP price list (2026-10-09, tier pricing): the drafting tools price every part
+  // on it, and the model is told which tier the customer is on. List 1 is the standard webshop list.
+  c.price_list = priceListInfo(ListNum, ListName);
   const orders = await pool.request().input("cc", sql.NVarChar, c.CardCode)
     .query("SELECT TOP 5 DocNum, DocDate, DocTotal, DocStatus FROM ORDR WHERE CardCode = @cc ORDER BY DocDate DESC");
   return { customer: c, recentOrders: orders.recordset };
 }
 
-async function sapStockPrice(itemCodes) {
+// ---------- Customer price lists (tier pricing, 2026-10-09) ----------
+// Every customer card carries a SAP price list (OCRD.ListNum). List 1 is the standard webshop
+// list; the others are Brad's discount tiers ("13. Sales - Pro (10%)"), each a factor of list 1,
+// and ITM1 holds a priced row per item per list. A part priced for a customer therefore means
+// ITM1.Price on THEIR list, read in the same query as the web price, never derived in prose.
+const priceListInfo = (num, name) => ({
+  num: num == null ? null : Number(num),
+  name: String(name || "").replace(/^\s*\d+\.\s*/, "").trim() || null,
+  tier: num != null && Number(num) !== 1,   // a discount tier: the customer price differs from the web price
+});
+// The SQL fragment + parameter that adds the customer's own price to an item query. priceList null
+// or 1 adds nothing: the web price already is the customer price.
+function customerPriceJoin(req, priceList, alias = "I") {
+  const n = parseInt(priceList, 10);
+  if (!(n > 1)) return { select: "", join: "" };
+  req.input("custList", sql.Int, n);
+  return { select: ", CP.Price AS CustPrice", join: ` LEFT JOIN ITM1 CP ON CP.ItemCode = ${alias}.ItemCode AND CP.PriceList = @custList` };
+}
+const customerPriceOf = (r) => (r.CustPrice == null ? undefined : r.CustPrice);
+async function customerPriceList(cardCode) {
+  const cc = String(cardCode || "").trim();
+  if (!cc) return null;
+  const pool = await getPool();
+  const r = await pool.request().input("cc", sql.NVarChar, cc).query(
+    `SELECT T0.ListNum, T1.ListName FROM OCRD T0 LEFT JOIN OPLN T1 ON T1.ListNum = T0.ListNum WHERE T0.CardCode = @cc`);
+  return r.recordset.length ? priceListInfo(r.recordset[0].ListNum, r.recordset[0].ListName) : null;
+}
+
+async function sapStockPrice(itemCodes, priceList) {
   if (!itemCodes.length) return [];
   const pool = await getPool();
   const req = pool.request();
@@ -447,12 +479,13 @@ async function sapStockPrice(itemCodes) {
     req.input(`c${i}`, sql.NVarChar, code);
     return `@c${i}`;
   });
+  const cp = customerPriceJoin(req, priceList, "T0");
   const r = await req.query(
-    `SELECT T0.ItemCode, T0.ItemName, T0.OnHand, T1.Price AS WebPrice
-     FROM OITM T0 LEFT JOIN ITM1 T1 ON T0.ItemCode = T1.ItemCode AND T1.PriceList = 1
+    `SELECT T0.ItemCode, T0.ItemName, T0.OnHand, T1.Price AS WebPrice${cp.select}
+     FROM OITM T0 LEFT JOIN ITM1 T1 ON T0.ItemCode = T1.ItemCode AND T1.PriceList = 1${cp.join}
      WHERE T0.ItemCode IN (${params.join(",")})`
   );
-  return r.recordset;
+  return r.recordset.map(({ CustPrice, ...row }) => (CustPrice == null ? row : { ...row, CustomerPrice: CustPrice }));
 }
 
 // ---------- Part dossier (P1.1): everything we know about ONE part ----------
@@ -559,6 +592,7 @@ function assembleDossier(familyRows, matchedSet, handleMap = {}) {
       availability: availabilityOf(r.OnHand, r.U_WS_DropShip, r),
       on_hand: r.OnHand,
       web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
+      customer_price_excl_vat: customerPriceOf(r),
       fitment: trim(r.U_Tag_Model, 200) || undefined,
       alternatives: trim(r.U_Alternatives, 200) || undefined,
       handle: handleMap[r.ItemCode] || undefined,
@@ -575,7 +609,7 @@ function assembleDossier(familyRows, matchedSet, handleMap = {}) {
 }
 
 const PART_CODE_RE = /[^A-Za-z0-9._/\- ]/g;   // safe set for SQL params + Shopify search
-async function partDossier(code) {
+async function partDossier(code, opts = {}) {
   const q = String(code || "").trim().replace(PART_CODE_RE, "").slice(0, 40);
   if (!q) return { query: String(code || ""), matched: [], items: [] };
   const pool = await getPool();
@@ -610,6 +644,7 @@ async function partDossier(code) {
   baseCodes.forEach((b, i) => { req.input("b" + i, sql.NVarChar, b); ins.push("@b" + i); });
   const mc = [...matchedSet];
   mc.forEach((c, i) => { req.input("m" + i, sql.NVarChar, c); });
+  const cp = customerPriceJoin(req, opts.priceList);
   const where = [
     ins.length ? `I.U_WS_LRNo IN (${ins.join(",")})` : null,
     `I.ItemCode IN (${mc.map((_, i) => "@m" + i).join(",")})`,
@@ -618,14 +653,14 @@ async function partDossier(code) {
     `SELECT TOP (12) I.ItemCode, I.U_WS_LRNo,
             I.U_Code_AllMakes, I.U_Code_BritPart, I.U_Code_Hotbray,
             I.ItemName, I.U_Quality, I.U_ABC, I.U_WS_DropShip,
-            I.OnHand, P.Price AS WebPrice,
+            I.OnHand, P.Price AS WebPrice${cp.select},
             E.FreeInboundQty, E.NextFreeEta, E.Confidence,
             CAST(I.U_Tag_Model AS NVARCHAR(MAX)) AS U_Tag_Model,
             I.U_Alternatives,
             CAST(I.U_FAQ AS NVARCHAR(MAX)) AS U_FAQ,
             CAST(I.UserText AS NVARCHAR(MAX)) AS UserText
      FROM OITM I
-     LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1
+     LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1${cp.join}
      LEFT JOIN dbo.vw_ItemEta E ON E.ItemCode = I.ItemCode
      WHERE ${where}`
   )).recordset;
@@ -807,6 +842,7 @@ function rankCandidates(rows, tokens, opts = {}) {
     on_hand: r.OnHand,
     availability: availabilityOf(r.OnHand, r.U_WS_DropShip, r),
     web_price_excl_vat: r.WebPrice == null ? undefined : r.WebPrice,
+    customer_price_excl_vat: customerPriceOf(r),
     fitment: r.U_Tag_Model ? String(r.U_Tag_Model).replace(/\s+/g, " ").trim().slice(0, 200) : undefined,
     handle: (opts.handleMap || {})[r.ItemCode] || undefined,
     match: { model_flag: opts.column || null, tokens_matched: hit, score: Math.round(score * 10) / 10 },
@@ -831,7 +867,7 @@ async function shopifyHandles(itemCodes) {
 }
 
 async function partFinder(params = {}) {
-  const { description = "", model = "", year = null, engine = "", vin = "" } = params;
+  const { description = "", model = "", year = null, engine = "", vin = "", priceList = null } = params;
   const vinInfo = vin ? vinDecode(vin) : null;
   const useModel = (model && String(model).trim()) || (vinInfo && vinInfo.model) || "";
   const useYear = year || (vinInfo && vinInfo.year) || null;
@@ -862,6 +898,7 @@ async function partFinder(params = {}) {
     where.push("(" + ors + ")");
   }
   const catSelect = catCol && VALID_CAT_COLS.has(catCol) ? `, I.${catCol} AS CatFlag` : "";
+  const cp = customerPriceJoin(req, priceList);
   // Order by description-token overlap FIRST so the most-relevant rows survive the TOP cap
   // (a common token like "front" matches hundreds of parts; without this a 3-token disc match
   // could be crowded out before the model sees it — the truncation problem P1.3 also addresses).
@@ -870,10 +907,10 @@ async function partFinder(params = {}) {
     : "0";
   const rows = (await req.query(
     `SELECT TOP (80) I.ItemCode, I.U_WS_LRNo, I.U_Code_AllMakes, I.U_Code_BritPart, I.U_Code_Hotbray,
-            I.ItemName, I.U_Quality, I.U_ABC, I.OnHand, I.U_WS_DropShip, P.Price AS WebPrice,
+            I.ItemName, I.U_Quality, I.U_ABC, I.OnHand, I.U_WS_DropShip, P.Price AS WebPrice${cp.select},
             E.FreeInboundQty, E.NextFreeEta, E.Confidence,
             CAST(I.U_Tag_Model AS NVARCHAR(MAX)) AS U_Tag_Model, I.U_Alternatives${catSelect}
-     FROM OITM I LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1
+     FROM OITM I LEFT JOIN ITM1 P ON P.ItemCode = I.ItemCode AND P.PriceList = 1${cp.join}
      LEFT JOIN dbo.vw_ItemEta E ON E.ItemCode = I.ItemCode
      WHERE ${where.join(" AND ")}
      ORDER BY (${relevance}) DESC, CASE WHEN I.OnHand > 0 THEN 0 ELSE 1 END, I.U_ABC`
@@ -1807,7 +1844,8 @@ function extractEntities(text) {
 module.exports = {
   htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, pickAttachments, getAttachment, threadMessages, findMessageByInternetId,
   getMessageStates, folderIds, folderName,
-  getPool, closePool, sapCustomerContext, sapStockPrice,
+  getPool, closePool, sapCustomerContext, sapStockPrice, customerPriceList, priceListInfo,
+  mpAccounts, mpHeaders,
   partDossier, customerCode, assembleDossier, availabilityOf,
   partFinder, vinDecode, modelToColumn, rankCandidates, categoryFromTokens, tokenize, shopifyHandles,
   shopifyCustomerContext, shopifyOrderByName,

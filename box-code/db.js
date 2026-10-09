@@ -208,6 +208,17 @@ ensureColumn("work_items", "doc_suggestions_json", "TEXT");
 // re-resolved live from SAP before it is rendered.
 ensureColumn("work_items", "claim_json", "TEXT");
 
+// "+ Return label" (2026-10-09): the MyParcel return shipment created for this item's reply
+// ({ id, barcode, kind, shop, order, by, at, attachment }). Read by the drafter (seed.return_label)
+// so the reply says the label is attached, and by the page to hide the button once one exists.
+ensureColumn("work_items", "return_label_json", "TEXT");
+
+// Owner handover with a note (2026-10-09): the item itself moves to the new owner's queue (it is no
+// longer closed as 'forwarded'); this records who handed it over, from which owner, the note they
+// typed, and the mailbox it was forwarded to for a cross-mailbox handover. Read by the page (the
+// banner), by the drafter (seed.handover) and by ingest (so the forward is not re-ingested).
+ensureColumn("work_items", "handover_json", "TEXT");
+
 // Per-user work-queue label for the inbox "Assigned to me" filter. Matched against
 // work_items.owner (the routing-rule owner). Falls back to display_name when NULL, so a
 // user whose display_name already equals their owner label (e.g. "Jack") needs no setup.

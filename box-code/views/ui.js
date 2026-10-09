@@ -200,6 +200,19 @@ const STRINGS = {
     doc_other_cust: "Different customer", back_email: "Back to the email", saved: "Saved",
     change_lang: "Change language", marked_done: "Marked done",
     handed_over: "Handed over to {owner}", owner_handover_ok: "Hand over", blocked_toast: "Sender blocked",
+    handover_title: "Hand over to {owner}", handover_note_label: "Note for your colleague",
+    handover_note_ph: "What has been done, what is still open, what they should know",
+    handover_forward_note: "The email is also forwarded to {address}.",
+    handover_redraft_hint: "The email moves to their queue with your note on top; Axle then redrafts the reply for them with the whole thread in view.",
+    handover_note_required: "Write a note first: this email moves to another mailbox.",
+    handover_banner: "Handed over by {by} (from {from})", unassigned: "unassigned",
+    return_label: "+ Return label", return_label_ok: "Create label", return_label_toast: "Return label attached, redrafting",
+    return_label_confirm: "Create a return label?\n\nA prepaid PostNL return label to our warehouse is created in MyParcel and attached to this reply. We pay for it once the customer uses it. Axle then redrafts the reply to say the label is attached.",
+    return_label_off: "Return labels are not enabled.",
+    return_label_no_country: "This email does not resolve to a SAP customer with a country, so no return label can be made.",
+    return_label_abroad: "None of our shipments were found for this customer's orders, and a plain PostNL return label only works within the Netherlands (customer country: {country}). Nothing was created.",
+    return_label_dry: "Dry run: a return label would be created ({what}). Nothing was created.",
+    return_label_failed: "MyParcel could not create the return label. Nothing was attached.",
     teach_done: "Flagged for Brad", teach_withdrawn: "Flag withdrawn", not_sent: "Not sent",
     nothing_sent: "Nothing was sent.", details: "Details", redraft: "Redraft",
     answer_ph: "Answer here, then redraft", needs_input: "Axle needs your input before this is right.",
@@ -416,6 +429,19 @@ const STRINGS = {
     other_doc_title: "Ander document", doc_other_cust: "Andere klant", back_email: "Terug naar de e-mail",
     saved: "Opgeslagen", change_lang: "Taal wijzigen", marked_done: "Afgehandeld",
     handed_over: "Overgedragen aan {owner}", owner_handover_ok: "Overdragen",
+    handover_title: "Overdragen aan {owner}", handover_note_label: "Notitie voor je collega",
+    handover_note_ph: "Wat is er gedaan, wat staat nog open, wat moet je collega weten",
+    handover_forward_note: "De e-mail wordt ook doorgestuurd naar {address}.",
+    handover_redraft_hint: "De e-mail gaat naar hun lijst met jouw notitie erboven; Axle stelt het antwoord daarna opnieuw op met de hele conversatie in beeld.",
+    handover_note_required: "Schrijf eerst een notitie: deze e-mail gaat naar een andere mailbox.",
+    handover_banner: "Overgedragen door {by} (van {from})", unassigned: "niet toegewezen",
+    return_label: "+ Retourlabel", return_label_ok: "Label maken", return_label_toast: "Retourlabel bijgevoegd, wordt opnieuw opgesteld",
+    return_label_confirm: "Retourlabel maken?\n\nEr wordt in MyParcel een betaald PostNL-retourlabel naar ons magazijn gemaakt en bij dit antwoord gevoegd. Wij betalen het zodra de klant het gebruikt. Axle stelt het antwoord daarna opnieuw op en vermeldt het label.",
+    return_label_off: "Retourlabels zijn niet ingeschakeld.",
+    return_label_no_country: "Deze e-mail is niet te koppelen aan een SAP-klant met een land, dus er kan geen retourlabel worden gemaakt.",
+    return_label_abroad: "Geen zending van ons gevonden bij de orders van deze klant, en een los PostNL-retourlabel werkt alleen binnen Nederland (land klant: {country}). Er is niets gemaakt.",
+    return_label_dry: "Proefrun: er zou een retourlabel worden gemaakt ({what}). Er is niets gemaakt.",
+    return_label_failed: "MyParcel kon het retourlabel niet maken. Er is niets bijgevoegd.",
     blocked_toast: "Afzender geblokkeerd", teach_done: "Doorgegeven aan Brad",
     teach_withdrawn: "Melding ingetrokken", not_sent: "Niet verstuurd", nothing_sent: "Er is niets verstuurd.",
     details: "Details", redraft: "Opnieuw opstellen", answer_ph: "Antwoord hier en stel daarna opnieuw op",
@@ -771,7 +797,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax14";  // 2026-10-08: round 3 polish (phone To line column, Cc pills stay while typing)
+const ASSET_V = "ax15";  // 2026-10-09: live refresh no longer held by a focused row; handover note, return label
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

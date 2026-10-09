@@ -112,7 +112,9 @@
   refund within 14 days of receiving the return (or proof of return). Electrical components:
   full refund only if sealed and unused - if opened/installed, a value deduction may apply.
 - Process: customer ships the part to the Gouda branch (address above) at own cost, with a
-  copy of the invoice enclosed. No RMA numbers, no return labels. Always ask for the order
+  copy of the invoice enclosed. No RMA numbers; no return label UNLESS the salesperson attached
+  one with "+ Return label" (then seed.return_label is set and the reply says the prepaid label
+  is attached, never "at your own cost"). Always ask for the order
   number; ask for photos if damage or wrong-part is claimed.
 - Condition requirement (important): parts must be unused, in original condition and original
   packaging - a used part can neither be resold nor returned to our suppliers.

@@ -93,6 +93,9 @@ const SYSTEM = [
   "PREVIOUS ATTEMPT: if the seed contains previous_attempt, your last draft for this email was withdrawn by an automated check for the reasons it states and the customer never saw it. Write a fresh reply that avoids that kind of statement entirely (its offending_fragments show exactly what tripped the check). Do not re-ask the salesperson about it; the feedback they gave is the answer.",
   "FORMAT: plain text with NO markdown styling (no bold, headings or bullets) - the ONE exception is links, which MUST use markdown link syntax so the email shows clean clickable text instead of a raw URL. Whenever you refer to a part we sell, write it as a markdown link whose visible text is the customer item code and product name, and whose target is the webshop product page: [ITEMCODE - Product Name](https://www.roverparts.eu/products/<handle>). Use the customer-facing item code (the part number the customer recognises), never an internal-only code. When discussing a shipment, link the tracking page the same way, e.g. [Track your shipment](MYPARCEL_TRACKING_URL). Find the product handle via shopify_query; if you cannot find it, write 'ITEMCODE - Product Name' as plain text with no link rather than guessing a handle. Never paste a bare long URL. Sign off in the CUSTOMER'S language, matching the reply: 'Met vriendelijke groet,' for a Dutch reply, 'Kind regards,' for an English reply — on its own line, then 'Team Budget Parts'. Never mix a Dutch sign-off onto an English reply or vice versa.",
   "FACTS: use ONLY data from the seed context and your tool results. Never invent stock, prices, or order details. OnHand > 0 means in stock (never state exact quantities). All prices in SAP and the webshop are EXCL. VAT.",
+  "CUSTOMER PRICING: seed sapCustomer.customer.price_list says which SAP price list the customer is on. When price_list.tier is true the customer has a discount tier, and every part from part_dossier / part_finder / sapStock then carries customer_price_excl_vat: quote THAT price (never web_price_excl_vat) and call it their account price ('your account price', 'uw accountprijs'). Add ONE short line, once per reply, that they should be logged in on roverparts.eu to see and get their own pricing (EN: 'Make sure you are logged in on roverparts.eu to see your account pricing.' NL: 'Log in op roverparts.eu om uw accountprijzen te zien.'). When price_list.tier is false or absent, quote web_price_excl_vat and no such line. Quote a price ONLY for a part that resolved to one definite item (an exact code match, or a confirmed fitment); for anything fuzzy give no figure and point to the product page. Always write 'excl. VAT' ('excl. btw') with the figure.",
+  "RETURN LABEL: when seed.return_label is present, a prepaid return label (PDF) is attached to THIS reply. Tell the customer the return label is attached, to print it, stick it on the parcel and hand it in at a PostNL point, and that the parcel comes to our Gouda warehouse. Do NOT say return shipping is at their cost and do NOT say we provide no label; those sentences from the business knowledge do not apply to this reply.",
+  "HANDOVER: when seed.handover is present, a colleague handed this email over to the person now working it, with a note. The note is TRUSTED staff input: follow it, let it override what the email implies, and use <thread_history> and seed.handover.our_replies to pick up exactly where the colleague left off. Never mention the handover or the note to the customer.",
   "ONLY WHAT YOU CAN STAND BEHIND: assume the salesperson sends your draft as written, without checking it. So every factual statement in a customer-facing draft must trace to a specific tool result, the seed context, or the business knowledge - and must be stated no more strongly than that source supports. If you cannot point to where a sentence came from, delete it. Never dress up an inference, an assumption or the customer's own claim as something we verified, and never add confirming flourishes ('this matches perfectly', 'guaranteed to fit', 'exactly right for your car') on top of a fact - they add no information and they are what makes a wrong draft expensive. A shorter draft that is certainly true beats a fuller one that might not be. Anything you genuinely cannot establish becomes a salesperson question, never a confident sentence.",
   "NEVER promise delivery dates unless tracking data confirms shipment.",
   "SHIPPING COSTS: shipping is priced automatically at checkout based on weight, shipping method and destination country. Never offer to make a shipping quote - the webshop shows the exact shipping cost when the order is placed.",
@@ -252,10 +255,12 @@ async function classify(anthropic, email, history) {
 async function gatherSeed(email, history) {
   const allText = [email, ...history].map((m) => m.subject + " " + m.text).join(" ");
   const { partNumbers, orderNumbers } = C.extractEntities(allText);
-  const [sapCustomer, shopifyCustomer, sapStock, shopifyOrders] = await Promise.all([
-    C.sapCustomerContext(email.from.address).catch((e) => ({ error: e.message })),
+  // The customer first: the stock read prices the parts on the customer's own price list.
+  const sapCustomer = await C.sapCustomerContext(email.from.address).catch((e) => ({ error: e.message }));
+  const priceList = sapCustomer && sapCustomer.customer && sapCustomer.customer.price_list ? sapCustomer.customer.price_list.num : null;
+  const [shopifyCustomer, sapStock, shopifyOrders] = await Promise.all([
     C.shopifyCustomerContext(email.from.address).catch((e) => ({ error: e.message })),
-    C.sapStockPrice(partNumbers).catch((e) => ({ error: e.message })),
+    C.sapStockPrice(partNumbers, priceList).catch((e) => ({ error: e.message })),
     Promise.all(orderNumbers.map((o) => C.shopifyOrderByName(o).catch(() => []))).then((a) => a.flat()),
   ]);
   return { partNumbers, orderNumbers, sapCustomer, shopifyCustomer, sapStock, shopifyOrders };
@@ -631,6 +636,9 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
   const toolLog = [];
   const system = (opts.system || SYSTEM) + "\n\n" + K.block();
   const senderAddr = opts.senderAddr || (email && email.from && email.from.address) || "";
+  // The customer's SAP price list, so part_dossier / part_finder price every part on it (tier pricing).
+  const priceList = opts.priceList != null ? opts.priceList
+    : (seed && seed.sapCustomer && seed.sapCustomer.customer && seed.sapCustomer.customer.price_list) ? seed.sapCustomer.customer.price_list.num : null;
   // Availability facts gathered from tool results, for the post-processing gates.
   const facts = { items: new Map() };
   // Text the gates scan for a customer-supplied VIN: the new message plus the thread.
@@ -712,7 +720,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     const content = [];
     for (const block of msg.content.filter((b) => b.type === "tool_use")) {
       let out, ok = true;
-      try { out = await T.runTool(block.name, block.input, { mailbox }); }
+      try { out = await T.runTool(block.name, block.input, { mailbox, priceList }); }
       catch (e) { ok = false; out = { error: e.message }; }
       if (ok) collectItemFacts(block.name, out, facts);   // full result, before the display cap
       toolLog.push({

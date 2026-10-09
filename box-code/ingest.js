@@ -39,6 +39,7 @@ const US = require("./unread-sweep.js");         // which unread mail the waterm
 const MS = require("./message-store.js");        // every message of the thread and its attachments, files on disk
 const SEARCH = require("./search.js");           // the search index row of each item touched
 const DM = require("./draft-media.js");          // the customer's images and PDFs shown to the drafter
+const HO = require("./handover.js");             // owner handover: skip our own forward, carry the note into a redraft
 const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
@@ -128,6 +129,14 @@ async function processThread(anthropic, key, msgs, ctx) {
   const existing = db
     .prepare("SELECT id, latest_message_id, sender_email, recipient, cc_json, origin FROM work_items WHERE mailbox = ? AND conversation_key = ?")
     .get(boxName, key);
+
+  // Our own handover forward (2026-10-09): the handed-over item already moved to the receiver's
+  // queue with the whole thread, so the forward's copy in this mailbox is not a second item.
+  if (!existing && rule.id === "internal_forward") {
+    const recent = db.prepare("SELECT id, subject, handover_json FROM work_items WHERE handover_json IS NOT NULL AND updated_at >= datetime('now', '-2 days')").all();
+    const dup = HO.isOwnForward(email, boxName, recent);
+    if (dup) { audit("system", "handover_copy_skipped", dup, `forward ${String(email.id).slice(0, 24)} in ${boxName}`); return { skip: "handover_copy" }; }
+  }
   if (existing && existing.latest_message_id === email.id) {
     // Nothing new to draft, but the thread is still stored and a failed listing or fetch retried.
     await MS.storeThread(existing.id, boxName, MAILBOX, msgs);
@@ -264,6 +273,10 @@ async function processThread(anthropic, key, msgs, ctx) {
   // Agentic investigation + draft (same engine as drafts2).
   const seed = await E.gatherSeed(email, history);
   if (callerInfo) seed.caller_match = callerInfo;
+  // A handed-over item that the customer writes back on: the colleague's note still applies.
+  const ho = HO.read(db.prepare("SELECT handover_json FROM work_items WHERE id = ?").get(itemId));
+  if (ho) seed.handover = HO.seedBlock(ho, db.prepare("SELECT to_addr, body, sent_by, sent_at FROM sends WHERE work_item_id = ? AND status = 'sent' ORDER BY sent_at, id").all(itemId)
+    .map((r) => ({ to: r.to_addr, text: r.body || "", by: r.sent_by, sent_at: r.sent_at })));
   const media = await DM.prepare(itemId, boxName, "system");   // never throws; the thread is stored above
   const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX, {
     exemplars: { intent: cls.intent, language: cls.language, mailbox: boxName, excludeItemId: itemId },

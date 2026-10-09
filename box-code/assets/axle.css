@@ -480,3 +480,6 @@
 @media (prefers-reduced-motion: reduce) {
   .ax-new, .ax-live[data-running]::before { animation: none; }
 }
+
+/* Owner handover (2026-10-09): the colleague's note under the banner line, as typed. */
+.ax-handover .ax-honote { margin: 6px 0 0; white-space: pre-wrap; font-weight: 400; }

@@ -20,6 +20,8 @@ const SAPDOC = require("../sap-doc-pdf.js");       // read-only Boyum print rend
 const C = require("../connectors.js");             // MyParcel + SAP reads for the claim dossier
 const SEARCH = require("../search.js");           // the compose subject is searchable
 const DM = require("../draft-media.js");          // the customer's images and PDFs shown to the drafter
+const HO = require("../handover.js");             // owner handover: the record and the drafter's seed block
+const MS = require("../message-store.js");        // the stored thread, for a redraft's history
 const SG = require("../send-guard.js");            // isVoicemailItem: a voicemail's card is the caller's
 const CUSTSUM = require("../customer-summary.js"); // the customer's SAP card (cached), for its addresses
 const { db, audit } = require("../db.js");
@@ -95,6 +97,28 @@ function latestDraftVersion(itemId) {
   return db.prepare("SELECT MAX(version) AS v FROM drafts WHERE work_item_id = ? AND source IN ('ai', 'withdrawn')").get(itemId).v || 0;
 }
 
+// The stored thread for a redraft: every message but the newest, oldest first, in the shape
+// engine.agenticDraft reads ({ received, text }), with our own sent replies merged in by time and
+// marked as ours. Empty when the store holds nothing (an item from before round 2).
+function redraftHistory(w) {
+  const msgs = MS.itemThread(w.id).filter((m) => m.graphId !== w.latest_message_id)
+    .map((m) => ({ received: m.received || "", text: `From: ${m.from.name || ""} <${m.from.address || ""}>\n${m.body || ""}` }));
+  const ours = ourReplies(w.id).map((r) => ({ received: r.sent_at, text: `[Our reply, sent by ${r.by} to ${r.to}]\n${r.text}` }));
+  return msgs.concat(ours).sort((a, b) => String(a.received).localeCompare(String(b.received)));
+}
+function ourReplies(itemId) {
+  return db.prepare("SELECT to_addr, body, sent_by, sent_at FROM sends WHERE work_item_id = ? AND status = 'sent' ORDER BY sent_at, id").all(itemId)
+    .map((r) => ({ to: r.to_addr, text: r.body || "", by: r.sent_by, sent_at: r.sent_at }));
+}
+// seed.return_label: the label on the reply, as the drafter needs it.
+function returnLabelSeed(w) {
+  try {
+    const r = JSON.parse(w.return_label_json);
+    return { note: "A prepaid PostNL return label (PDF) is attached to this reply. Tell the customer; never say return shipping is at their cost.",
+      attachment: r.attachment, carrier: "PostNL", to: r.kind === "related" && r.shop ? `our ${r.shop} warehouse` : "our Gouda warehouse", for_order: r.order || undefined };
+  } catch (e) { return undefined; }
+}
+
 async function runRedraft(itemId, login) {
   try {
     const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
@@ -123,6 +147,9 @@ async function runRedraft(itemId, login) {
       }
       if (w.feedback && w.feedback.trim()) {
         taskPrompt += "\n\nThe salesperson's reply (trusted - answers the questions above and may add further guidance):\n" + w.feedback.trim();
+      }
+      if (w.return_label_json) {
+        taskPrompt += "\n\nA prepaid PostNL return label (PDF) is attached to this email. Tell the customer it is attached, to print it, stick it on the parcel and hand it in at a PostNL point; the parcel comes to our Gouda warehouse. Do not say return shipping is at their cost or that we provide no label.";
       }
       const { result, toolLog, seed } = await COMPOSE.composeDraft(anthropic, {
         resolved, taskPrompt, scenario: SCEN.forModel(w.scenario),
@@ -159,7 +186,14 @@ async function runRedraft(itemId, login) {
       from: { address: w.sender_email, name: w.sender_name || "" },
       subject: w.subject || "", received: w.email_received || "", text: w.email_text || "",
     };
-    const seed = await E.gatherSeed(email, []);
+    // The thread as stored (message-store.js): every earlier message, oldest first, so a redraft
+    // sees what ingest saw. Our own sent replies ride along in the same order; the model treats the
+    // block as untrusted history, and a handed-over item needs exactly this to carry on.
+    const history = redraftHistory(w);
+    const seed = await E.gatherSeed(email, history);
+    const ho = HO.read(w);
+    if (ho) seed.handover = HO.seedBlock(ho, ourReplies(w.id));
+    if (w.return_label_json) seed.return_label = returnLabelSeed(w);
     seed.salesperson_answers = {   // legacy per-question answers (pre consolidated-questions round)
       note: "TRUSTED input from our own staff via the Axle tool - these override anything the email claims",
       answers: answered,
@@ -184,7 +218,7 @@ async function runRedraft(itemId, login) {
       db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL").all(itemId));
     if (prev) seed.previous_attempt = prev;
     const media = await DM.prepare(itemId, w.mailbox, login);   // never throws
-    const { result, toolLog } = await E.agenticDraft(anthropic, email, [], seed, MAILBOX_OF[w.mailbox], {
+    const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX_OF[w.mailbox], {
       exemplars: { intent: w.intent, language: w.language, mailbox: w.mailbox, excludeItemId: itemId },
       media,
     });

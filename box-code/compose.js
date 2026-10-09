@@ -9,6 +9,7 @@
 // data. The RECIPIENT is never authored by the model - it is resolved deterministically in
 // resolve-customer.js, withheld from the model seed, and confirmed by a human in the UI.
 const E = require("./engine.js");
+const C = require("./connectors.js");
 
 // Shared operational rules are reproduced verbatim from engine.js's reply SYSTEM so draft tone,
 // format, facts and policy stay identical across reply and compose. The injection-hardened reply
@@ -40,6 +41,7 @@ const COMPOSE_SYSTEM = [
   "VIN: you CANNOT decode a VIN - our VIN handling reads the model YEAR only, never the model, engine, gearbox or build options. NEVER write, in any language, that a part matches / fits / is confirmed for a VIN, that the VIN shows or confirms anything, or that you checked or verified a VIN or chassis number. You may recommend a part from OUR data (U_Tag_Model fitment) when it clearly matches the vehicle as DESCRIBED, attributed as such. Where a VIN is involved, add a physical_check asking the salesperson to verify fitment on JLR EPC before sending.",
   "NEVER promise delivery dates unless tracking data confirms shipment; a supplier ETA may be relayed only as an estimate, clearly worded as expected and subject to change.",
   "SHIPPING COSTS: shipping is priced automatically at checkout based on weight, shipping method and destination country. Never offer to make a shipping quote - the webshop shows the exact shipping cost when the order is placed.",
+  "CUSTOMER PRICING: seed customer_price_list (when present) is the customer's SAP price list. When its tier is true, parts from part_dossier / part_finder carry customer_price_excl_vat: quote THAT price as their account price, never web_price_excl_vat, and add one short line that they should be logged in on roverparts.eu to see their account pricing. Otherwise quote web_price_excl_vat. Quote a price only for a definite item match; always write 'excl. VAT' with the figure.",
   "SHIPPING HISTORY: to check whether we have shipped to a country before, query SAP document ship-to addresses (RDR12 for sales orders, INV12 for AR invoices, column CountryS = ISO-2 code), then cross-check MyParcel by SAP order number.",
   "confidence: high = draft can be sent nearly as-is; medium = needs review; low = salesperson should largely rewrite.",
   "When your investigation is complete, respond with ONLY the JSON object below - no prose, no explanation, no markdown, and never wrapped in a code fence:",
@@ -110,8 +112,13 @@ async function composeDraft(anthropic, { resolved, taskPrompt, scenario, languag
     };
   }
 
+  // Tier pricing: the resolved customer's SAP price list, so the part tools price on it (best effort).
+  const cardCode = resolved && resolved.customer && resolved.customer.cardCode;
+  let priceList = null;
+  try { priceList = cardCode ? await C.customerPriceList(cardCode) : null; } catch (e) { priceList = null; }
+  if (priceList) seed.customer_price_list = priceList;
   const { result, toolLog } = await E.agenticDraft(anthropic, null, [], seed, mailbox, {
-    system: COMPOSE_SYSTEM, userContent, senderAddr: to,
+    system: COMPOSE_SYSTEM, userContent, senderAddr: to, priceList: priceList ? priceList.num : null,
   });
   return { recipient: to, seed, result, toolLog };
 }

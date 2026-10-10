@@ -59,9 +59,17 @@ const toolDefs = [
   },
   {
     name: "return_dossier",
-    description: "For a RETURN / WITHDRAWAL request, look up EVERYTHING about that return in ONE call — use this FIRST for any return, retour, withdrawal/herroeping, or a Shopify 'Return requested for order #S...' notification, instead of hand-writing order/invoice SQL. Pass the order reference the customer quotes (Shopify order name '#S18522' or 'S18522', or a SAP DocNum). Returns: the Shopify Return object (return_object.present + status, and per-line reason/reason_note/customer_note + who_pays_default), the real customer_email (the recipient for a Shopify-notification reply — the notification's sender is info@, NOT the customer), the SAP order (payment + refund_route), whether an AR invoice exists (shipped=true = goods shipped/collected) with days_since_shipped and the within_14_day_withdrawal / within_goodwill_60 flags, per-item facts (customer_code, quality, abc, category, unit_price_excl_vat, electrical_hint), and customer signals (customer_signal.likely_business, tier, prior_credit_notes = return history). All fields are HINTS: YOU judge electrical (sealed/value-deduction rule) and B2C-vs-B2B (statutory withdrawal + 15% restocking) from the signals. found=false means the reference matched no order — then try shopify_query / sap_query.",
+    description: "For a RETURN / WITHDRAWAL request, look up EVERYTHING about that return in ONE call — use this FIRST for any return, retour, withdrawal/herroeping, or a Shopify 'Return requested for order #S...' notification, instead of hand-writing order/invoice SQL. Pass the order reference the customer quotes (Shopify order name '#S18522' or 'S18522', or a SAP DocNum). Returns: the Shopify Return object (return_object.present + status, and per-line reason/reason_note/customer_note + who_pays_default), the real customer_email (the recipient for a Shopify-notification reply — the notification's sender is info@, NOT the customer), the SAP order (payment + refund_route), whether an AR invoice exists (shipped=true = goods shipped/collected) with days_since_shipped and the within_14_day_withdrawal / within_goodwill_60 flags, per-item facts (customer_code, quality, abc, category, unit_price_excl_vat, electrical_hint), and customer signals (customer_signal.likely_business, tier, prior_credit_notes = return history). All fields are HINTS: YOU judge electrical (sealed/value-deduction rule) and B2C-vs-B2B (statutory withdrawal; there is no restocking fee) from the signals. found=false means the reference matched no order — then try shopify_query / sap_query.",
     input_schema: { type: "object", properties: {
       order_ref: { type: "string", description: "the order the customer quotes: Shopify name '#S18522'/'S18522', or a SAP DocNum" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["order_ref", "purpose"] },
+  },
+  {
+    name: "order_status",
+    description: "For ANY 'where is my order', order status, delivery or 'has it shipped' question, call this FIRST with the order reference the customer quotes (Shopify '#S20813'/'S20813' or a SAP order number) instead of hand-writing order/invoice SQL. Returns the order (paid, shipping method), every line with its warehouse and open quantity, the invoices drawn from it, the MyParcel shipments carrying its number, and ONE state with a note you must follow: awaiting_collection / collected (a PICKUP order at Gouda or Drachten - never call it late or unshipped), shipped, partially_shipped (lines still open in a warehouse - never say the order is complete), with_carrier, packed_label_created (label made, not yet handed over: it leaves today and tracking follows - never 'no tracking' or 'our fault'), not_dispatched (with past_dispatch_promise), cancelled. For tracking events and the customer tracking link, follow up with myparcel_track using a shipment id. found=false: try shopify_query / sap_query.",
+    input_schema: { type: "object", properties: {
+      order_ref: { type: "string", description: "the order the customer quotes: Shopify name '#S20813'/'S20813', or a SAP order number" },
       purpose: { type: "string", description: "one line: why you need this" },
     }, required: ["order_ref", "purpose"] },
   },
@@ -111,6 +119,7 @@ async function runTool(name, input, ctx) {
   if (name === "sap_query") return sapQuery(String(input.sql));
   if (name === "part_dossier") return C.partDossier(String(input.code), { priceList: ctx.priceList });
   if (name === "return_dossier") return C.returnDossier(String(input.order_ref));
+  if (name === "order_status") return C.orderStatus(String(input.order_ref || "").slice(0, 40));
   // The barcode is untrusted input, but it can only resolve inside our own MyParcel account and
   // the order is read off the shipment's label, so it cannot widen scope. Length-capped like the
   // other free-text arguments.

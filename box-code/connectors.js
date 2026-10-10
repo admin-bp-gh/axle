@@ -625,6 +625,26 @@ async function partDossier(code, opts = {}) {
      ORDER BY rnk`
   )).recordset;
 
+  // Step 1a — fallback (2026-10-10 draft review): the code as customers actually write it. A
+  // leading zero (03649 = 3649), our 90-prefixed six-digit codes (214787 = 90214787), a supplier
+  // suffix (614123519LR, ...G, ...LUCAS, ...BM) or the ETC/RTC prefix swap. Item 2297 told a trade
+  // customer 13 lines did not exist for exactly these reasons. The dossier says which code it read,
+  // so the reply can tell the customer.
+  let readAs = null;
+  if (!matches.length) {
+    const vars = codeVariants(q);
+    if (vars.length) {
+      const req = pool.request();
+      const ph = vars.map((v, i) => { req.input("v" + i, sql.NVarChar, v); return "@v" + i; }).join(",");
+      matches = (await req.query(
+        `SELECT TOP (5) ItemCode, U_WS_LRNo FROM OITM
+         WHERE ItemCode IN (${ph}) OR U_Code_AllMakes IN (${ph}) OR U_Code_BritPart IN (${ph})
+            OR U_Code_Hotbray IN (${ph}) OR U_WS_LRNo IN (${ph})`
+      )).recordset;
+      if (matches.length) readAs = matches[0].ItemCode;
+    }
+  }
+
   // Step 1b — fallback: a superseded/equivalent code that only lives in U_Alternatives
   // (guarded to >=4 chars to avoid spurious substring hits).
   if (!matches.length && q.length >= 4) {
@@ -682,7 +702,25 @@ async function partDossier(code, opts = {}) {
     }
   } catch (e) { handleMap = {}; }
 
-  return { query: q, matched: [...matchedSet], items: assembleDossier(family, matchedSet, handleMap) };
+  const out = { query: q, matched: [...matchedSet], items: assembleDossier(family, matchedSet, handleMap) };
+  if (readAs) out.note = `No exact match for ${q}; read as ${readAs}. Tell the customer which code you read it as.`;
+  return out;
+}
+
+// Spellings of a part code worth trying when the exact code matches nothing. Pure, for tests.
+// L/R suffixes are deliberately NOT stripped: they are left/right variants, different parts.
+function codeVariants(code) {
+  const q = String(code || "").trim().toUpperCase();
+  const out = new Set();
+  if (/^0+\d+$/.test(q)) out.add(q.replace(/^0+/, ""));
+  if (/^\d{6}$/.test(q)) out.add("90" + q);
+  const swap = q.match(/^(ETC|RTC)(\d.*)$/);
+  if (swap) out.add((swap[1] === "ETC" ? "RTC" : "ETC") + swap[2]);
+  const suf = q.match(/^(.*\d)(LR|LUCAS|BM|G)$/);
+  if (suf) out.add(suf[1]);
+  if (/\d$/.test(q)) { out.add(q + "LR"); out.add(q + "G"); }
+  out.delete(q);
+  return [...out];
 }
 
 // ---------- Part finder (P1.2): model/VIN + description -> RANKED candidates ----------
@@ -1431,7 +1469,7 @@ function whoPaysForReason(reason) {
 
 // Business-vs-consumer signal from the card name + VAT number (no hard SAP field — Brad's
 // decision is to judge it). A VAT number present, or a business marker in the name, => likely
-// business (no statutory withdrawal right; 15% restocking fee may apply). The model decides.
+// business (no statutory withdrawal right; there is no restocking fee). The model decides.
 // Leading boundary only (no trailing \b) so concatenated business words match too — e.g.
 // "Autobedrijf Jansen" / "Garagebedrijf" (the standard Dutch forms) must read as business.
 const BUSINESS_NAME_RE = /\b(auto|bedrijf|b\.?v\.?\b|service|garage|ltd|gmbh|holding|automotive|4x4|motors|trading|company|handel|onderdelen|parts|tuning|classics?)/i;
@@ -1461,6 +1499,93 @@ function refundRoute(uPaid) {
 }
 
 const daysBetween = (a, b) => Math.floor((a.getTime() - b.getTime()) / 86400000);
+
+// ---------- Order status (2026-10-10 draft review) ----------
+// "Where is my order" drafts went wrong in three ways the data could have prevented: pickup orders
+// called late (items 1883, 2181), a packed parcel with a label but no invoice called "no tracking,
+// our fault" (2114), and a split-warehouse order called complete because one invoice existed (647,
+// 1557). orderStatus reads the order, its lines per warehouse, the invoices drawn from it and the
+// MyParcel shipments carrying its number, and orderState turns that into one state the draft can
+// rely on. Pure orderState for tests; orderStatus does the I/O.
+const COLLECT_TRANSPORT = { 1: "Gouda", 5: "Drachten" };   // OSHP: 1 Collect - Gouda, 5 Collect - Drachten
+const WAREHOUSE_NAME = { "10-GOU": "Gouda", "20-DRA": "Drachten" };
+// mssql returns datetime columns as Date objects; tests pass strings.
+const isoDay = (v) => (v instanceof Date ? v.toISOString() : String(v || "")).slice(0, 10);
+
+function orderState({ order, lines = [], invoices = [], shipments = [] }, now = Date.now()) {
+  if (!order) return { state: "not_found" };
+  if (order.CANCELED === "Y") return { state: "cancelled", note: "The order was cancelled." };
+  const open = lines.filter((l) => Number(l.OpenQty) > 0);
+  const done = lines.filter((l) => Number(l.Quantity) - Number(l.OpenQty) > 0);
+  const pickupBranch = COLLECT_TRANSPORT[order.TrnspCode] || null;
+  const openByWh = {};
+  for (const l of open) (openByWh[l.WhsCode] = openByWh[l.WhsCode] || []).push(l);
+  const openWarehouses = Object.keys(openByWh).map((w) => WAREHOUSE_NAME[w] || w);
+  const days = Math.floor((now - Date.parse(isoDay(order.DocDate) + "T12:00:00Z")) / 864e5);
+  const shipCode = (s) => parseInt(String(s.status), 10);
+  const labelOnly = shipments.filter((s) => [1, 2].includes(shipCode(s)));
+  const moving = shipments.filter((s) => shipCode(s) >= 3 && shipCode(s) < 17);
+
+  if (pickupBranch) {
+    if (!open.length) return { state: "collected", pickup_branch: pickupBranch, note: `A pickup order at ${pickupBranch}; it has been collected (invoiced).` };
+    return { state: "awaiting_collection", pickup_branch: pickupBranch,
+      note: `A pickup order at ${pickupBranch}, not a delivery: it is not late. The ready-for-collection email may be in spam. Picking itself is a salesperson check.` };
+  }
+  if (!open.length) return { state: "shipped", note: "Every line has been invoiced: the order has shipped. Use the shipments for tracking." };
+  if (done.length) {
+    return { state: "partially_shipped", open_warehouses: openWarehouses,
+      note: `Part of the order has shipped; lines are still open in ${openWarehouses.join(" and ")}. Do not tell the customer the order is complete or delivered.` };
+  }
+  if (moving.length) return { state: "with_carrier", note: "A parcel is with the carrier but the order is not invoiced yet. Use the shipment for tracking." };
+  if (labelOnly.length) return { state: "packed_label_created",
+    note: "A shipping label exists but the parcel has not been handed to the carrier yet: it is packed and leaves today, and the tracking follows. It is not lost and not a fault." };
+  return { state: "not_dispatched", days_since_order: days, past_dispatch_promise: days >= 2,
+    open_warehouses: openWarehouses,
+    note: days >= 2 ? "Not dispatched and past the dispatch promise: flag the delay to the salesperson and check which warehouse holds the stock."
+      : "Not dispatched yet, within the normal dispatch window." };
+}
+
+async function orderStatus(orderRef) {
+  const raw = String(orderRef || "").trim();
+  const mName = raw.match(/S\d{4,6}/i);
+  const shopName = mName ? "#" + mName[0].toUpperCase() : null;
+  const mDoc = raw.match(/\b\d{5,7}\b/);
+  const docNum = !shopName && mDoc ? parseInt(mDoc[0], 10) : null;
+  if (!shopName && !docNum) return { order_ref: raw, found: false, note: "no Shopify order name (S#####) or SAP order number in the reference" };
+  const pool = await getPool();
+  const req = pool.request();
+  if (shopName) req.input("nac", sql.NVarChar, shopName); else req.input("dn", sql.Int, docNum);
+  const order = (await req.query(
+    `SELECT TOP 1 T0.DocEntry, T0.DocNum, T0.NumAtCard, T0.CardCode, T0.CardName, T0.DocDate, T0.DocStatus,
+            T0.CANCELED, T0.U_Paid, T0.DocTotal, T0.TrnspCode, S.TrnspName
+     FROM ORDR T0 LEFT JOIN OSHP S ON S.TrnspCode = T0.TrnspCode
+     WHERE ${shopName ? "T0.NumAtCard = @nac" : "T0.DocNum = @dn"} ORDER BY T0.DocDate DESC`)).recordset[0];
+  if (!order) return { order_ref: raw, found: false, note: "no SAP order found for this reference" };
+  const r2 = pool.request().input("de", sql.Int, order.DocEntry);
+  const lines = (await r2.query(
+    `SELECT L.LineNum, L.ItemCode, L.Dscription, L.Quantity, L.OpenQty, L.WhsCode,
+            COALESCE(NULLIF(I.U_Code_AllMakes,''), NULLIF(I.U_Code_BritPart,''), NULLIF(I.U_Code_Hotbray,''), NULLIF(I.U_WS_LRNo,''), L.ItemCode) AS CustomerCode
+     FROM RDR1 L LEFT JOIN OITM I ON I.ItemCode = L.ItemCode WHERE L.DocEntry = @de ORDER BY L.LineNum`)).recordset;
+  const invoices = (await pool.request().input("de", sql.Int, order.DocEntry).query(
+    `SELECT DISTINCT H.DocNum, H.DocDate, H.CANCELED FROM INV1 D JOIN OINV H ON H.DocEntry = D.DocEntry
+     WHERE D.BaseType = 17 AND D.BaseEntry = @de AND H.CANCELED = 'N'`)).recordset;
+  let shipments = [];
+  try {
+    shipments = (await myparcelSearch(String(order.DocNum), 10))
+      .filter((s) => String(s.reference || "").includes(String(order.DocNum)));
+  } catch (e) { shipments = []; }
+  const st = orderState({ order, lines, invoices, shipments });
+  return {
+    found: true,
+    order: { sap_order: order.DocNum, shopify_order: order.NumAtCard || null, date: isoDay(order.DocDate),
+      paid: order.U_Paid && order.U_Paid !== "N", payment_code: order.U_Paid, shipping_method: order.TrnspName || null },
+    ...st,
+    lines: lines.map((l) => ({ customer_code: l.CustomerCode, name: l.Dscription, quantity: Number(l.Quantity),
+      open_quantity: Number(l.OpenQty), warehouse: WAREHOUSE_NAME[l.WhsCode] || l.WhsCode })),
+    invoices: invoices.map((i) => ({ number: i.DocNum, date: isoDay(i.DocDate) })),
+    shipments: shipments.map((s) => ({ id: s.id, branch: s.shop, status: s.status, carrier: s.carrier, barcode: s.barcode, created: s.created })),
+  };
+}
 
 async function returnDossier(orderRef, opts = {}) {
   const raw = String(orderRef || "").trim();
@@ -1854,6 +1979,7 @@ module.exports = {
   callerCardFacts, decideCallerCard, formatCallerInfo, lookupCaller, contactPersons, callerPeople,
   returnDossier, whoPaysForReason, businessSignal, electricalHint, refundRoute,
   claimDossier,
+  orderStatus, orderState, codeVariants,
 };
 
 

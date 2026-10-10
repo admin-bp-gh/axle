@@ -89,4 +89,49 @@ test("day-old wording: only a draft from an earlier Amsterdam day that leans on 
   assert.ok(!DS.isDayOldWording({ created_at: "2026-10-09 23:30:00" }, "vandaag", now));
 });
 
+// ---------------------------------------------------------------- round 2: order status, part codes
+const C = require("./connectors.js");
+const NOW = Date.parse("2026-10-10T10:00:00Z");
+const order = (o = {}) => ({ DocNum: 231000, DocDate: "2026-10-09", TrnspCode: 3, CANCELED: "N", ...o });
+const line = (wh, qty, open) => ({ WhsCode: wh, Quantity: qty, OpenQty: open });
+
+test("order state: a pickup order is awaiting collection, never late (items 1883, 2181)", () => {
+  const s = C.orderState({ order: order({ TrnspCode: 1, DocDate: "2026-09-20" }), lines: [line("10-GOU", 1, 1)] }, NOW);
+  assert.equal(s.state, "awaiting_collection");
+  assert.equal(s.pickup_branch, "Gouda");
+  assert.equal(C.orderState({ order: order({ TrnspCode: 5 }), lines: [line("20-DRA", 1, 0)] }, NOW).state, "collected");
+});
+
+test("order state: a label without an invoice is packed and leaving today (item 2114)", () => {
+  const s = C.orderState({ order: order(), lines: [line("10-GOU", 2, 2)], shipments: [{ status: "2 (pending - registered)" }] }, NOW);
+  assert.equal(s.state, "packed_label_created");
+  assert.equal(C.orderState({ order: order(), lines: [line("10-GOU", 2, 2)], shipments: [{ status: "3 (enroute - handed to carrier)" }] }, NOW).state, "with_carrier");
+});
+
+test("order state: one warehouse invoiced and the other open is partially shipped (items 647, 1557)", () => {
+  const s = C.orderState({ order: order(), lines: [line("20-DRA", 1, 0), line("10-GOU", 4, 4)], invoices: [{ DocNum: 431000 }] }, NOW);
+  assert.equal(s.state, "partially_shipped");
+  assert.deepStrictEqual(s.open_warehouses, ["Gouda"]);
+  assert.equal(C.orderState({ order: order(), lines: [line("10-GOU", 1, 0)] }, NOW).state, "shipped");
+});
+
+test("order state: not dispatched, and flagged once past the dispatch promise", () => {
+  assert.equal(C.orderState({ order: order(), lines: [line("10-GOU", 1, 1)] }, NOW).past_dispatch_promise, false);
+  const late = C.orderState({ order: order({ DocDate: "2026-09-27" }), lines: [line("10-GOU", 1, 1)] }, NOW);
+  assert.equal(late.state, "not_dispatched");
+  assert.equal(late.past_dispatch_promise, true);
+  assert.equal(C.orderState({ order: order({ CANCELED: "Y" }), lines: [] }, NOW).state, "cancelled");
+  assert.equal(C.orderState({ order: order({ DocDate: new Date("2026-09-27T00:00:00Z") }), lines: [line("10-GOU", 1, 1)] }, NOW).past_dispatch_promise, true, "a Date from mssql works too");
+});
+
+test("part code variants: leading zero, 90 prefix, suffixes, ETC/RTC (item 2297)", () => {
+  assert.ok(C.codeVariants("03649").includes("3649"));
+  assert.ok(C.codeVariants("214787").includes("90214787"));
+  assert.ok(C.codeVariants("614123519").includes("614123519LR"));
+  assert.ok(C.codeVariants("614123519LR").includes("614123519"));
+  assert.ok(C.codeVariants("ETC5739").includes("RTC5739"));
+  assert.ok(!C.codeVariants("BTR6073L").includes("BTR6073"), "a left/right suffix is never stripped");
+  assert.ok(!C.codeVariants("3649").includes("3649"), "the code itself is not a variant");
+});
+
 console.log(`\n${pass} passed`);

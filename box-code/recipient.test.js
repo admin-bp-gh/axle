@@ -235,10 +235,18 @@ test("a confirmed recipient releases it, and goes to the customer", () => {
   assert.ok(!SG.needsConfirmedRecipient({ ...forwarded, recipient: "jan@dekker4x4.nl" }));
 });
 
-test("the refusal is keyed on the rule id only, so nothing else changes behaviour", () => {
-  // Same internal sender, different rule (e.g. the Shopify return notification, whose sender is
-  // our own info@): untouched by this guard — it has its own new-outbound path.
+test("any reply item from our own mailbox needs a recipient, not only internal_forward (2026-10-10)", () => {
+  // Sends 578 and 603 went to drachten@: the colleague's email matched catch_all, not internal_forward.
+  const colleague = { ...base, rule_id: "catch_all", sender_email: "drachten@budget-parts.nl" };
+  assert.ok(SG.needsConfirmedRecipient(colleague));
+  assert.throws(() => SG.assembleSend(colleague, BODY), /forwarded to us internally/);
+  // Choosing our own mailbox on purpose (an internal reply to a colleague) is still possible.
+  assert.equal(SG.assembleSend({ ...colleague, recipient: "drachten@budget-parts.nl" }, BODY).to, "drachten@budget-parts.nl");
+  // The Shopify return notification (sender info@) has its own new-outbound path: untouched.
   assert.ok(!SG.needsConfirmedRecipient({ ...base, rule_id: "shopify_return_request", sender_email: "info@budget-parts.nl" }));
+  assert.ok(!SG.needsConfirmedRecipient({ ...base, sender_email: "info@budget-parts.nl", return_json: "{}" }));
+  assert.ok(!SG.needsConfirmedRecipient({ ...base, sender_email: "info@budget-parts.nl", origin: "compose" }));
+  // A customer sender is untouched.
   assert.ok(!SG.needsConfirmedRecipient({ ...base, rule_id: "catch_all" }));
   assert.ok(!SG.needsConfirmedRecipient(base), "an item with no rule_id at all");
   assert.equal(SG.assembleSend(base, BODY).to, "jan@dekker4x4.nl");

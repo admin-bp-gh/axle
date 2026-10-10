@@ -593,6 +593,14 @@ app.get("/item/:id", async (req, res) => {
   const subjectName = isContactForm ? "cf_subject" : isRN ? "return_subject" : isCompose ? "compose_subject" : "";
   const subjectField = subjectName ? `<div class="wb-field ax-subj"><label class="wb-label" for="ax-subj">${L("cf_subject")}</label><div class="wb-input"><input id="ax-subj" name="${subjectName}" value="${esc(isContactForm ? cfSubjectDefault : isRN ? rnSubjectDefault : (w.subject || ""))}"></div></div>` : "";
   const aiSeed = full || interim;
+  // 2026-10-10 draft review: a reply from our own mailbox never reaches the customer (sends 578, 603),
+  // and a draft read on a later day can say "vandaag" or "Goedenavond" about the wrong day (481, 509).
+  const ownNote = editable && kind === "reply" && fwdNeedsRecipient && SG.isOwnAddress(w.sender_email)
+    ? note("warn", t(lang, "own_sender_note", { from: RSET.norm(w.sender_email) })) : "";
+  const ownToBanner = editable && kind === "reply" && !recipNeed && SG.isOwnAddress(sendTo)
+    ? banner("warn", esc(t(lang, "own_recipient_banner", { to: sendTo }))) : "";
+  const staleBanner = editable && w.draft_edit == null && aiSeed && DS.isDayOldWording(aiSeed, replyText)
+    ? banner("warn", esc(t(lang, "stale_day_banner", { when: fmtDateTime(aiSeed.created_at, lang) }))) : "";
   const isImg = (a) => /^image\//i.test(a.content_type || "");
   const attChip = (a, live) => `<span class="wb-pill ax-chip" data-tone="neutral">${icon("clip")}<span>${esc(a.name)} (${esc(fmtSize(a.size))})</span>${live && isImg(a) ? `<button type="button" class="ax-chipact" data-insimg="${a.id}">${L("img_inline_btn")}</button>` : ""}${live ? `<button class="wb-clear" name="remove_att" value="${a.id}" formnovalidate data-inline aria-label="${L("remove")} ${esc(a.name)}" title="${L("remove")}">${icon("x")}</button>` : ""}</span>`;
   // The quiet autosave mark: Saved once the server holds the text, Not saved when a save failed
@@ -609,7 +617,7 @@ app.get("/item/:id", async (req, res) => {
   const teachBtn = `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-teach">${icon("note")}<span>${L("teach_title")}</span>${teachFlags.length ? `<span class="wb-count">${teachFlags.length}</span>` : ""}</button>`;
   const docsRow = editable && !isContactForm && !isRN ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
   const fmtBtn = (f) => `<button type="button" class="wb-btn wb-btn--ghost wb-btn--icon wb-btn--sm" data-fmt="${f}" aria-pressed="false" aria-label="${L("fmt_" + f)}" title="${L("fmt_" + f)}">${icon(f)}</button>`;
-  const replyCard = editable ? `<section class="wb-card ax-reply" aria-label="${L("reply")}" data-max="${MAX_ATTACH_BYTES}">${toLine}${ccRow}${offBanner}${wdBanner}${subjectField}
+  const replyCard = editable ? `<section class="wb-card ax-reply" aria-label="${L("reply")}" data-max="${MAX_ATTACH_BYTES}">${toLine}${ownNote}${ccRow}${ownToBanner}${offBanner}${wdBanner}${staleBanner}${subjectField}
     <div class="ax-text"><div class="ax-edbar" role="toolbar" aria-label="${L("fmt_toolbar")}" aria-controls="replyed">${["bold", "italic", "underline", "list"].map(fmtBtn).join("")}</div>
       <div class="ax-ed" id="replyed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="${L("reply")}" data-placeholder="${L("reply_ph")}" spellcheck="true">${ED.toHtml(ED.parse(replyText))}</div>
       <textarea id="replybox" name="reply" hidden>${esc(replyText)}</textarea></div>

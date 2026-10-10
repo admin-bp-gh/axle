@@ -612,12 +612,86 @@ function applyDashStyle(result) {
   return result;
 }
 
+// ---------- Reply language and sign-off (2026-10-10 draft review) ----------
+// Nine sends in a month carried a sign-off in another language than the reply (a Dutch sign-off on
+// English, French and Polish replies; a redraft after English staff feedback signing a German reply
+// "Kind regards"), and one English customer got a whole reply in Dutch. The sign-off is aligned
+// deterministically with the language the reply is actually written in; when that language differs
+// from the customer's (the classifier's reading of their email), the salesperson is asked to check.
+// Nothing is withdrawn: either reading can be the wrong one (the classifier mislabels short emails),
+// so a human decides.
+const SIGNOFF = { nl: "Met vriendelijke groet,", en: "Kind regards,", de: "Mit freundlichen Grüßen,", fr: "Cordialement,", es: "Saludos cordiales," };
+const SIGNOFF_RE = /^[ \t]*(?:met vriendelijke groet(?:en)?|vriendelijke groet(?:en)?|kind regards|best regards|regards|mit freundlichen gr(?:ü|ue)(?:ß|ss)en|freundliche gr(?:ü|ue)(?:ß|ss)e|viele gr(?:ü|ue)(?:ß|ss)e|cordialement|bien cordialement|saludos cordiales|un saludo|atentamente)[ \t]*,?[ \t]*(?=\r?\n[ \t]*Team Budget Parts)/gim;
+const LANG_WORDS = {
+  nl: new Set(["de", "het", "een", "en", "je", "jij", "u", "uw", "we", "wij", "niet", "voor", "met", "van", "op", "dat", "ook", "bij", "naar", "graag", "deze", "wordt", "hebben"]),
+  en: new Set(["the", "a", "an", "and", "you", "your", "we", "are", "not", "for", "with", "of", "on", "that", "also", "to", "please", "our", "this", "will", "have"]),
+  de: new Set(["der", "die", "das", "und", "sie", "ihr", "ihre", "wir", "ist", "sind", "nicht", "für", "mit", "von", "auf", "dass", "auch", "bei", "bitte", "unser", "wird", "haben"]),
+};
+const LANG_NAME = { nl: "Dutch", en: "English", de: "German", fr: "French", es: "Spanish" };
+// The language a text is written in, or "" when it is too short or too mixed to say.
+function textLanguage(s) {
+  const words = String(s || "").replace(/\]\([^)]*\)/g, "]").toLowerCase().match(/[a-zà-ÿß]+/g) || [];
+  if (words.length < 12) return "";
+  const scores = Object.entries(LANG_WORDS).map(([l, set]) => [l, words.filter((w) => set.has(w)).length]).sort((a, b) => b[1] - a[1]);
+  const [[best, n], [, second]] = scores;
+  return n >= 4 && n >= second * 2 ? best : "";
+}
+function applyLanguageGate(result, customerLanguage) {
+  if (!result || typeof result !== "object") return result;
+  const want = String(customerLanguage || "").toLowerCase();
+  for (const slot of ["draft", "interim_draft", "ack_draft"]) {
+    const text = result[slot];
+    if (typeof text !== "string" || !text.trim()) continue;
+    const got = textLanguage(text);
+    const lang = got || String(result.language || want || "").toLowerCase();
+    result[slot] = text.replace(SIGNOFF_RE, SIGNOFF[lang] || SIGNOFF.en);
+    if (got && LANG_WORDS[want] && got !== want) {
+      const q = `The reply is written in ${LANG_NAME[got]}, but the customer's email reads as ${LANG_NAME[want]}. Check which language to answer in before sending.`;
+      const qs = result.questions_for_salesperson || (result.questions_for_salesperson = []);
+      if (!qs.includes(q)) qs.push(q);
+      if (result.confidence === "high") result.confidence = "medium";
+    }
+  }
+  return result;
+}
+
+// ---------- Claimed actions (2026-10-10 draft review) ----------
+// Drafts told customers that an order confirmation was "opnieuw verstuurd", that an order would no
+// longer ship, or that we would "check and come back", none of which anyone had done or agreed. The
+// prompt forbids it; this flags any that slip through so the salesperson does it or deletes it. Not
+// run when staff input is present (feedback, answers or a handover): then the claim usually reflects
+// what a colleague actually did. Flags only, never withdraws.
+const ACTION_CLAIM_PATTERNS = [
+  /\b(?:we|i)(?:'ve| have)\s+(?:now\s+|just\s+|already\s+)?(?:re-?sent|cancell?ed|refunded|updated|changed|amended|credited|forwarded)\b/i,
+  /\b(?:has|have)\s+(?:now\s+|just\s+|already\s+)?been\s+(?:re-?sent|cancell?ed|refunded|updated|changed|amended|credited)\b/i,
+  /\bwe(?:'ll| will)\s+(?:check|look into it|look into this|get back to you|come back to you|let you know|keep you updated)\b/i,
+  /\b(?:is|zijn|hebben we|heb ik)\s+(?:nu\s+|al\s+|zojuist\s+|inmiddels\s+)?(?:opnieuw (?:verstuurd|verzonden|gestuurd)|geannuleerd|terugbetaald|teruggestort|aangepast|gewijzigd|bijgewerkt|gecrediteerd|doorgestuurd)\b/i,
+  /\b(?:komen we|kom ik)\b[^.!?\n]{0,30}\bterug\b/i,
+  /\b(?:laten we|laat ik)\b[^.!?\n]{0,30}\b(?:weten|intern)\b/i,
+  /\b(?:wurde|wurden|haben wir|habe ich)\b[^.!?\n]{0,30}\b(?:storniert|erstattet|zurückerstattet|erneut (?:gesendet|verschickt|versandt)|geändert|aktualisiert)\b/i,
+  /\bwir\s+(?:melden uns|geben (?:ihnen|dir) bescheid)\b/i,
+];
+function applyActionClaimCheck(result, staffInput) {
+  if (!result || staffInput) return result;
+  for (const slot of ["draft", "interim_draft"]) {
+    const hit = matchAny(ACTION_CLAIM_PATTERNS, result[slot]);
+    if (!hit) continue;
+    const q = `The reply says "${hit}". Make sure that has actually been done or agreed, or take it out, before sending.`;
+    const qs = result.questions_for_salesperson || (result.questions_for_salesperson = []);
+    if (!qs.includes(q)) qs.push(q);
+    if (result.confidence === "high") result.confidence = "medium";
+  }
+  return result;
+}
+
 // Every post-processing gate, in one place, in the order they must run.
 function applyGates(result, ctx = {}) {
   let r = applyFitmentGate(applyContainment(result, ctx.senderAddr));
   r = applyClaimGate(r);
   r = applyAvailabilityGate(r, ctx.facts);
   r = applyVinCheck(r, ctx.emailText);
+  r = applyActionClaimCheck(r, ctx.staffInput);
+  r = applyLanguageGate(r, ctx.language);
   // Last: the gates above may move text between slots, so style is applied to the final wording.
   r = applyDashStyle(r);
   return r;
@@ -653,7 +727,11 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     ...(history || []).map((m) => (m && m.text) || ""),
     opts.userContent || "",
   ].join("\n");
-  const gateCtx = { senderAddr, facts, emailText: gateText };
+  const gateCtx = {
+    senderAddr, facts, emailText: gateText,
+    language: (opts.exemplars && opts.exemplars.language) || "",
+    staffInput: Boolean(seed && (seed.salesperson_feedback || seed.salesperson_answers || seed.handover)),
+  };
   let firstContent, media = null, textWith = null;
   if (opts.userContent) {
     // Compose mode: caller supplies the user message (built + sanitised in compose.js).
@@ -757,4 +835,6 @@ module.exports = {
   // Accuracy gates (2026-08-12, item 1249):
   applyClaimGate, applyAvailabilityGate, applyVinCheck, applyGates, collectItemFacts,
   VIN_CLAIM_PATTERNS, SOURCING_CLAIM_PATTERNS,
+  // 2026-10-10 draft review:
+  applyLanguageGate, applyActionClaimCheck, textLanguage, ACTION_CLAIM_PATTERNS,
 };

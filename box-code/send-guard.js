@@ -125,6 +125,20 @@ function cleanUrl(u) { return u.replace(/[).,;:!?'"]+$/, ""); }
 
 function findUrls(text) { return (String(text || "").match(URL_RE) || []).map(cleanUrl); }
 function findDisallowedUrls(text) { return findUrls(text).filter((u) => !urlAllowed(u)); }
+// A webshop product link with no product behind it (item 2044, send 480: a draft linked
+// "https://www.roverparts.eu/products/" because the handle lookup came back empty).
+function findEmptyProductLinks(text) {
+  return findUrls(text).filter((u) => {
+    try { const x = new URL(u); return hostAllowed(x.host) && /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?products\/?$/i.test(x.pathname); }
+    catch { return false; }
+  });
+}
+function screenLinks(text) {
+  const bad = findDisallowedUrls(text);
+  if (bad.length) throw new Error("refused: off-allowlist URL(s) in reply: " + bad.join(", "));
+  const empty = findEmptyProductLinks(text);
+  if (empty.length) throw new Error("refused: a product link in the reply points to no product page - fix the link or remove it");
+}
 
 function sha256(s) { return crypto.createHash("sha256").update(String(s), "utf8").digest("hex"); }
 
@@ -258,9 +272,22 @@ function quotedHistory(workItem) {
 // harmed by that - it is internal mail - but it is a silent non-delivery, which is worse than a
 // clear refusal. So these items must have a human-confirmed recipient before they can send.
 // Deliberately narrow: keyed on the rule id, so every pre-existing item behaves exactly as before.
+//
+// Widened 2026-10-10 (draft review): two customer replies (sends 578 and 603) went to drachten@
+// because the colleague's email matched catch_all, not internal_forward, so nothing asked who the
+// reply was for. Now ANY inbound reply item whose thread sender is one of our own addresses needs a
+// confirmed recipient. Exempt: the Shopify return notification (sent from info@, answered on its own
+// new-outbound path) and items carrying return or contact-form data. Choosing our own mailbox as the
+// recipient stays possible for a genuinely internal reply; the item page then says so plainly.
 const INTERNAL_FORWARD_RULE = "internal_forward";
+const OWN_SENDER_EXEMPT_RULES = ["shopify_return_request"];
 function needsConfirmedRecipient(workItem) {
-  return String(workItem.rule_id || "") === INTERNAL_FORWARD_RULE && !String(workItem.recipient || "").trim();
+  if (String(workItem.recipient || "").trim()) return false;
+  if (String(workItem.rule_id || "") === INTERNAL_FORWARD_RULE) return true;
+  if (workItem.origin && workItem.origin !== "inbound") return false;
+  if (OWN_SENDER_EXEMPT_RULES.includes(String(workItem.rule_id || ""))) return false;
+  if (workItem.return_json || workItem.contact_form_json) return false;
+  return isOwnAddress(workItem.sender_email);
 }
 
 // A KPN voicemail item (rule 'voicemail', sender voicemail@hipservice.nl) has nobody to email: the
@@ -290,8 +317,7 @@ function assembleSend(workItem, body, stagedAtts = []) {
 
   const text = String(body == null ? "" : body);
   if (!text.trim()) throw new Error("refused: reply body is empty");
-  const bad = findDisallowedUrls(text);
-  if (bad.length) throw new Error("refused: off-allowlist URL(s) in reply: " + bad.join(", "));
+  screenLinks(text);
 
   // Inline tokens are resolved over OUR reply's HTML only - the quoted history is appended
   // afterwards, so customer text can never be swapped.
@@ -334,8 +360,7 @@ function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
 
   const text = String(body == null ? "" : body);
   if (!text.trim()) throw new Error("refused: reply body is empty");
-  const bad = findDisallowedUrls(text);
-  if (bad.length) throw new Error("refused: off-allowlist URL(s) in reply: " + bad.join(", "));
+  screenLinks(text);
 
   const inline = applyInlineImages(toSafeHtml(text), text, stagedAtts);
 
@@ -359,5 +384,5 @@ module.exports = {
   escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient, isVoicemailItem,
   MAX_CC, isOwnAddress, acceptCcAddress, sendingAddress, internalCc, itemCc,
   assembleNewOutboundSend, assembleContactFormSend,
-  findImageTokens, applyInlineImages, contentIdFor,
+  findImageTokens, applyInlineImages, contentIdFor, findEmptyProductLinks,
 };

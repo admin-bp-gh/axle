@@ -47,4 +47,16 @@ function isSupersededDraft(item, row) {
   return made < recv;
 }
 
-module.exports = { isSupersededDraft, parseUtc };
+// A draft written on an earlier day (Amsterdam time) whose text leans on the day it was written:
+// "vandaag verstuurd", "Goedenavond" read the next morning (sends 481, 509, 2026-10 review). The
+// item page warns; nothing is rewritten. now is injectable for tests.
+const DAY_WORDS_RE = /\b(?:vandaag|gisteren|morgen|vanavond|vanmiddag|vanochtend|goedemorgen|goedemiddag|goedenavond|today|tonight|yesterday|tomorrow|this (?:morning|afternoon|evening)|good (?:morning|afternoon|evening)|heute|gestern|guten (?:morgen|abend))\b/i;
+const dayOf = (ms) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "Europe/Amsterdam" });
+function isDayOldWording(row, text, now = Date.now()) {
+  if (!row) return false;
+  const made = parseUtc(row.created_at);
+  if (!Number.isFinite(made)) return false;
+  return dayOf(made) !== dayOf(now) && DAY_WORDS_RE.test(String(text || ""));
+}
+
+module.exports = { isSupersededDraft, parseUtc, isDayOldWording };

@@ -147,6 +147,9 @@
 .ax-ask { display: flex; flex-direction: column; gap: var(--s2); }
 .ax-redraft { display: flex; gap: var(--s2); }
 .ax-redraft > .wb-input { flex: 1; }
+/* "Suggest as rule" (learning loop, 2026-10-10): its own line under the field and Redraft. */
+.ax-redraft { flex-wrap: wrap; }
+.ax-rulechk { flex-basis: 100%; display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .ax-link { display: block; margin-top: 4px; font: var(--fs-xs)/1.4 var(--mono); overflow-wrap: anywhere; }
 /* The email's text: paragraphs keep the customer's line breaks */
 .ax-msg p { white-space: pre-wrap; }
@@ -359,7 +362,7 @@
 .ax-lcard-act { grid-column: 2; grid-row: 2; align-self: center; margin: -4px 0 -2px; }
 .ax-cards .wb-lcard__title + .wb-lcard__meta { align-self: center; }
 .ax-lcard-text { grid-column: 1 / -1; color: var(--ink); }
-.ax-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.ax-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); }
 .ax-stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 16px; }
 .ax-stat > .wb-label { white-space: normal; }
 .ax-stat > b { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; font-variant-numeric: tabular-nums; }

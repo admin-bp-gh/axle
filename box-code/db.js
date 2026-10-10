@@ -314,6 +314,30 @@ CREATE TABLE IF NOT EXISTS teach_flags (
 );
 `);
 
+// Staff feedback, every piece in full (learning loop, 2026-10-10, review section 7). Until now
+// work_items.feedback held only the latest text per item and the save_feedback audit copy was cut
+// at 100 characters, so earlier feedback was lost. One row per feedback redraft: the AI draft it
+// was given on (draft_id, the newest AI draft at the time), the reply it shapes (turn = sends
+// already made on the item + 1), author and time. work_items.feedback is still written as before
+// and stays what the redraft reads. suggested = 1 when the author ticked "Suggest as rule";
+// verdict is the rule check's outcome (suggested | rule | one_off | covered | error, NULL while
+// it has not run) and teach_flag_id the Teach entry made from the row. knowledge.js owns it.
+db.exec(`
+CREATE TABLE IF NOT EXISTS draft_feedback (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  work_item_id  INTEGER NOT NULL REFERENCES work_items(id),
+  draft_id      INTEGER,
+  turn          INTEGER NOT NULL,
+  author        TEXT NOT NULL,
+  text          TEXT NOT NULL,
+  suggested     INTEGER NOT NULL DEFAULT 0,
+  verdict       TEXT,
+  teach_flag_id INTEGER,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_item ON draft_feedback(work_item_id);
+`);
+
 // Round 2 (2026-10-07): every incoming message Axle sees for a work item, and that message's
 // attachments (message-store.js owns both). work_items.email_text and attachments_json are still
 // written as before; these tables add the whole thread. One row per Graph message (mailbox +

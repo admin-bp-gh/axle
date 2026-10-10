@@ -188,16 +188,20 @@ app.get("/teach", (req, res) => {
   const lang = req.user.lang;
   const L = (k) => esc(t(lang, k));
   audit(req.user.tailscale_login, "view_teach", null, null);
-  const rows = db.prepare(`SELECT f.*, COALESCE(u.display_name, f.flagged_by) AS who, COALESCE(r.display_name, f.reviewed_by) AS reviewer, w.subject
+  // fb_*: the staff feedback an entry came from (learning loop, 2026-10-10), shown on Axle's proposals.
+  const rows = db.prepare(`SELECT f.*, COALESCE(u.display_name, f.flagged_by) AS who, COALESCE(r.display_name, f.reviewed_by) AS reviewer, w.subject,
+      fb.text AS fb_text, COALESCE(fu.display_name, fb.author) AS fb_who
     FROM teach_flags f LEFT JOIN users u ON u.tailscale_login = f.flagged_by LEFT JOIN users r ON r.tailscale_login = f.reviewed_by
     LEFT JOIN work_items w ON w.id = f.work_item_id
+    LEFT JOIN draft_feedback fb ON fb.teach_flag_id = f.id LEFT JOIN users fu ON fu.tailscale_login = fb.author
     ORDER BY CASE f.status WHEN 'pending' THEN 0 ELSE 1 END, f.id DESC`).all();
   const pending = rows.filter((f) => f.status === "pending");
   const decided = rows.filter((f) => f.status !== "pending").slice(0, 100);
 
   const pendingHtml = pending.map((f) => `<section class="wb-card">
-      <div class="wb-card__hd"><h2 class="wb-card__t">${esc(f.who)}</h2><span class="wb-hint">${itemLink(f.work_item_id)} ${esc(f.subject || "")} · ${esc(fmtDateTime(f.created_at, lang))}</span></div>
+      <div class="wb-card__hd"><h2 class="wb-card__t">${esc(f.flagged_by === K.AXLE ? t(lang, "teach_by_axle").replace("{who}", f.fb_who || "") : f.who)}</h2><span class="wb-hint">${itemLink(f.work_item_id)} ${esc(f.subject || "")} · ${esc(fmtDateTime(f.created_at, lang))}</span></div>
       <form class="wb-card__bd ax-flagform" ${inPlace(`/teach/${f.id}/approve`, t(lang, "teach_approved_toast"))}>
+        ${f.flagged_by === K.AXLE && f.fb_text ? `<details class="wb-details" open><summary>${L("teach_feedback_then")}${icon("chevron-right")}</summary><pre class="ax-pre ax-quiet">${esc(f.fb_text)}</pre></details>` : ""}
         ${f.draft_snapshot ? `<details class="wb-details"><summary>${L("teach_draft_then")}${icon("chevron-right")}</summary><pre class="ax-pre ax-quiet">${esc(f.draft_snapshot)}</pre></details>` : ""}
         <div class="wb-input wb-input--area"><textarea name="text" maxlength="${K.MAX_TEXT}" required aria-label="${L("teach_col_text")}">${esc(f.text)}</textarea></div>
         <div class="ax-acts"><button class="wb-btn wb-btn--primary">${L("teach_approve")}</button><button class="wb-btn" formaction="${B}/teach/${f.id}/reject" formnovalidate data-toast="${L("teach_rejected_toast")}">${L("teach_reject")}</button></div>

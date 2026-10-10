@@ -645,7 +645,7 @@ app.get("/item/:id", async (req, res) => {
 
   // The redraft line: one field (the existing feedback field, so /work and /send keep it) and
   // Redraft, which posts /work action=redraft in place; the drafting state then shows.
-  const redraft = editable ? `<div class="ax-redraft"><div class="wb-input wb-input--area ax-fb"><textarea name="feedback" rows="1" placeholder="${L(needsAnswers ? "answer_ph" : "feedback_ph")}" aria-label="${L("feedback_ph")}">${esc(w.feedback || "")}</textarea></div><button type="submit" class="wb-btn" name="action" value="redraft" data-inline title="${L("redraft_hint")}">${L("redraft")}</button></div>`
+  const redraft = editable ? `<div class="ax-redraft"><div class="wb-input wb-input--area ax-fb"><textarea name="feedback" rows="1" placeholder="${L(needsAnswers ? "answer_ph" : "feedback_ph")}" aria-label="${L("feedback_ph")}">${esc(w.feedback || "")}</textarea></div><button type="submit" class="wb-btn" name="action" value="redraft" data-inline title="${L("redraft_hint")}">${L("redraft")}</button><label class="wb-hint ax-rulechk"><input type="checkbox" class="wb-check" name="suggest_rule" value="1">${L("suggest_rule")}</label></div>`
     : busy ? `<div class="ax-redraft"><div class="wb-input"><input disabled value="${esc(w.feedback || "")}" placeholder="${L("feedback_ph")}" aria-label="${L("feedback_ph")}"></div><button type="button" class="wb-btn" disabled>${L("redraft")}</button></div>` : "";
   // The previous round's draft, folded and read-only (plain text, never a field, so it cannot post).
   const prevDraft = supersededRow ? `<details class="wb-disclosure ax-prev"><summary>${L("prev_draft_summary")}${icon("chevron-right")}</summary><div><p class="wb-hint">${L("prev_draft_hint")}</p><div class="ax-msg">${replyParas(supersededRow.body)}</div></div></details>` : "";
@@ -822,8 +822,24 @@ app.post("/item/:id/work", (req, res) => {
   }
 
   if (req.body.action === "redraft" && w.status !== "investigating") {
+    // Learning loop (2026-10-10): the feedback this redraft acts on is kept in full, per draft and
+    // turn (knowledge.recordFeedback). With "Suggest as rule" ticked it goes to /teach as the author
+    // wrote it; otherwise Haiku checks in the background whether it states a general rule and, if
+    // so, files a pending entry. Nothing reaches the prompt before an owner approves it.
+    const login = req.user.tailscale_login;
+    const fbId = K.recordFeedback(db, { workItemId: w.id, by: login, text: db.prepare("SELECT feedback FROM work_items WHERE id = ?").get(w.id).feedback,
+      suggested: req.body.suggest_rule === "1" });
+    if (fbId && req.body.suggest_rule === "1") {
+      const fid = K.suggestFromFeedback(db, fbId);
+      if (fid) audit(login, "teach_flag", w.id, `#${fid} from feedback ${fbId}`);
+    } else if (fbId) {
+      setImmediate(async () => {
+        const r = await K.proposeFromFeedback(db, anthropic, fbId);
+        if (r) audit("system", r.flagId ? "teach_propose" : "teach_propose_skip", w.id, `feedback ${fbId}: ${r.verdict}${r.flagId ? " #" + r.flagId : ""}`);
+      });
+    }
     db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
-    audit(req.user.tailscale_login, "redraft_started", w.id, null);
+    audit(login, "redraft_started", w.id, null);
     setImmediate(() => runRedraft(w.id, req.user.tailscale_login));
   }
   res.redirect(BASE.url("/item/" + w.id));

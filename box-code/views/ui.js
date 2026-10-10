@@ -177,6 +177,8 @@ const STRINGS = {
     teach_pending: "Waiting for Brad", teach_approved: "Learned", teach_rejected: "Not added", teach_retired: "Retired",
     teach_retire: "Retire", teach_retire_confirm: "Remove this entry from Axle's knowledge? It stays on record as retired.",
     teach_draft_then: "Draft at the time of flagging",
+    teach_by_axle: "Axle, from {who}'s feedback", teach_feedback_then: "The feedback it came from",
+    suggest_rule: "Also suggest this as a rule for Brad",
     teach_approve: "Approve", teach_reject: "Reject", teach_none: "Nothing waiting.",
     teach_decided: "Decided", teach_col_text: "Text", teach_col_by: "Reviewed",
     teach_approved_toast: "Approved", teach_rejected_toast: "Rejected", teach_retired_toast: "Retired",
@@ -229,7 +231,9 @@ const STRINGS = {
     audit_note: "Last 500 entries, newest first, Amsterdam time.",
     audit_match_1: "1 match, newest first, Amsterdam time.", audit_matches: "{n} matches, newest first, Amsterdam time.",
     audit_capped: "Newest 500 matches, Amsterdam time. Narrow the search for older entries.",
-    ad_window: "{from} to {to}", ad_sends: "Replies sent via Axle", ad_unchanged: "Sent unchanged", ad_box_replied: "{box} replied via Axle",
+    ad_window: "{from} to {to}", ad_sends: "Replies sent via Axle", ad_unchanged: "Last version sent unchanged",
+    ad_first_ok: "First draft accepted", ad_redraft: "Needed a redraft", ad_col_last_unch: "Last version unchanged",
+    ad_metrics: "First draft accepted: Axle's first draft for that reply went out with no redraft and 80 % or more of it kept. Needed a redraft: a salesperson pressed Redraft before that reply went out. Last version unchanged: the sent text against Axle's last version, after any redrafts.", ad_box_replied: "{box} replied via Axle",
     ad_by_user: "Adoption by user", ad_col_sends: "Axle sends", ad_col_accept: "Draft acceptance", ad_col_median: "Median match",
     ad_col_last: "Last Axle send", ad_today: "Today", ad_day_1: "1 day ago", ad_days: "{n} days ago", ad_never: "Never",
     ad_b_verbatim: "Unchanged", ad_b_light: "Light edit", ad_b_moderate: "Moderate edit", ad_b_heavy: "Heavy rewrite",
@@ -409,6 +413,8 @@ const STRINGS = {
     teach_pending: "Wacht op Brad", teach_approved: "Geleerd", teach_rejected: "Niet toegevoegd", teach_retired: "Ingetrokken",
     teach_retire: "Intrekken", teach_retire_confirm: "Deze regel uit de kennis van Axle halen? Hij blijft bewaard als ingetrokken.",
     teach_draft_then: "Concept op het moment van melden",
+    teach_by_axle: "Axle, uit feedback van {who}", teach_feedback_then: "De feedback waar het uit komt",
+    suggest_rule: "Ook als regel voorstellen aan Brad",
     teach_approve: "Goedkeuren", teach_reject: "Afwijzen", teach_none: "Niets in de wacht.",
     teach_decided: "Beoordeeld", teach_col_text: "Tekst", teach_col_by: "Beoordeeld door",
     teach_approved_toast: "Goedgekeurd", teach_rejected_toast: "Afgewezen", teach_retired_toast: "Ingetrokken",
@@ -462,7 +468,9 @@ const STRINGS = {
     audit_note: "Laatste 500 regels, nieuwste eerst, Amsterdamse tijd.",
     audit_match_1: "1 resultaat, nieuwste eerst, Amsterdamse tijd.", audit_matches: "{n} resultaten, nieuwste eerst, Amsterdamse tijd.",
     audit_capped: "Nieuwste 500 resultaten, Amsterdamse tijd. Verfijn de zoekopdracht voor oudere regels.",
-    ad_window: "{from} tot {to}", ad_sends: "Antwoorden verstuurd via Axle", ad_unchanged: "Ongewijzigd verstuurd", ad_box_replied: "{box} beantwoord via Axle",
+    ad_window: "{from} tot {to}", ad_sends: "Antwoorden verstuurd via Axle", ad_unchanged: "Laatste versie ongewijzigd verstuurd",
+    ad_first_ok: "Eerste concept geaccepteerd", ad_redraft: "Opnieuw opgesteld", ad_col_last_unch: "Laatste versie ongewijzigd",
+    ad_metrics: "Eerste concept geaccepteerd: het eerste concept van Axle voor dat antwoord ging zonder opnieuw opstellen de deur uit, met 80 % of meer behouden. Opnieuw opgesteld: een verkoper drukte op Opnieuw opstellen voordat dat antwoord verstuurd werd. Laatste versie ongewijzigd: de verstuurde tekst tegen de laatste versie van Axle, na eventueel opnieuw opstellen.", ad_box_replied: "{box} beantwoord via Axle",
     ad_by_user: "Adoptie per gebruiker", ad_col_sends: "Via Axle verstuurd", ad_col_accept: "Conceptacceptatie", ad_col_median: "Mediane overeenkomst",
     ad_col_last: "Laatst via Axle", ad_today: "Vandaag", ad_day_1: "1 dag geleden", ad_days: "{n} dagen geleden", ad_never: "Nooit",
     ad_b_verbatim: "Ongewijzigd", ad_b_light: "Kleine aanpassing", ad_b_moderate: "Matige aanpassing", ad_b_heavy: "Herschreven",
@@ -528,8 +536,8 @@ const suggestCloseChip = (lang, w) => {
   return pill(t(lang, k + "_chip"), "warn", `title="${esc(t(lang, k + "_title"))}"`);
 };
 const INTENT_LABEL = {
-  en: { stock_price_enquiry: "Stock / price enquiry", order_status: "Order status", cancellation: "Cancellation", return_complaint: "Return / complaint", b2b_order: "B2B order", supplier: "Supplier", invoice: "Invoice", other: "Other" },
-  nl: { stock_price_enquiry: "Voorraad / prijs", order_status: "Orderstatus", cancellation: "Annulering", return_complaint: "Retour / klacht", b2b_order: "B2B-order", supplier: "Leverancier", invoice: "Factuur", other: "Overig" },
+  en: { stock_price_enquiry: "Stock / price enquiry", quote_request: "Quote request", account: "Account", internal: "Internal", order_status: "Order status", cancellation: "Cancellation", return_complaint: "Return / complaint", b2b_order: "B2B order", supplier: "Supplier", invoice: "Invoice", other: "Other" },
+  nl: { stock_price_enquiry: "Voorraad / prijs", quote_request: "Offerteaanvraag", account: "Account", internal: "Intern", order_status: "Orderstatus", cancellation: "Annulering", return_complaint: "Retour / klacht", b2b_order: "B2B-order", supplier: "Leverancier", invoice: "Factuur", other: "Overig" },
 };
 const intentLabel = (lang, s) => (s ? ((INTENT_LABEL[lang] && INTENT_LABEL[lang][s]) || INTENT_LABEL.en[s] || titleCase(s)) : "-");
 // In-language name of a language code, for "the customer wrote in {lang}".
@@ -803,7 +811,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax16";  // 2026-10-09: clean Open list after send/close, links shown as links in the editor, in-app PDF viewer
+const ASSET_V = "ax17";  // 2026-10-10: "Suggest as rule" beside Redraft, adoption tiles in three columns
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

@@ -16,11 +16,18 @@
 // the server serves the file to admins at /adoption. Sections added then: weekly acceptance trend
 // (the before/after for prompt changes such as the 4 Oct style exemplars) and the most-edited
 // drafts of the last 7 days, grouped by intent, each linking to its item.
+//
+// 2026-10-10 (learning loop, draft review section 7): two metrics beside the existing one. The
+// existing "unchanged" share compares the sent text with Axle's LAST version, after any redrafts
+// (66 % in the review); it is now labelled that way. First-draft acceptance compares it with Axle's
+// FIRST draft for that reply (47 % in the review), and the redraft rate is the share of replies
+// where a salesperson pressed Redraft. Both by user, topic and ISO week; definitions below.
 const fs = require("fs");
 const path = require("path");
 
 const UI = require("./views/ui.js");
 const BASE = require("./base-path.js");
+const X = require("./exemplars.js");   // turnFacts: the turn a send closes (shared with the exemplars)
 
 const DB_PATH = process.env.AXLE_DB || path.join(__dirname, "..", "data", "axle.db");
 
@@ -33,7 +40,7 @@ if (require.main === module) {
   fs.writeFileSync(OUT, standalone(renderHtml(DATA, { lang: "en" })));
   console.log(`Wrote ${OUT}  (items=${DATA.meta.totalItems}, sends=${DATA.meta.totalSends}, window ${(DATA.meta.windowStart||'').slice(0,10)}..${(DATA.meta.windowEnd||'').slice(0,10)})`);
 }
-module.exports = { render, computeFromDb, renderHtml };
+module.exports = { render, computeFromDb, renderHtml, firstDraftStats };
 
 function computeFromDb() {
 const Database = require("better-sqlite3");
@@ -76,7 +83,16 @@ const label = (u) => LABELS[shortName(u)] || shortName(u);
 const items = db.prepare("SELECT id, mailbox, intent, status, resolution, language, confidence, created_at FROM work_items").all();
 const sends = db.prepare("SELECT id, work_item_id, sent_by, source_draft_id, body, sent_at FROM sends WHERE status='sent'").all();
 const draftsById = {};
-for (const d of db.prepare("SELECT id, body, source FROM drafts").all()) draftsById[d.id] = d;
+const aiByItem = {};
+for (const d of db.prepare("SELECT id, work_item_id, body, source, version, is_interim, created_at FROM drafts").all()) {
+  draftsById[d.id] = d;
+  if (d.source === "ai") (aiByItem[d.work_item_id] = aiByItem[d.work_item_id] || []).push(d);
+}
+const sendTimes = {}, redraftTimes = {};
+for (const s of sends) (sendTimes[s.work_item_id] = sendTimes[s.work_item_id] || []).push(s.sent_at);
+for (const r of db.prepare("SELECT work_item_id, ts FROM audit_log WHERE action = 'redraft_started' AND user <> 'system'").all()) {
+  (redraftTimes[r.work_item_id] = redraftTimes[r.work_item_id] || []).push(r.ts);
+}
 const views = db.prepare("SELECT DISTINCT work_item_id, user FROM audit_log WHERE action='view_item' AND user NOT IN ('system')").all();
 
 const meta = {
@@ -90,10 +106,17 @@ const meta = {
 
 // --- per-send similarity --------------------------------------------------
 const itemById = {}; for (const it of items) itemById[it.id] = it;
+// sim: against the AI version the send was edited from (the last one). firstSim: against Axle's
+// first draft of the turn (the same draft when nobody redrafted). firstOk: first draft accepted,
+// that is no redraft in the turn and 80 % or more of it kept. redrafted: Redraft pressed in the turn.
 const sendRows = sends.map((s) => {
   const ai = s.source_draft_id ? draftsById[s.source_draft_id] : null;
   const r = ai && ai.body && s.body ? simRatio(ai.body, s.body) : null;
-  return { ...s, sim: r, bucket: bucketOf(r), intent: (itemById[s.work_item_id] || {}).intent };
+  const tf = r == null ? null : X.turnFacts(s.sent_at, sendTimes[s.work_item_id] || [], aiByItem[s.work_item_id] || [], redraftTimes[s.work_item_id] || []);
+  const first = tf && tf.firstDraft ? tf.firstDraft : ai;
+  const firstSim = r == null ? null : first.id === ai.id ? r : simRatio(first.body, s.body);
+  return { ...s, sim: r, bucket: bucketOf(r), intent: (itemById[s.work_item_id] || {}).intent,
+    firstSim, firstOk: firstSim != null && !tf.redrafted && firstSim >= 0.80, redrafted: Boolean(tf && tf.redrafted) };
 });
 
 // --- per-user adoption ----------------------------------------------------
@@ -115,6 +138,7 @@ const perUser = USERS.map((u) => {
     verbatimPct: us.length ? Math.round((100 * bc.verbatim) / us.length) : 0,
     medianSim: med,
     lastSend,
+    ...firstDraftStats(us),
   };
 });
 
@@ -159,7 +183,8 @@ sendRows.forEach((s) => {
   o.n++; if (s.bucket === "verbatim") o.verbatim++; if (s.bucket === "moderate" || s.bucket === "heavy") o.modHeavy++;
 });
 const intents = Object.values(byIntent).filter((o) => o.n >= 3).sort((a, b) => b.n - a.n)
-  .map((o) => ({ ...o, modHeavyPct: Math.round((100 * o.modHeavy) / o.n), verbatimPct: Math.round((100 * o.verbatim) / o.n) }));
+  .map((o) => ({ ...o, modHeavyPct: Math.round((100 * o.modHeavy) / o.n), verbatimPct: Math.round((100 * o.verbatim) / o.n),
+                 ...firstDraftStats(sendRows.filter((s) => (s.intent || "unknown") === o.intent)) }));
 
 // --- confidence calibration ----------------------------------------------
 const conf = {};
@@ -185,7 +210,8 @@ sendRows.filter((s) => s.sim != null).forEach((s) => {
   o.n++; if (s.bucket === "verbatim") o.verbatim++; if (s.bucket === "moderate" || s.bucket === "heavy") o.modHeavy++;
 });
 const weekly = Object.values(wk).sort((a, b) => (a.week < b.week ? -1 : 1))
-  .map((o) => ({ ...o, verbatimPct: Math.round((100 * o.verbatim) / o.n), modHeavyPct: Math.round((100 * o.modHeavy) / o.n) }));
+  .map((o) => ({ ...o, verbatimPct: Math.round((100 * o.verbatim) / o.n), modHeavyPct: Math.round((100 * o.modHeavy) / o.n),
+                 ...firstDraftStats(sendRows.filter((s) => s.sim != null && isoWeek(s.sent_at) === o.week)) }));
 
 // --- most-edited drafts, last 7 days (P4.11 digest) ----------------------
 const since = new Date(Date.now() - 7 * 864e5).toISOString();
@@ -197,7 +223,15 @@ const digest = sendRows
   .sort((a, b) => a.intent.localeCompare(b.intent) || a.sim - b.sim);
 
   db.close();
-  return { meta, perUser, mailbox, trend, intents, confidence, weekly, digest };
+  return { meta, perUser, mailbox, trend, intents, confidence, weekly, digest, firstDraft: firstDraftStats(sendRows) };
+}
+
+// First-draft acceptance and redraft rate over a set of per-send rows (computeFromDb's sendRows):
+// graded = sends with an AI draft to compare; the two shares are whole percentages of graded.
+function firstDraftStats(list) {
+  const g = list.filter((s) => s.firstSim != null);
+  const pct = (n) => (g.length ? Math.round((100 * n) / g.length) : 0);
+  return { graded: g.length, firstPct: pct(g.filter((s) => s.firstOk).length), redraftPct: pct(g.filter((s) => s.redrafted).length) };
 }
 
 // --- render ---------------------------------------------------------------
@@ -223,6 +257,8 @@ function renderHtml(D, user) {
   const allVerb = D.perUser.reduce((a, u) => a + u.verbatim, 0);
   const stats = [
     [t("ad_sends"), D.meta.totalSends],
+    [t("ad_first_ok"), pc(D.firstDraft.firstPct)],
+    [t("ad_redraft"), pc(D.firstDraft.redraftPct)],
     [t("ad_unchanged"), pc(allGraded ? Math.round(100 * allVerb / allGraded) : 0)],
     [t("ad_box_replied").replace("{box}", "info@"), pc(info.sentPct)],
     [t("ad_box_replied").replace("{box}", "drachten@"), pc(drach.sentPct)],
@@ -240,8 +276,8 @@ function renderHtml(D, user) {
     return `${esc(date(s))} ${a >= 3 ? pill(t("ad_days").replace("{n}", a), "bad") : a >= 1 ? pill(a === 1 ? t("ad_day_1") : t("ad_days").replace("{n}", a), "warn") : pill(t("ad_today"), "ok")}`;
   };
   const users = card(L("ad_by_user"), table(
-    [th("col_user"), th("ad_col_sends", 1), th("ad_b_verbatim", 1), th("ad_col_accept"), th("ad_col_median", 1), th("ad_col_last")],
-    D.perUser.filter((u) => u.sends > 0 || u.user !== "admin").map((u) => `<tr><td>${esc(u.label)}</td>${num(u.sends)}${num(pc(u.verbatimPct))}<td class="ax-mixcell">${mix(u)}</td>${num(u.medianSim != null ? pc(Math.round(u.medianSim * 100)) : "")}<td class="ax-nowrap">${last(u.lastSend)}</td></tr>`))
+    [th("col_user"), th("ad_col_sends", 1), th("ad_first_ok", 1), th("ad_redraft", 1), th("ad_col_last_unch", 1), th("ad_col_accept"), th("ad_col_median", 1), th("ad_col_last")],
+    D.perUser.filter((u) => u.sends > 0 || u.user !== "admin").map((u) => `<tr><td>${esc(u.label)}</td>${num(u.sends)}${num(pc(u.firstPct))}${num(pc(u.redraftPct))}${num(pc(u.verbatimPct))}<td class="ax-mixcell">${mix(u)}</td>${num(u.medianSim != null ? pc(Math.round(u.medianSim * 100)) : "")}<td class="ax-nowrap">${last(u.lastSend)}</td></tr>`))
     + `<div class="ax-legend ax-legend--row">${BUCKETS.map(([k, c]) => `<div><i class="${c}"></i>${L("ad_b_" + k)}</div>`).join("")}</div>`);
 
   // Daily activity per mailbox: emails in beside sends through Axle, one thin pair of bars a day
@@ -263,10 +299,10 @@ function renderHtml(D, user) {
   };
 
   // Draft acceptance by week, by topic, by confidence: rows with the shares as meters
-  const weekly = card(L("ad_weekly"), table([th("ad_col_week"), th("ad_col_sends", 1), th("ad_b_verbatim"), th("ad_col_heavy")],
-    D.weekly.map((w) => `<tr><td class="ax-nowrap">${esc(w.week)}</td>${num(w.n)}<td>${meter(w.verbatimPct)}</td><td>${meter(w.modHeavyPct)}</td></tr>`)), L("ad_weekly_hint"));
-  const topics = card(L("ad_topics"), table([th("ad_col_topic"), th("ad_col_sends", 1), th("ad_b_verbatim"), th("ad_col_heavy")],
-    D.intents.map((i) => `<tr><td>${esc(intentLabel(lang, i.intent))}</td>${num(i.n)}<td>${meter(i.verbatimPct)}</td><td>${meter(i.modHeavyPct)}</td></tr>`)));
+  const weekly = card(L("ad_weekly"), table([th("ad_col_week"), th("ad_col_sends", 1), th("ad_first_ok"), th("ad_redraft"), th("ad_col_last_unch"), th("ad_col_heavy")],
+    D.weekly.map((w) => `<tr><td class="ax-nowrap">${esc(w.week)}</td>${num(w.n)}<td>${meter(w.firstPct)}</td><td>${meter(w.redraftPct)}</td><td>${meter(w.verbatimPct)}</td><td>${meter(w.modHeavyPct)}</td></tr>`)), L("ad_weekly_hint"));
+  const topics = card(L("ad_topics"), table([th("ad_col_topic"), th("ad_col_sends", 1), th("ad_first_ok"), th("ad_redraft"), th("ad_col_last_unch"), th("ad_col_heavy")],
+    D.intents.map((i) => `<tr><td>${esc(intentLabel(lang, i.intent))}</td>${num(i.n)}<td>${meter(i.firstPct)}</td><td>${meter(i.redraftPct)}</td><td>${meter(i.verbatimPct)}</td><td>${meter(i.modHeavyPct)}</td></tr>`)));
   const conf = card(L("ad_conf"), table([th("ad_col_conf"), th("ad_col_sends", 1), th("ad_b_verbatim")],
     D.confidence.map((c) => `<tr><td>${L("ad_c_" + c.confidence)}</td>${num(c.n)}<td>${meter(c.pct)}</td></tr>`)), L("ad_conf_hint"));
 
@@ -290,6 +326,7 @@ ${users}
 ${weekly}
 ${digest}
 <div class="ax-grid2">${topics}${conf}</div>
+<p class="wb-hint">${L("ad_metrics")}</p>
 <p class="wb-hint">${L("ad_thresholds")}</p>`);
 }
 

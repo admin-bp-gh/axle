@@ -391,7 +391,8 @@ function saveWorkInputs(w, body, login) {
   if ("feedback" in body) {
     const fb = String(body.feedback || "").trim();
     db.prepare("UPDATE work_items SET feedback = ? WHERE id = ?").run(fb || null, w.id);
-    if (fb) audit(login, "save_feedback", w.id, fb.slice(0, 100));
+    // In full since 2026-10-10 (learning loop): the 100-character cut lost most of the feedback.
+    if (fb) audit(login, "save_feedback", w.id, fb);
   }
   if ("reply" in body) {
     db.prepare("UPDATE work_items SET draft_edit = ? WHERE id = ?").run(String(body.reply || ""), w.id);

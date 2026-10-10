@@ -150,6 +150,8 @@
 /* "Suggest as rule" (learning loop, 2026-10-10): its own line under the field and Redraft. */
 .ax-redraft { flex-wrap: wrap; }
 .ax-rulechk { flex-basis: 100%; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+/* "Ask the customer" under Axle's questions (quick-reply round, 2026-10-10). */
+.ax-askcust { margin-top: 8px; }
 .ax-link { display: block; margin-top: 4px; font: var(--fs-xs)/1.4 var(--mono); overflow-wrap: anywhere; }
 /* The email's text: paragraphs keep the customer's line breaks */
 .ax-msg p { white-space: pre-wrap; }

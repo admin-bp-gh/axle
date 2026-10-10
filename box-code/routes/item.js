@@ -452,6 +452,9 @@ app.get("/item/:id", async (req, res) => {
     const on = l === (w.language || "");
     return `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${on}"${on ? "" : ` data-submit="ax-f-lang" name="language" value="${l}"`}><span>${l.toUpperCase()} · ${esc(langDisplay(lang, l))}${isCompose && !on ? `<small>${L("relang_note")}</small>` : ""}</span>${on ? icon("check", "wb-menu__mark") : ""}</button>`;
   }).join("")}</template>` : "";
+  // Quick-reply mode (2026-10-10): the newest draft was written as a short reply.
+  const quickRow = db.prepare("SELECT detail FROM audit_log WHERE work_item_id = ? AND action = 'quick_reply' ORDER BY id DESC LIMIT 1").get(w.id);
+  const isQuick = quickRow && quickRow.detail === "v=" + latestDraftVersion(w.id);
   const pills = [
     statusPill("ax-st"),
     (w.priority || 2) === 1 ? pill("P1", "bad") : "",
@@ -460,6 +463,7 @@ app.get("/item/:id", async (req, res) => {
     isContactForm ? pill(t(lang, "contactform_chip")) : "",
     isCompose ? (scen ? pill(lang === "nl" ? scen.label_nl : scen.label_en) : "") : pill(intentLabel(lang, w.intent)),
     suggestCloseChip(lang, w),
+    isQuick ? pill(t(lang, "quick_chip"), "info", `title="${esc(t(lang, "quick_chip_title"))}"`) : "",
     ownerPill,
     langPill,
   ].filter(Boolean).join("");
@@ -586,7 +590,10 @@ app.get("/item/:id", async (req, res) => {
   // it waits for an answer, sit with the redraft line below the card.
   const needsAnswers = editable && w.status === "awaiting_input" && open.length > 0 && !w.injection_flag;
   const qBanner = needsAnswers ? banner("warn", `${L("needs_input")}<details class="wb-details"><summary>${esc(t(lang, questions.length === 1 ? "q_1" : "q_n").replace("{n}", questions.length))}${icon("chevron-right")}</summary><ol class="ax-qs">${questions.map((q) =>
-    `<li><span${qTrAttr(q)}>${esc(qText(q))}</span>${q.kind === "physical" ? pill(t(lang, "check_shelf")) : ""}${q.answer ? `<br><b>${L("answer")}:</b> ${esc(q.answer)} <span class="wb-hint">(${esc(q.answered_by)}, ${esc(fmtDateTime(q.answered_at, lang))})</span>` : ""}</li>`).join("")}</ol></details>`) : "";
+    `<li><span${qTrAttr(q)}>${esc(qText(q))}</span>${q.kind === "physical" ? pill(t(lang, "check_shelf")) : ""}${q.answer ? `<br><b>${L("answer")}:</b> ${esc(q.answer)} <span class="wb-hint">(${esc(q.answered_by)}, ${esc(fmtDateTime(q.answered_at, lang))})</span>` : ""}</li>`).join("")}</ol></details>` +
+    // "Ask the customer" (quick-reply round, 2026-10-10): the questions only the customer can answer
+    // become a short reply to them, drafted in the background like Redraft.
+    `<button type="submit" class="wb-btn wb-btn--sm ax-askcust" name="action" value="ask_customer" data-inline title="${L("ask_customer_hint")}">${L("ask_customer")}</button>`) : "";
   const wdBanner = withdrawn ? banner("warn", `<b>${L("withdrawn_title")}</b> ${esc(withdrawn.reasons.map((r) => t(lang, "withdrawn_" + r)).join(" "))} ${L("withdrawn_next")}<details class="wb-details"><summary>${L("withdrawn_show")}${icon("chevron-right")}</summary><pre>${esc(withdrawn.text)}</pre></details>`) : "";
   // A new outbound whose sending is switched off says so in the card (the button stays disabled).
   const offBanner = (isContactForm && !ACTION_CONTACTFORM_SEND || isRN && !ACTION_RETURN_SEND) && w.recipient ? banner("info", L("cf_send_not_enabled")) : "";
@@ -819,6 +826,12 @@ app.post("/item/:id/work", (req, res) => {
         .run(`[image:${attId}]`, w.id);
       audit(req.user.tailscale_login, "attachment_removed", w.id, `att ${attId}`);
     }
+  }
+
+  if (req.body.action === "ask_customer" && w.status !== "investigating") {
+    db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
+    audit(req.user.tailscale_login, "ask_customer", w.id, null);
+    setImmediate(() => runRedraft(w.id, req.user.tailscale_login, { askCustomer: true }));
   }
 
   if (req.body.action === "redraft" && w.status !== "investigating") {

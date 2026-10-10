@@ -39,7 +39,8 @@ const US = require("./unread-sweep.js");         // which unread mail the waterm
 const MS = require("./message-store.js");        // every message of the thread and its attachments, files on disk
 const SEARCH = require("./search.js");           // the search index row of each item touched
 const DM = require("./draft-media.js");          // the customer's images and PDFs shown to the drafter
-const HO = require("./handover.js");             // owner handover: skip our own forward, carry the note into a redraft
+const HO = require("./handover.js");
+const QR = require("./quick-reply.js");          // quick-reply mode: is this a short turn in our thread?             // owner handover: skip our own forward, carry the note into a redraft
 const SEND = require("./send.js");               // markRead: the skipped forward copy is marked read so the sweep lets it go
 const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
@@ -284,9 +285,14 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (ho) seed.handover = HO.seedBlock(ho, db.prepare("SELECT to_addr, body, sent_by, sent_at FROM sends WHERE work_item_id = ? AND status = 'sent' ORDER BY sent_at, id").all(itemId)
     .map((r) => ({ to: r.to_addr, text: r.body || "", by: r.sent_by, sent_at: r.sent_at })));
   const media = await DM.prepare(itemId, boxName, "system");   // never throws; the thread is stored above
+  // Quick-reply mode (2026-10-10): a short reply in a thread we are in gets a short answer and at
+  // most two lookups. Never for a contact form, a return notification or a voicemail.
+  const quick = !isContactForm && !isReturnNotification && !callerMatch && QR.isQuickTurn({ text: email.text,
+    priorSends: db.prepare("SELECT COUNT(*) AS n FROM sends WHERE work_item_id = ? AND status = 'sent'").get(itemId).n, files: (atts || []).length });
   const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX, {
     exemplars: { intent: cls.intent, language: cls.language, mailbox: boxName, excludeItemId: itemId },
     media,
+    ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),
   });
 
   // no_reply NEVER auto-closes (threat-model T13; and "no email reply" can still mean work,
@@ -357,6 +363,7 @@ async function processThread(anthropic, key, msgs, ctx) {
 
   await storeSuggestions(itemId, email.from.address, threadScanText(email, history), isContactForm, !!injection, result.referenced_documents, claimScope, { text: email.text, intent: cls.intent });
 
+  if (quick) audit("system", "quick_reply", itemId, `v=${ver}`);
   audit("system", "item_drafted", itemId, `status=${status}${suggestClose ? " suggest_close" : ""} v=${ver} tools=${toolLog.length} inj=${injection}`);
   return { itemId, status, drafted: Boolean(result.draft || result.interim_draft), threadLen: msgs.length, tools: toolLog.length };
 }

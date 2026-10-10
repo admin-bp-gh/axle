@@ -88,7 +88,12 @@ for (const d of db.prepare("SELECT id, work_item_id, body, source, version, is_i
   draftsById[d.id] = d;
   if (d.source === "ai") (aiByItem[d.work_item_id] = aiByItem[d.work_item_id] || []).push(d);
 }
-const sendTimes = {}, redraftTimes = {};
+const sendTimes = {}, redraftTimes = {}, quickTimes = {};
+// Quick-reply mode (2026-10-10): every quick draft is audited 'quick_reply'; a send whose turn had
+// one is a quick-reply turn, reported as its own row under the topics.
+for (const r of db.prepare("SELECT work_item_id, ts FROM audit_log WHERE action = 'quick_reply'").all()) {
+  (quickTimes[r.work_item_id] = quickTimes[r.work_item_id] || []).push(r.ts);
+}
 for (const s of sends) (sendTimes[s.work_item_id] = sendTimes[s.work_item_id] || []).push(s.sent_at);
 for (const r of db.prepare("SELECT work_item_id, ts FROM audit_log WHERE action = 'redraft_started' AND user <> 'system'").all()) {
   (redraftTimes[r.work_item_id] = redraftTimes[r.work_item_id] || []).push(r.ts);
@@ -116,7 +121,8 @@ const sendRows = sends.map((s) => {
   const first = tf && tf.firstDraft ? tf.firstDraft : ai;
   const firstSim = r == null ? null : first.id === ai.id ? r : simRatio(first.body, s.body);
   return { ...s, sim: r, bucket: bucketOf(r), intent: (itemById[s.work_item_id] || {}).intent,
-    firstSim, firstOk: firstSim != null && !tf.redrafted && firstSim >= 0.80, redrafted: Boolean(tf && tf.redrafted) };
+    firstSim, firstOk: firstSim != null && !tf.redrafted && firstSim >= 0.80, redrafted: Boolean(tf && tf.redrafted),
+    quick: (quickTimes[s.work_item_id] || []).some(X.turnTest(s.sent_at, sendTimes[s.work_item_id] || [])) };
 });
 
 // --- per-user adoption ----------------------------------------------------
@@ -185,6 +191,11 @@ sendRows.forEach((s) => {
 const intents = Object.values(byIntent).filter((o) => o.n >= 3).sort((a, b) => b.n - a.n)
   .map((o) => ({ ...o, modHeavyPct: Math.round((100 * o.modHeavy) / o.n), verbatimPct: Math.round((100 * o.verbatim) / o.n),
                  ...firstDraftStats(sendRows.filter((s) => (s.intent || "unknown") === o.intent)) }));
+const quickRows = sendRows.filter((s) => s.quick);
+if (quickRows.length) intents.push({ intent: "_quick", n: quickRows.length,
+  verbatimPct: Math.round((100 * quickRows.filter((s) => s.bucket === "verbatim").length) / quickRows.length),
+  modHeavyPct: Math.round((100 * quickRows.filter((s) => s.bucket === "moderate" || s.bucket === "heavy").length) / quickRows.length),
+  ...firstDraftStats(quickRows) });
 
 // --- confidence calibration ----------------------------------------------
 const conf = {};
@@ -302,7 +313,7 @@ function renderHtml(D, user) {
   const weekly = card(L("ad_weekly"), table([th("ad_col_week"), th("ad_col_sends", 1), th("ad_first_ok"), th("ad_redraft"), th("ad_col_last_unch"), th("ad_col_heavy")],
     D.weekly.map((w) => `<tr><td class="ax-nowrap">${esc(w.week)}</td>${num(w.n)}<td>${meter(w.firstPct)}</td><td>${meter(w.redraftPct)}</td><td>${meter(w.verbatimPct)}</td><td>${meter(w.modHeavyPct)}</td></tr>`)), L("ad_weekly_hint"));
   const topics = card(L("ad_topics"), table([th("ad_col_topic"), th("ad_col_sends", 1), th("ad_first_ok"), th("ad_redraft"), th("ad_col_last_unch"), th("ad_col_heavy")],
-    D.intents.map((i) => `<tr><td>${esc(intentLabel(lang, i.intent))}</td>${num(i.n)}<td>${meter(i.firstPct)}</td><td>${meter(i.redraftPct)}</td><td>${meter(i.verbatimPct)}</td><td>${meter(i.modHeavyPct)}</td></tr>`)));
+    D.intents.map((i) => `<tr><td>${i.intent === "_quick" ? `<b>${L("ad_quick")}</b>` : esc(intentLabel(lang, i.intent))}</td>${num(i.n)}<td>${meter(i.firstPct)}</td><td>${meter(i.redraftPct)}</td><td>${meter(i.verbatimPct)}</td><td>${meter(i.modHeavyPct)}</td></tr>`)));
   const conf = card(L("ad_conf"), table([th("ad_col_conf"), th("ad_col_sends", 1), th("ad_b_verbatim")],
     D.confidence.map((c) => `<tr><td>${L("ad_c_" + c.confidence)}</td>${num(c.n)}<td>${meter(c.pct)}</td></tr>`)), L("ad_conf_hint"));
 

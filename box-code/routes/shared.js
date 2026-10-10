@@ -22,6 +22,7 @@ const SEARCH = require("../search.js");           // the compose subject is sear
 const DM = require("../draft-media.js");          // the customer's images and PDFs shown to the drafter
 const HO = require("../handover.js");             // owner handover: the record and the drafter's seed block
 const MS = require("../message-store.js");        // the stored thread, for a redraft's history
+const QR = require("../quick-reply.js");          // quick-reply mode and the "Ask the customer" seed
 const SG = require("../send-guard.js");            // isVoicemailItem: a voicemail's card is the caller's
 const CUSTSUM = require("../customer-summary.js"); // the customer's SAP card (cached), for its addresses
 const { db, audit } = require("../db.js");
@@ -119,7 +120,8 @@ function returnLabelSeed(w) {
   } catch (e) { return undefined; }
 }
 
-async function runRedraft(itemId, login) {
+// opts.askCustomer: the salesperson pressed "Ask the customer" (quick-reply round, 2026-10-10).
+async function runRedraft(itemId, login, opts = {}) {
   try {
     const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
 
@@ -217,12 +219,23 @@ async function runRedraft(itemId, login) {
     const prev = WA.previousAttempt(w, latestWithdrawn(itemId), latestDraftVersion(itemId),
       db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL").all(itemId));
     if (prev) seed.previous_attempt = prev;
+    // "Ask the customer": Axle's open questions become a short reply to the customer; no lookups.
+    if (opts.askCustomer && openQs.length) seed.ask_customer = QR.askCustomerSeed(openQs);
     const media = await DM.prepare(itemId, w.mailbox, login);   // never throws
+    // Quick-reply mode, decided on the newest inbound exactly as ingest decides it.
+    let files = 0;
+    try { files = (JSON.parse(w.attachments_json || "[]") || []).length; } catch (e) { /* unreadable list: treat as none */ }
+    const quick = !isContactFormItem(w) && !isReturnNotificationItem(w) && !w.caller_info && QR.isQuickTurn({ text: w.email_text || "", files,
+      priorSends: db.prepare("SELECT COUNT(*) AS n FROM sends WHERE work_item_id = ? AND status = 'sent' AND sent_at < ?").get(itemId, String(w.email_received || "").replace("T", " ").slice(0, 19)).n });
     const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX_OF[w.mailbox], {
       exemplars: { intent: w.intent, language: w.language, mailbox: w.mailbox, excludeItemId: itemId },
       media,
+      ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),
+      ...(seed.ask_customer ? { maxLookups: 0 } : {}),
     });
     const { status, ver } = persistResult(itemId, result, toolLog, seed);
+    if (quick) audit("system", "quick_reply", itemId, `v=${ver}`);
+    if (seed.ask_customer) audit(login, "ask_customer_done", itemId, `v=${ver} questions=${openQs.length}`);
     // Refresh suggested documents from the newest body + the model's referenced_documents hint
     // (read-only; same deterministic resolve+scope gate). Skipped for contact-form/flagged items.
     try {

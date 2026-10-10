@@ -721,6 +721,10 @@ function applyGates(result, ctx = {}) {
 //                      is refused as an invalid request (HTTP 400, or 413 too large), the draft is
 //                      asked once more without media, with fallback()'s manifest naming every file
 //                      as not shown; any other error is thrown as before.
+//   opts.quick       - reply mode only: quick-reply.js's QUICK_BLOCK, our own trusted
+//                      instruction for a short turn, placed after the seed context (2026-10-10).
+//   opts.maxLookups  - a cap on tool calls (quick replies: 2). Calls past it are not run; the
+//                      model is told the budget is used up and must answer with what it has.
 async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {}) {
   const toolLog = [];
   const system = (opts.system || SYSTEM) + "\n\n" + K.block();
@@ -772,6 +776,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       (manifest ? manifest + "\n\n" : "") +
       `<seed_context>\n${stripInvisible(JSON.stringify(seed, null, 2))}\n</seed_context>\n\n` +
       styleBlock +
+      (opts.quick || "") +
       "Investigate with the tools as needed, then produce the final JSON.";
     firstContent = textWith(media.manifest);
     if (media.blocks.length) {
@@ -812,6 +817,10 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     messages.push({ role: "assistant", content: msg.content });
     const content = [];
     for (const block of msg.content.filter((b) => b.type === "tool_use")) {
+      if (opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups) {
+        content.push({ type: "tool_result", tool_use_id: block.id, is_error: true, content: "Lookup budget used up. Answer now with what you have." });
+        continue;
+      }
       let out, ok = true;
       try { out = await T.runTool(block.name, block.input, { mailbox, priceList }); }
       catch (e) { ok = false; out = { error: e.message }; }
@@ -826,7 +835,8 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       // D1: tool results are untrusted too (poisoned SAP/Shopify fields) - sanitise.
       content.push({ type: "tool_result", tool_use_id: block.id, content: stripInvisible(capToolResult(out, capFor(block.name))) });
     }
-    if (turn === MAX_TOOL_TURNS - 1) {
+    const spent = opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups;
+    if (turn === MAX_TOOL_TURNS - 1 || spent) {
       content.push({ type: "text", text: "Tool budget exhausted. Respond now with ONLY the final JSON object." });
     }
     messages.push({ role: "user", content });

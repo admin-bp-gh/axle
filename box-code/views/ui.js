@@ -43,6 +43,9 @@ const STRINGS = {
     feedback_ph: "Tell Axle what to change",
     answer: "Answer",
     redraft_hint: "Writes the reply again with your note, in the background",
+    ask_customer: "Ask the customer", ask_customer_hint: "Axle writes a short reply asking the customer the questions only they can answer",
+    quick_chip: "Quick reply", quick_chip_title: "A short reply in a conversation we are in: Axle keeps its answer short",
+    ad_quick: "Quick replies",
     mark_done: "Mark done", reopen: "Reopen",
     new_order_ratchet: "Create order", new_order_ratchet_tip: "Open Ratchet's order builder with this e-mail already read in; you review before anything is created",
     mark_phone: "Resolved by phone",
@@ -281,6 +284,9 @@ const STRINGS = {
     feedback_ph: "Vertel Axle wat er anders moet",
     answer: "Antwoord",
     redraft_hint: "Schrijft het antwoord opnieuw met jouw opmerking, op de achtergrond",
+    ask_customer: "Vraag het de klant", ask_customer_hint: "Axle schrijft een kort antwoord met de vragen die alleen de klant kan beantwoorden",
+    quick_chip: "Kort antwoord", quick_chip_title: "Een kort bericht in een lopend gesprek: Axle houdt het antwoord kort",
+    ad_quick: "Korte antwoorden",
     mark_done: "Markeer afgehandeld", reopen: "Heropen",
     new_order_ratchet: "Order aanmaken", new_order_ratchet_tip: "Opent de orderbouwer van Ratchet met deze e-mail al ingelezen; je controleert alles voordat er iets wordt aangemaakt",
     mark_phone: "Telefonisch afgehandeld",
@@ -811,7 +817,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax17";  // 2026-10-10: "Suggest as rule" beside Redraft, adoption tiles in three columns
+const ASSET_V = "ax18";  // 2026-10-10: quick-reply chip and "Ask the customer" (ax17: "Suggest as rule", adoption tiles in three columns)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

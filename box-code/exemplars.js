@@ -66,11 +66,16 @@ function sensitive(text) {
 // redrafted is true when a salesperson pressed Redraft in it. Timestamps are SQLite
 // datetime('now') text and compare as strings. Shared with adoption-report.js.
 function turnFacts(sentAt, itemSendTimes, aiDrafts, redraftTimes) {
-  const prev = itemSendTimes.filter((t) => t < sentAt).sort().pop() || "";
-  const inTurn = (t) => t > prev && t <= sentAt;
+  const inTurn = turnTest(sentAt, itemSendTimes);
   const firstDraft = aiDrafts.filter((d) => inTurn(d.created_at))
     .sort((a, b) => a.version - b.version || a.is_interim - b.is_interim)[0] || null;
   return { firstDraft, redrafted: redraftTimes.some(inTurn) };
+}
+
+// A test for "this timestamp falls in the turn the send at sentAt closes".
+function turnTest(sentAt, itemSendTimes) {
+  const prev = itemSendTimes.filter((t) => t < sentAt).sort().pop() || "";
+  return (t) => t > prev && t <= sentAt;
 }
 
 // Word-level similarity, 1 = identical (normalised Levenshtein over words).
@@ -151,4 +156,4 @@ function exemplarBlock(list, sanitise = (s) => s) {
   );
 }
 
-module.exports = { pickExemplars, exemplarBlock, sensitive, turnFacts, wordSim, MIN_LEN, MAX_LEN, MIN_SIM };
+module.exports = { pickExemplars, exemplarBlock, sensitive, turnFacts, turnTest, wordSim, MIN_LEN, MAX_LEN, MIN_SIM };

@@ -497,3 +497,7 @@
 
 /* Owner handover (2026-10-09): the colleague's note under the banner line, as typed. */
 .ax-handover .ax-honote { margin: 6px 0 0; white-space: pre-wrap; font-weight: 400; }
+
+/* The scam/injection banner's way out: what was checked, then Checked or Scam (2026-10-11). */
+.ax-injform { margin-top: 10px; display: grid; gap: 8px; font-weight: 400; }
+.ax-injform__act { display: flex; flex-wrap: wrap; gap: 8px; }

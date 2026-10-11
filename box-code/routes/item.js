@@ -472,7 +472,13 @@ app.get("/item/:id", async (req, res) => {
   const ptop = `<header class="wb-page__hd ax-ptop"><a class="wb-btn wb-btn--ghost wb-btn--icon" href="${BASE.path}/" data-back aria-label="${L("inbox")}" title="${L("inbox")}">${icon("back")}</a><h1 class="wb-page__t">${esc(sender)}</h1>${statusPill()}</header>`;
   const head = `<div class="ax-head"><h1 class="ax-title">${esc(w.subject || t(lang, "no_subject"))}</h1><div class="ax-pills">${pills}</div>${custHtml}</div>`;
   const banner = (tone, html) => `<div class="wb-banner" data-tone="${tone}"${tone === "bad" ? ' role="alert"' : ""}>${icon(tone === "info" ? "info" : "alert")}<div class="wb-banner__body">${html}</div></div>`;
-  const flagBanner = (w.injection_flag && !closed ? banner("bad", `<b>${L("injection_chip")}.</b> ${L("send_disabled_inj")}`) : "") + hoBanner;
+  // The scam/injection warning carries its own way out (2026-10-11): anyone can clear it with a
+  // short note of what they checked (POST /clear-flag, audited, then a fresh draft), or close the
+  // item as a scam through the ordinary close (/status, archived).
+  const injForm = editable ? `<form class="ax-injform" method="post" action="${U("/clear-flag")}" data-inline data-toast="${L("inj_cleared")}"><div data-ax-banner></div>
+    <div class="wb-field"><label class="wb-label" for="ax-inj-r">${L("inj_reason_label")}</label><div class="wb-input"><input id="ax-inj-r" name="reason" maxlength="200" required autocomplete="off" placeholder="${L("inj_reason_ph")}"></div></div>
+    <div class="ax-injform__act"><button type="submit" class="wb-btn wb-btn--primary">${icon("check")}<span>${L("inj_clear")}</span></button><button type="submit" form="ax-f-status" name="to" value="archived" formnovalidate class="wb-btn wb-btn--ghost wb-btn--danger" data-next data-toast="${L("inj_closed")}">${L("inj_scam")}</button></div></form>` : "";
+  const flagBanner = (w.injection_flag && !closed ? banner("bad", `<b>${L("injection_chip")}.</b> ${L("inj_explain")}${injForm}`) : "") + hoBanner;
   const voiceBanner = isVoicemail && !closed ? banner("info", L("voicemail_phone_only")) : "";
 
   // --- The email: the customer's message (compose items have none: their information card
@@ -1321,6 +1327,26 @@ app.post("/item/:id/status", async (req, res) => {
     if (to === "done" || to === "archived") await markReadSafe(req.user.tailscale_login, w);
   }
   res.redirect(req.body.to === "reopen" ? BASE.url("/item/" + w.id) : BASE.url("/"));
+});
+
+// Clear a possible-scam flag (2026-10-11). Anyone who has read the email and judged it genuine
+// clears it with a short note of what they checked; the note is audited and goes to the redraft
+// as trusted staff input. The email itself stays untrusted data in that redraft.
+app.post("/item/:id/clear-flag", (req, res) => {
+  const lang = req.user.lang;
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(notFoundPage(req.user));
+  if (w.injection_flag && w.status !== "investigating" && !["done", "archived"].includes(w.status)) {
+    const reason = K.cleanText(req.body.reason).slice(0, 200);
+    if (!reason) return req.get("X-Axle-Inline") === "1"
+      ? res.status(400).json({ ok: false, kind: "refused", message: t(lang, "inj_reason_needed"), unchanged: true })
+      : res.redirect(BASE.url("/item/" + w.id));
+    db.prepare("UPDATE work_items SET injection_flag = 0, status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
+    audit(login, "injection_cleared", w.id, reason);
+    setImmediate(() => runRedraft(w.id, login, { flagCleared: reason }));
+  }
+  res.redirect(BASE.url("/item/" + w.id));
 });
 
 };

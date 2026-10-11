@@ -684,8 +684,8 @@ app.get("/item/:id", async (req, res) => {
   const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}"${canSend ? "" : " disabled"}>${icon("send")}<span>${L("send")}</span></button>`;
   const ratchet = isCompose ? "" : busy ? `<button type="button" class="wb-btn" disabled>${icon("plus")}<span>${L("new_order_ratchet")}</span></button>`
     : `<a class="wb-btn" href="/#/ratchet/new?axle=${w.id}" target="_blank" rel="noopener" title="${L("new_order_ratchet_tip")}" data-fold="3">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>`;
-  const resend = resendHref && !busy ? `<a class="wb-btn" href="${resendHref}" target="_blank" rel="noopener" title="${L("resend_guarantee_tip")}" data-fold="2">${icon("refresh")}<span>${L("resend_guarantee")}</span></a>` : "";
-  const resendRow = resendHref ? `<a class="wb-menu__item" role="menuitem" href="${resendHref}" target="_blank" rel="noopener"><span>${L("resend_guarantee")}</span></a>` : "";
+  const resend = resendHref && !busy ? `<a class="wb-btn" href="${resendHref}" target="_top" title="${L("resend_guarantee_tip")}" data-fold="2">${icon("refresh")}<span>${L("resend_guarantee")}</span></a>` : "";
+  const resendRow = resendHref ? `<a class="wb-menu__item" role="menuitem" href="${resendHref}" target="_top"><span>${L("resend_guarantee")}</span></a>` : "";
   const moreBtn = (icn) => !(icn ? pmoreRows : checkedRow || foldRows) ? "" : icn ? `<button type="button" class="wb-btn wb-btn--icon" data-menu="pmore" aria-haspopup="menu" aria-expanded="false" aria-label="${L("more")}" title="${L("more")}"${busy ? " disabled" : ""}>${icon("dots")}</button>`
     : `<button type="button" class="wb-btn wb-btn--ghost" data-menu="more" aria-haspopup="menu" aria-expanded="false"${busy ? " disabled" : ""}${checkedRow ? "" : " hidden"}>${icon("dots")}<span>${L("more")}</span></button>`;
   const reopen = `<button type="submit" form="ax-f-status" name="to" value="reopen" class="wb-btn">${icon("refresh")}<span>${L("reopen")}</span></button>`;
@@ -1168,6 +1168,39 @@ app.post("/item/:id/attach-all", async (req, res) => {
     }
   }
   res.redirect(BASE.url("/item/" + w.id));
+});
+
+// Guarantee re-send hand-back (2026-10-11): Ratchet calls this right after it created the replacement
+// order opened from "Re-send (guarantee)", then sends the user back to this email. The order is
+// re-resolved from SAP and must belong to the email's own customer (itemScope); its PDF is staged on
+// the reply and the reply redrafted with a staff note naming it (the trusted feedback channel). JSON.
+app.post("/item/:id/resend-created", async (req, res) => {
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).json({ ok: false, reason: "not_found" });
+  if (w.injection_flag || ["done", "archived"].includes(w.status) || isContactFormItem(w) || isReturnNotificationItem(w)) {
+    return res.status(400).json({ ok: false, reason: "refused" });
+  }
+  const num = String(req.body.docnum || "").replace(/\D/g, "");
+  const orig = String(req.body.original || "").replace(/\D/g, "");
+  let doc = null, scope = { cards: [] };
+  try {
+    const r = num ? await SAPDOC.resolveDocument("order", num) : null;
+    doc = r && r.ok && r.candidates.length === 1 ? r.candidates[0] : null;
+    scope = await itemScope(w);
+  } catch (e) { audit(login, "resend_handback_error", w.id, String(e.message || e).slice(0, 150)); }
+  if (!doc || !scope.cards.includes(doc.cardCode)) {
+    audit(login, "resend_handback_refused", w.id, `order ${num || "?"} card ${doc ? doc.cardCode : "?"} vs ${scope.cards.join(",") || "?"}`);
+    return res.status(400).json({ ok: false, reason: "not_in_scope" });
+  }
+  const out = await stageDocPdf(w, doc, login, req.user.lang, true);
+  const note = `We created free-of-charge replacement order ${doc.docNum}${orig ? ` to re-send order ${orig}` : ""} for what the customer did not receive. `
+    + (out.error ? "Its order confirmation could not be attached." : "Its order confirmation is attached.")
+    + " Confirm this to the customer and say it ships shortly.";
+  db.prepare("UPDATE work_items SET feedback = ?, status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(note, w.id);
+  audit(login, "resend_handback", w.id, `order ${doc.docNum}${orig ? ` re-sends ${orig}` : ""}${out.error ? " (not attached)" : ""}`);
+  setImmediate(() => runRedraft(w.id, login));
+  res.json({ ok: true, attached: !out.error });
 });
 
 app.post("/item/:id/attach-doc", async (req, res) => {

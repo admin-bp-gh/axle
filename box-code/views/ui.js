@@ -827,7 +827,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax18";  // 2026-10-10: quick-reply chip and "Ask the customer" (ax17: "Suggest as rule", adoption tiles in three columns)
+const ASSET_V = "ax19";  // 2026-10-11: Create order split + Re-send order, rule tickbox and Teach under the comment field (ax18: quick-reply chip and "Ask the customer")
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

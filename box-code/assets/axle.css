@@ -502,3 +502,8 @@
 /* The scam/injection banner's way out: what was checked, then Checked or Scam (2026-10-11). */
 .ax-injform { margin-top: 10px; display: grid; gap: 8px; font-weight: 400; }
 .ax-injform__act { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Create order + its chevron (Re-send order) as one split control. */
+.ax-split { display: inline-flex; }
+.ax-split > .wb-btn:first-child:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ax-split > .wb-btn + .wb-btn { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }

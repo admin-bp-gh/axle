@@ -682,10 +682,14 @@ app.get("/item/:id", async (req, res) => {
   const markDone = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="done" class="wb-btn" data-next data-toast="${L("marked_done")}" title="${L("done_tip")}"${busy ? " disabled" : ""}>${icon("check")}<span>${L(inBar ? "mark_done_bar" : "mark_done")}</span></button>`;
   const phoneBtn = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="phone" class="wb-btn wb-btn--primary" data-next data-toast="${L("mark_phone")}" title="${L("phone_tip")}"><span>${L(inBar ? "mark_phone_bar" : "mark_phone")}</span></button>`;
   const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}"${canSend ? "" : " disabled"}>${icon("send")}<span>${L("send")}</span></button>`;
+  // Create order (2026-10-11): one dock control for order creation. The button opens Ratchet's builder
+  // with this e-mail read in; when an order resolved, a chevron offers Re-send order (a zero-priced copy
+  // of it). Both open in this tab: once the order is created Ratchet hands it back to this e-mail.
+  const newHref = `/#/ratchet/new?axle=${w.id}`;
   const ratchet = isCompose ? "" : busy ? `<button type="button" class="wb-btn" disabled>${icon("plus")}<span>${L("new_order_ratchet")}</span></button>`
-    : `<a class="wb-btn" href="/#/ratchet/new?axle=${w.id}" target="_blank" rel="noopener" title="${L("new_order_ratchet_tip")}" data-fold="3">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>`;
-  const resend = resendHref && !busy ? `<a class="wb-btn" href="${resendHref}" target="_top" title="${L("resend_guarantee_tip")}" data-fold="2">${icon("refresh")}<span>${L("resend_guarantee")}</span></a>` : "";
-  const resendRow = resendHref ? `<a class="wb-menu__item" role="menuitem" href="${resendHref}" target="_top"><span>${L("resend_guarantee")}</span></a>` : "";
+    : `<span class="ax-split" data-fold="2"><a class="wb-btn" href="${newHref}" target="_top" title="${L("new_order_ratchet_tip")}">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>${resendHref
+      ? `<button type="button" class="wb-btn wb-btn--icon" data-menu="order" aria-haspopup="menu" aria-expanded="false" aria-label="${L("order_menu")}" title="${L("order_menu")}">${icon("chevron-down")}</button>` : ""}</span>`;
+  const resendRow = resendHref ? `<a class="wb-menu__item" role="menuitem" href="${resendHref}" target="_top" title="${L("resend_guarantee_tip")}"><span>${L("resend_guarantee")}</span></a>` : "";
   const moreBtn = (icn) => !(icn ? pmoreRows : checkedRow || foldRows) ? "" : icn ? `<button type="button" class="wb-btn wb-btn--icon" data-menu="pmore" aria-haspopup="menu" aria-expanded="false" aria-label="${L("more")}" title="${L("more")}"${busy ? " disabled" : ""}>${icon("dots")}</button>`
     : `<button type="button" class="wb-btn wb-btn--ghost" data-menu="more" aria-haspopup="menu" aria-expanded="false"${busy ? " disabled" : ""}${checkedRow ? "" : " hidden"}>${icon("dots")}<span>${L("more")}</span></button>`;
   const reopen = `<button type="submit" form="ax-f-status" name="to" value="reopen" class="wb-btn">${icon("refresh")}<span>${L("reopen")}</span></button>`;
@@ -695,29 +699,29 @@ app.get("/item/:id", async (req, res) => {
   const blockBtn = canBlock ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--danger" ${blockAct} data-fold="1"><span>${L("block_sender")}</span></button>` : "";
   const blockRow = canBlock ? `<button type="button" class="wb-menu__item wb-menu__item--danger" role="menuitem" ${blockAct}><span>${L("block_sender")}</span></button>` : "";
   const checkedRow = admin ? `<button type="button" class="wb-menu__item" role="menuitem" data-overlay="ax-brief"><span>${L("what_checked")}</span></button>` : "";
-  const ratchetRow = isCompose ? "" : `<a class="wb-menu__item" role="menuitem" href="/#/ratchet/new?axle=${w.id}" target="_blank" rel="noopener"><span>${L("new_order_ratchet")}</span></a>`;
+  const ratchetRow = isCompose ? "" : `<a class="wb-menu__item" role="menuitem" href="${newHref}" target="_top"><span>${L("new_order_row")}</span></a>`;
   // More holds what is left: on desk and tablet What Axle checked (admin), plus the dock slots that
   // fold into it when the dock is too narrow (data-fold: Block sender first, then Create order;
   // axle.js dockFold shows their rows and More); on the phone also Create order and Block sender.
   const sepRow = (attr) => `<div class="wb-menu__sep" role="separator"${attr || ""}></div>`;
   const pmoreRows = `${ratchetRow}${resendRow}${blockRow}${checkedRow && (ratchetRow || resendRow || blockRow) ? sepRow() : ""}${checkedRow}`;
-  const foldRows = busy ? "" : ratchetRow.replace("<a ", '<a data-fold-row="3" hidden ') + resendRow.replace("<a ", '<a data-fold-row="2" hidden ') + blockRow.replace("<button ", '<button data-fold-row="1" hidden ');
+  const foldRows = busy ? "" : ratchetRow.replace("<a ", '<a data-fold-row="2" hidden ') + resendRow.replace("<a ", '<a data-fold-row="2" hidden ') + blockRow.replace("<button ", '<button data-fold-row="1" hidden ');
   let dock, bar;
   if (closed) {
     dock = `<div class="wb-dock"><div class="wb-dock__group">${reopen}</div></div>`;
     bar = `<div class="wb-bar">${reopen}</div>`;
   } else if (isVoicemail) {
-    dock = `<div class="wb-dock"><div class="wb-dock__group">${phoneBtn()}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${ratchet}${resend}${blockBtn}${moreBtn()}</div></div>`;
+    dock = `<div class="wb-dock"><div class="wb-dock__group">${phoneBtn()}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${ratchet}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${phoneBtn(true)}${moreBtn(true)}</div>`;
   } else {
-    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${resend}${blockBtn}${moreBtn()}</div></div>`;
+    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${sendBtn(true)}${moreBtn(true)}</div>`;
   }
 
   // --- Menus, overlays and the small forms the buttons post through (outside the work form:
   // forms never nest). Each posts in place (data-inline) with exactly the old fields.
   const templates = [
-    !closed && !busy ? `<template id="m-more" data-title="${L("more")}" data-align="end">${foldRows}${foldRows && checkedRow ? sepRow(" data-fold-sep hidden") : ""}${checkedRow}</template><template id="m-pmore" data-title="${L("more")}" data-align="end">${pmoreRows}</template>` : "",
+    !closed && !busy ? `<template id="m-more" data-title="${L("more")}" data-align="end">${foldRows}${foldRows && checkedRow ? sepRow(" data-fold-sep hidden") : ""}${checkedRow}</template><template id="m-pmore" data-title="${L("more")}" data-align="end">${pmoreRows}</template>${resendHref ? `<template id="m-order" data-title="${L("new_order_ratchet")}" data-align="end">${ratchetRow}${resendRow}</template>` : ""}` : "",
     langMenu,
     ownerEditable ? `<template id="m-owner" data-title="${L("owner_fix")}" data-align="start">${ownerOpts.map(ownerRow).join("")}</template>${ownerOpts.map(ownerDialog).join("")}` : "",
     toMenu,
@@ -1170,11 +1174,11 @@ app.post("/item/:id/attach-all", async (req, res) => {
   res.redirect(BASE.url("/item/" + w.id));
 });
 
-// Guarantee re-send hand-back (2026-10-11): Ratchet calls this right after it created the replacement
-// order opened from "Re-send (guarantee)", then sends the user back to this email. The order is
+// Order hand-back (2026-10-11): Ratchet calls this right after it created an order opened from this
+// e-mail (Create order, or Re-send order with `original`), then sends the user back to this email. The order is
 // re-resolved from SAP and must belong to the email's own customer (itemScope); its PDF is staged on
 // the reply and the reply redrafted with a staff note naming it (the trusted feedback channel). JSON.
-app.post("/item/:id/resend-created", async (req, res) => {
+app.post("/item/:id/order-created", async (req, res) => {
   const login = req.user.tailscale_login;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).json({ ok: false, reason: "not_found" });
@@ -1188,17 +1192,18 @@ app.post("/item/:id/resend-created", async (req, res) => {
     const r = num ? await SAPDOC.resolveDocument("order", num) : null;
     doc = r && r.ok && r.candidates.length === 1 ? r.candidates[0] : null;
     scope = await itemScope(w);
-  } catch (e) { audit(login, "resend_handback_error", w.id, String(e.message || e).slice(0, 150)); }
+  } catch (e) { audit(login, "order_handback_error", w.id, String(e.message || e).slice(0, 150)); }
   if (!doc || !scope.cards.includes(doc.cardCode)) {
-    audit(login, "resend_handback_refused", w.id, `order ${num || "?"} card ${doc ? doc.cardCode : "?"} vs ${scope.cards.join(",") || "?"}`);
+    audit(login, "order_handback_refused", w.id, `order ${num || "?"} card ${doc ? doc.cardCode : "?"} vs ${scope.cards.join(",") || "?"}`);
     return res.status(400).json({ ok: false, reason: "not_in_scope" });
   }
   const out = await stageDocPdf(w, doc, login, req.user.lang, true);
-  const note = `We created free-of-charge replacement order ${doc.docNum}${orig ? ` to re-send order ${orig}` : ""} for what the customer did not receive. `
-    + (out.error ? "Its order confirmation could not be attached." : "Its order confirmation is attached.")
-    + " Confirm this to the customer and say it ships shortly.";
+  const att = out.error ? "Its order confirmation could not be attached." : "Its order confirmation is attached.";
+  const note = orig
+    ? `We created free-of-charge replacement order ${doc.docNum} to re-send order ${orig} for what the customer did not receive. ${att} Confirm this to the customer and say it ships shortly.`
+    : `We created order ${doc.docNum} for this request. ${att} Confirm the order to the customer.`;
   db.prepare("UPDATE work_items SET feedback = ?, status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(note, w.id);
-  audit(login, "resend_handback", w.id, `order ${doc.docNum}${orig ? ` re-sends ${orig}` : ""}${out.error ? " (not attached)" : ""}`);
+  audit(login, "order_handback", w.id, `order ${doc.docNum}${orig ? ` re-sends ${orig}` : ""}${out.error ? " (not attached)" : ""}`);
   setImmediate(() => runRedraft(w.id, login));
   res.json({ ok: true, attached: !out.error });
 });

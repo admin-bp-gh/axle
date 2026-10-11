@@ -1233,7 +1233,7 @@
     const slots = $$("[data-fold]", dock).sort((a, b) => a.dataset.fold - b.dataset.fold);
     const fixed = !!$(".wb-menu__item:not([data-fold-row])", rows);
     const fold = (n) => {
-      slots.forEach((s, k) => { s.hidden = k < n; $(`[data-fold-row="${s.dataset.fold}"]`, rows).hidden = k >= n; });
+      slots.forEach((s, k) => { s.hidden = k < n; $$(`[data-fold-row="${s.dataset.fold}"]`, rows).forEach((r) => { r.hidden = k >= n; }); });
       const sep = $("[data-fold-sep]", rows);
       if (sep) sep.hidden = !n;
       if (more) more.hidden = !n && !fixed;

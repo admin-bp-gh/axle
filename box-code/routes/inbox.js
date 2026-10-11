@@ -16,6 +16,7 @@ const { esc, t, page, langOK, statusLabel, statusWithRes, intentLabel, ownerLabe
         fmtDateTime, fmtTime, parseTS, shell, voidPane, icon, iconBtn, homeLink } = require("../views/ui.js");
 const { anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, defaultMailbox } = require("./shared.js");
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
+const RULES = require("../rules.js");            // queueBoxSql: a handed-over item lists under the receiver's mailbox
 const SEARCH = require("../search.js");           // the one server-side search (full-text index, LIKE fallback)
 const { requireAdmin } = require("./admin.js");   // owners only: Sync now
 
@@ -85,12 +86,12 @@ function queueFilter(req) {
   const conds = [show === "open" ? "w.status NOT IN ('done','archived')" : "w.status IN ('done','archived')"];
   const params = [];
   const oneBox = mb !== "all" && !q;
-  if (oneBox) { conds.push("w.mailbox = ?"); params.push(mb); }
+  if (oneBox) { conds.push(`${RULES.queueBoxSql()} = ?`); params.push(mb); }
   if (scope === "mine") { conds.push("w.owner = ?"); params.push(owner); }
   if (q) { const tc = SEARCH.termConds(q); conds.push(...tc.conds); params.push(...tc.params); }
   // Counts under the current mailbox + scope (status and search excluded), for the change stamp.
   const cConds = [], cParams = [];
-  if (oneBox) { cConds.push("w.mailbox = ?"); cParams.push(mb); }
+  if (oneBox) { cConds.push(`${RULES.queueBoxSql()} = ?`); cParams.push(mb); }
   if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(owner); }
   return { mb, show, scope, q, owner, conds, params, cConds, cParams };
 }

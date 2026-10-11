@@ -61,6 +61,17 @@ function ownerHome(label) {
 function ourMailboxAddresses() {
   return Object.values(OWNER_HOME).map(homeAddress);
 }
+// Which mailbox's Open list an item sits in. Normally the mailbox it lives in, but an item handed
+// over to an owner whose home is the OTHER queue mailbox (info@ -> Drachten, drachten@ ->
+// Sales(Gouda)) lists under the receiver's mailbox, so it leaves the sender's list. w.mailbox itself
+// never changes: send, outlook-close and ingest all anchor on it. Brad's home (admin@) has no queue,
+// so items handed to him stay where they are. SQL over alias w, labels from this fixed table only.
+const QUEUE_BOXES = ["info", "drachten"];
+function queueBoxSql() {
+  const whens = Object.entries(OWNER_HOME).filter(([, h]) => QUEUE_BOXES.includes(h.box))
+    .map(([label, h]) => `WHEN '${label.replace(/'/g, "''")}' THEN '${h.box}'`).join(" ");
+  return `(CASE w.owner ${whens} ELSE w.mailbox END)`;
+}
 const isOurMailbox = (addr) => ourMailboxAddresses().includes(String(addr || "").trim().toLowerCase());
 
 // An email one of our own mailboxes forwarded to another — either Axle's own handover forward or
@@ -129,6 +140,7 @@ const drachtenRules = [
 ];
 
 module.exports = {
+  queueBoxSql,
   // 'folders' = the mail folders Axle ingests for this mailbox. info@ also reads "Shopify Contact
   // Form" (customer messages from the webshop contact form, which a server-side Outlook rule files
   // out of the Inbox). Names are resolved to Graph folder ids at read time.

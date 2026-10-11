@@ -626,13 +626,13 @@ app.get("/item/:id", async (req, res) => {
   const retLabel = RL.mode() !== "off" && !isContactForm && !isVoicemail ? (() => { try { return JSON.parse(w.return_label_json || "null"); } catch (e) { return null; } })() : undefined;
   const retLabelBtn = retLabel === undefined || (retLabel && atts.some((a) => a.name === retLabel.attachment)) ? ""
     : `<button type="submit" form="ax-f-retlabel" class="wb-btn wb-btn--ghost wb-btn--sm" data-inline data-confirm="${L("return_label_confirm")}" data-confirm-ok="${L("return_label_ok")}" data-toast="${L("return_label_toast")}">${icon("plus")}<span>${L("return_label")}</span></button>`;
-  // "Re-send (guarantee)" (2026-10-11): opens Ratchet's re-send picker in a new tab with the orders this
-  // e-mail resolved to (trusted side only: the in-scope suggested documents), the first one loaded.
-  // Nothing is created here; the rep picks lines and creates the order in Ratchet.
+  // "Re-send (guarantee)" (2026-10-11): opens Ratchet's order builder in a new tab as a zero-priced
+  // re-send of the order this e-mail resolved to (trusted side only: the in-scope suggested documents).
+  // Shown only when an order resolved; nothing is created until the rep creates it in Ratchet.
   const resendOrders = editable && !isContactForm && !isRN && !isCompose && !isVoicemail
     ? await RL.orderNumbersFor((await computeItemSuggestions(w)).suggestions.filter((x) => x.status === "in_scope")
       .flatMap((x) => x.docs.map((d) => ({ type: docTypeOf(d.objectId), docNum: d.docNum, docEntry: d.docEntry })))) : null;
-  const resendBtn = resendOrders ? `<a class="wb-btn wb-btn--ghost wb-btn--sm" href="/#/ratchet/resend?axle=${w.id}${resendOrders.length ? `&orders=${resendOrders.slice(0, 5).join(",")}` : ""}" target="_blank" rel="noopener" title="${L("resend_guarantee_tip")}">${icon("refresh")}<span>${L("resend_guarantee")}</span></a>` : "";
+  const resendHref = resendOrders && resendOrders.length ? `/#/ratchet/resend?axle=${w.id}&orders=${resendOrders.slice(0, 5).join(",")}` : "";
   const teachFlags = db.prepare("SELECT * FROM teach_flags WHERE work_item_id = ? ORDER BY id").all(w.id);
   const teachBtn = `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-teach">${icon("note")}<span>${L("teach_title")}</span>${teachFlags.length ? `<span class="wb-count">${teachFlags.length}</span>` : ""}</button>`;
   const docsRow = editable && !isContactForm && !isRN ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
@@ -644,9 +644,8 @@ app.get("/item/:id", async (req, res) => {
     ${aiSeed ? `<textarea id="ai_seed" hidden readonly>${esc(aiSeed.body)}</textarea>` : ""}
     ${needContent ? `<div class="ax-tr" id="replytr" hidden><p class="wb-hint">${esc(t(lang, "reply_tr_note").replace("{lang}", langDisplay(lang, custLang)))}</p><div class="ax-msg">${TR_SKEL(lang)}</div></div>` : ""}
     <div class="ax-atts"${atts.length ? "" : " hidden"}>${atts.map((a) => attChip(a, true)).join("")}</div>
-    <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>${retLabelBtn}${resendBtn}
+    <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>${retLabelBtn}
       <button type="button" class="wb-btn wb-btn--ghost wb-btn--sm ax-cam" data-camera>${icon("camera")}<span>${L("camera")}</span></button><input type="file" id="att_cam" accept="image/*" capture="environment" hidden>
-      ${teachBtn}
       ${aiSeed ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-reset data-confirm="${L("reset_ai_confirm")}" data-confirm-ok="${L("reset_ai")}" hidden>${icon("refresh")}<span>${L("reset_ai")}</span></button>` : ""}${saveMark}</div>
     ${docsRow}</section>` : "";
 
@@ -665,7 +664,7 @@ app.get("/item/:id", async (req, res) => {
 
   // The redraft line: one field (the existing feedback field, so /work and /send keep it) and
   // Redraft, which posts /work action=redraft in place; the drafting state then shows.
-  const redraft = editable ? `<div class="ax-redraft"><div class="wb-input wb-input--area ax-fb"><textarea name="feedback" rows="1" placeholder="${L(needsAnswers ? "answer_ph" : "feedback_ph")}" aria-label="${L("feedback_ph")}">${esc(w.feedback || "")}</textarea></div><button type="submit" class="wb-btn" name="action" value="redraft" data-inline title="${L("redraft_hint")}">${L("redraft")}</button><label class="wb-hint ax-rulechk"><input type="checkbox" class="wb-check" name="suggest_rule" value="1">${L("suggest_rule")}</label></div>`
+  const redraft = editable ? `<div class="ax-redraft"><div class="wb-input wb-input--area ax-fb"><textarea name="feedback" rows="1" placeholder="${L(needsAnswers ? "answer_ph" : "feedback_ph")}" aria-label="${L("feedback_ph")}">${esc(w.feedback || "")}</textarea></div><button type="submit" class="wb-btn" name="action" value="redraft" data-inline title="${L("redraft_hint")}">${L("redraft")}</button><div class="ax-rulerow"><label class="wb-hint ax-rulechk"><input type="checkbox" class="wb-check" name="suggest_rule" value="1">${L("suggest_rule")}</label>${teachBtn}</div></div>`
     : busy ? `<div class="ax-redraft"><div class="wb-input"><input disabled value="${esc(w.feedback || "")}" placeholder="${L("feedback_ph")}" aria-label="${L("feedback_ph")}"></div><button type="button" class="wb-btn" disabled>${L("redraft")}</button></div>` : "";
   // The previous round's draft, folded and read-only (plain text, never a field, so it cannot post).
   const prevDraft = supersededRow ? `<details class="wb-disclosure ax-prev"><summary>${L("prev_draft_summary")}${icon("chevron-right")}</summary><div><p class="wb-hint">${L("prev_draft_hint")}</p><div class="ax-msg">${replyParas(supersededRow.body)}</div></div></details>` : "";
@@ -684,7 +683,9 @@ app.get("/item/:id", async (req, res) => {
   const phoneBtn = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="phone" class="wb-btn wb-btn--primary" data-next data-toast="${L("mark_phone")}" title="${L("phone_tip")}"><span>${L(inBar ? "mark_phone_bar" : "mark_phone")}</span></button>`;
   const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}"${canSend ? "" : " disabled"}>${icon("send")}<span>${L("send")}</span></button>`;
   const ratchet = isCompose ? "" : busy ? `<button type="button" class="wb-btn" disabled>${icon("plus")}<span>${L("new_order_ratchet")}</span></button>`
-    : `<a class="wb-btn" href="/#/ratchet/new?axle=${w.id}" target="_blank" rel="noopener" title="${L("new_order_ratchet_tip")}" data-fold="2">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>`;
+    : `<a class="wb-btn" href="/#/ratchet/new?axle=${w.id}" target="_blank" rel="noopener" title="${L("new_order_ratchet_tip")}" data-fold="3">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>`;
+  const resend = resendHref && !busy ? `<a class="wb-btn" href="${resendHref}" target="_blank" rel="noopener" title="${L("resend_guarantee_tip")}" data-fold="2">${icon("refresh")}<span>${L("resend_guarantee")}</span></a>` : "";
+  const resendRow = resendHref ? `<a class="wb-menu__item" role="menuitem" href="${resendHref}" target="_blank" rel="noopener"><span>${L("resend_guarantee")}</span></a>` : "";
   const moreBtn = (icn) => !(icn ? pmoreRows : checkedRow || foldRows) ? "" : icn ? `<button type="button" class="wb-btn wb-btn--icon" data-menu="pmore" aria-haspopup="menu" aria-expanded="false" aria-label="${L("more")}" title="${L("more")}"${busy ? " disabled" : ""}>${icon("dots")}</button>`
     : `<button type="button" class="wb-btn wb-btn--ghost" data-menu="more" aria-haspopup="menu" aria-expanded="false"${busy ? " disabled" : ""}${checkedRow ? "" : " hidden"}>${icon("dots")}<span>${L("more")}</span></button>`;
   const reopen = `<button type="submit" form="ax-f-status" name="to" value="reopen" class="wb-btn">${icon("refresh")}<span>${L("reopen")}</span></button>`;
@@ -699,17 +700,17 @@ app.get("/item/:id", async (req, res) => {
   // fold into it when the dock is too narrow (data-fold: Block sender first, then Create order;
   // axle.js dockFold shows their rows and More); on the phone also Create order and Block sender.
   const sepRow = (attr) => `<div class="wb-menu__sep" role="separator"${attr || ""}></div>`;
-  const pmoreRows = `${ratchetRow}${blockRow}${checkedRow && (ratchetRow || blockRow) ? sepRow() : ""}${checkedRow}`;
-  const foldRows = busy ? "" : ratchetRow.replace("<a ", '<a data-fold-row="2" hidden ') + blockRow.replace("<button ", '<button data-fold-row="1" hidden ');
+  const pmoreRows = `${ratchetRow}${resendRow}${blockRow}${checkedRow && (ratchetRow || resendRow || blockRow) ? sepRow() : ""}${checkedRow}`;
+  const foldRows = busy ? "" : ratchetRow.replace("<a ", '<a data-fold-row="3" hidden ') + resendRow.replace("<a ", '<a data-fold-row="2" hidden ') + blockRow.replace("<button ", '<button data-fold-row="1" hidden ');
   let dock, bar;
   if (closed) {
     dock = `<div class="wb-dock"><div class="wb-dock__group">${reopen}</div></div>`;
     bar = `<div class="wb-bar">${reopen}</div>`;
   } else if (isVoicemail) {
-    dock = `<div class="wb-dock"><div class="wb-dock__group">${phoneBtn()}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${ratchet}${blockBtn}${moreBtn()}</div></div>`;
+    dock = `<div class="wb-dock"><div class="wb-dock__group">${phoneBtn()}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${ratchet}${resend}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${phoneBtn(true)}${moreBtn(true)}</div>`;
   } else {
-    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${blockBtn}${moreBtn()}</div></div>`;
+    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${resend}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${sendBtn(true)}${moreBtn(true)}</div>`;
   }
 

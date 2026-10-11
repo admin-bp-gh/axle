@@ -626,6 +626,13 @@ app.get("/item/:id", async (req, res) => {
   const retLabel = RL.mode() !== "off" && !isContactForm && !isVoicemail ? (() => { try { return JSON.parse(w.return_label_json || "null"); } catch (e) { return null; } })() : undefined;
   const retLabelBtn = retLabel === undefined || (retLabel && atts.some((a) => a.name === retLabel.attachment)) ? ""
     : `<button type="submit" form="ax-f-retlabel" class="wb-btn wb-btn--ghost wb-btn--sm" data-inline data-confirm="${L("return_label_confirm")}" data-confirm-ok="${L("return_label_ok")}" data-toast="${L("return_label_toast")}">${icon("plus")}<span>${L("return_label")}</span></button>`;
+  // "Re-send (guarantee)" (2026-10-11): opens Ratchet's re-send picker in a new tab with the orders this
+  // e-mail resolved to (trusted side only: the in-scope suggested documents), the first one loaded.
+  // Nothing is created here; the rep picks lines and creates the order in Ratchet.
+  const resendOrders = editable && !isContactForm && !isRN && !isCompose && !isVoicemail
+    ? await RL.orderNumbersFor((await computeItemSuggestions(w)).suggestions.filter((x) => x.status === "in_scope")
+      .flatMap((x) => x.docs.map((d) => ({ type: docTypeOf(d.objectId), docNum: d.docNum, docEntry: d.docEntry })))) : null;
+  const resendBtn = resendOrders ? `<a class="wb-btn wb-btn--ghost wb-btn--sm" href="/#/ratchet/resend?axle=${w.id}${resendOrders.length ? `&orders=${resendOrders.slice(0, 5).join(",")}` : ""}" target="_blank" rel="noopener" title="${L("resend_guarantee_tip")}">${icon("refresh")}<span>${L("resend_guarantee")}</span></a>` : "";
   const teachFlags = db.prepare("SELECT * FROM teach_flags WHERE work_item_id = ? ORDER BY id").all(w.id);
   const teachBtn = `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-teach">${icon("note")}<span>${L("teach_title")}</span>${teachFlags.length ? `<span class="wb-count">${teachFlags.length}</span>` : ""}</button>`;
   const docsRow = editable && !isContactForm && !isRN ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
@@ -637,7 +644,7 @@ app.get("/item/:id", async (req, res) => {
     ${aiSeed ? `<textarea id="ai_seed" hidden readonly>${esc(aiSeed.body)}</textarea>` : ""}
     ${needContent ? `<div class="ax-tr" id="replytr" hidden><p class="wb-hint">${esc(t(lang, "reply_tr_note").replace("{lang}", langDisplay(lang, custLang)))}</p><div class="ax-msg">${TR_SKEL(lang)}</div></div>` : ""}
     <div class="ax-atts"${atts.length ? "" : " hidden"}>${atts.map((a) => attChip(a, true)).join("")}</div>
-    <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>${retLabelBtn}
+    <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>${retLabelBtn}${resendBtn}
       <button type="button" class="wb-btn wb-btn--ghost wb-btn--sm ax-cam" data-camera>${icon("camera")}<span>${L("camera")}</span></button><input type="file" id="att_cam" accept="image/*" capture="environment" hidden>
       ${teachBtn}
       ${aiSeed ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-reset data-confirm="${L("reset_ai_confirm")}" data-confirm-ok="${L("reset_ai")}" hidden>${icon("refresh")}<span>${L("reset_ai")}</span></button>` : ""}${saveMark}</div>

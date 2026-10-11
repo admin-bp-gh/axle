@@ -190,6 +190,7 @@
 .wb-pillbtn[data-tone] { background: var(--tone-bg); color: var(--tone-fg); border-color: color-mix(in srgb, var(--tone-fg) 22%, transparent); }
 .wb-pillbtn:hover { border-color: rgba(0, 0, 0, .24); }
 .wb-pillbtn[data-tone]:hover { border-color: color-mix(in srgb, var(--tone-fg) 45%, transparent); }
+.wb-pillbtn.wb-mono { font-family: var(--mono); }
 .wb-pillbtn > .wb-i { width: 12px; height: 12px; margin-right: -2px; opacity: .7; }
 .wb-pillbtn[aria-pressed="false"] { background: var(--surface); color: var(--ink-2); border-color: var(--border-2); }
 .wb-pillbtn[aria-pressed="false"] > .wb-dot { background: var(--faint); }

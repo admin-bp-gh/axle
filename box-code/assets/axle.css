@@ -147,10 +147,10 @@
 .ax-ask { display: flex; flex-direction: column; gap: var(--s2); }
 .ax-redraft { display: flex; gap: var(--s2); }
 .ax-redraft > .wb-input { flex: 1; }
-/* "Suggest as rule" (learning loop, 2026-10-10): its own line under the field and Redraft. */
-.ax-redraft { flex-wrap: wrap; }
-.ax-rulerow { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
-.ax-rulechk { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+/* Under the comment field, inside its column: "Suggest as rule" on the left, Teach Axle on the right edge. */
+.ax-fbcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.ax-rulerow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.ax-rulechk { display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; }
 /* "Ask the customer" under Axle's questions (quick-reply round, 2026-10-10). */
 .ax-askcust { margin-top: 8px; }
 .ax-link { display: block; margin-top: 4px; font: var(--fs-xs)/1.4 var(--mono); overflow-wrap: anywhere; }

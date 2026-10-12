@@ -21,7 +21,7 @@ const SG = require("../send-guard.js");            // only for needsConfirmedRec
 const DS = require("../draft-staleness.js");       // is the newest stored draft still this email's draft?
 const { db, audit } = require("../db.js");
 const { esc, t, page, splitQuoted, fmtSize, replyParas, pill, icon, iconBtn, TR_SKEL,
-        fmtDateTime, statusWithRes, suggestCloseChip, intentLabel, langDisplay, ownerLabel,
+        fmtDateTime, parseTS, statusLabel, statusWithRes, suggestCloseChip, intentLabel, langDisplay, ownerLabel,
         ownerChoices, renderTimeline, workPanes, shell, lazyQueue, deskPage, bannerHtml, bannerPage,
         notFoundPage } = require("../views/ui.js");
 const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
@@ -38,6 +38,7 @@ const DM = require("../draft-media.js");           // the customer files the lat
 const ED = require("../assets/axle-editor.js");    // the reply editor's model: its first view is rendered here
 const RL = require("../return-label.js");          // "+ Return label": a MyParcel return label on the reply (gated)
 const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
+const VS = require("../voicemail-sheet.js");       // a voicemail's call back sheet: count, open issues, supplier (Change A2)
 const fs = require("fs");
 const path = require("path");
 
@@ -203,29 +204,118 @@ function contactLine(s, lang) {
 // merged by connectors.callerPeople: the SAP contact whose number matched, people who have emailed
 // us from this customer's on-file addresses (the resolver's own address set, our mailboxes
 // skipped), and SAP contact persons. Best effort: any failure returns "" and the page carries on.
-async function voicemailPeople(w, cardCode, lang) {
+async function voicemailPeople(w, cardCode, lang, addrs, bpName) {
   try {
-    let addrs = [];
-    try { addrs = await RSET_DEPS.addressesByCardCode(cardCode); } catch (e) { addrs = []; }
-    const OB = require("../outlook-block.js");
-    addrs = [...new Set(addrs.map((a) => String(a || "").trim().toLowerCase()).filter((a) => a && !OB.isInternal(a)))];
-    const emailers = addrs.length ? db.prepare(
-      `SELECT TRIM(sender_name) AS name, MAX(COALESCE(email_received, created_at)) AS last FROM work_items
-       WHERE LOWER(TRIM(sender_email)) IN (${addrs.map(() => "?").join(", ")})
-         AND TRIM(COALESCE(sender_name, '')) <> '' AND sender_name NOT LIKE '%@%'
-       GROUP BY LOWER(TRIM(sender_name)) ORDER BY last DESC LIMIT 12`
-    ).all(...addrs) : [];
     let sap = [];
     try { sap = await C.contactPersons(cardCode); } catch (e) { sap = []; }
-    const people = C.callerPeople({ matched: w.caller_contact, sap, emailers });
-    if (!people.length) return "";
-    const when = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(lang === "nl" ? "nl-NL" : "en-GB", { day: "numeric", month: "short", year: "numeric" }); };
-    const row = (p) => `<li>${p.matched ? `<b>${esc(p.name)}</b> ${pill(t(lang, "vm_people_matched"), "ok")}` : esc(p.name)}`
-      + (p.position ? ` · ${esc(p.position)}` : "")
-      + (p.last && when(p.last) ? ` · ${esc(t(lang, "vm_people_last_email"))} ${esc(when(p.last))}` : "") + "</li>";
-    return `<div class="ax-people"><span class="wb-label">${esc(t(lang, "vm_people_title"))}</span><ul>${people.map(row).join("")}</ul></div>`;
+    const people = C.callerPeople({ matched: w.caller_contact, sap, emailers: emailersFrom(addrs, [], bpName) });
+    return peopleList(people, lang, "vm_people_title");
   } catch (e) {
     audit("system", "voicemail_people_error", w.id, String(e.message || e).slice(0, 150));
+    return "";
+  }
+}
+
+// The customer's on-file addresses (the resolver's own set), lower case, our own mailboxes skipped.
+async function onFileAddresses(cardCode) {
+  let addrs = [];
+  try { addrs = await RSET_DEPS.addressesByCardCode(cardCode); } catch (e) { addrs = []; }
+  const OB = require("../outlook-block.js");
+  return [...new Set(addrs.map((a) => String(a || "").trim().toLowerCase()).filter((a) => a && !OB.isInternal(a)))];
+}
+
+// People who emailed us, from these addresses or these domains, as "people we know" lists them:
+// a sender name that is the company's own name or an address shows as the address (A2, P6).
+function emailersFrom(addrs, domains, bpName) {
+  const where = [...(addrs || []).map(() => "LOWER(TRIM(sender_email)) = ?"), ...(domains || []).map(() => "LOWER(TRIM(sender_email)) LIKE ?")];
+  if (!where.length) return [];
+  const rows = db.prepare(
+    `SELECT TRIM(COALESCE(sender_name, '')) AS name, LOWER(TRIM(sender_email)) AS email, MAX(COALESCE(email_received, created_at)) AS last
+     FROM work_items WHERE (${where.join(" OR ")})
+     GROUP BY LOWER(TRIM(COALESCE(sender_name, ''))), LOWER(TRIM(sender_email)) ORDER BY last DESC LIMIT 24`
+  ).all(...(addrs || []), ...(domains || []).map((d) => "%@" + d));
+  return C.emailerPeople(rows, bpName).slice(0, 12);
+}
+
+const dayLabel = (iso, lang) => { const d = parseTS(iso); return isNaN(d) ? "" : d.toLocaleDateString(lang === "nl" ? "nl-NL" : "en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Amsterdam" }); };
+
+function peopleList(people, lang, titleKey) {
+  if (!people.length) return "";
+  const row = (p) => `<li>${p.matched ? `<b>${esc(p.name)}</b> ${pill(t(lang, "vm_people_matched"), "ok")}` : esc(p.name)}`
+    + (p.position ? ` · ${esc(p.position)}` : "")
+    + (p.last && dayLabel(p.last, lang) ? ` · ${esc(t(lang, "vm_people_last_email"))} ${esc(dayLabel(p.last, lang))}` : "") + "</li>";
+  return `<div class="ax-people"><span class="wb-label">${esc(t(lang, titleKey))}</span><ul>${people.map(row).join("")}</ul></div>`;
+}
+
+// One Axle item in an issues list: subject (linked), date, owner, status; "closed" once closed.
+function issueRow(r, lang) {
+  const closed = r.status === "done" || r.status === "archived";
+  return `<li><a class="wb-link" href="${BASE.path}/item/${r.id}">${esc(r.subject || t(lang, "no_subject"))}</a>`
+    + ` · ${esc(dayLabel(r.email_received || r.created_at, lang))} · ${esc(ownerLabel(r))} · `
+    + (closed ? pill(t(lang, "vm_closed")) : esc(statusLabel(lang, r.status))) + "</li>";
+}
+function issuesList(found, lang, titleKey) {
+  if (!found.shown.length) return "";
+  return `<div class="ax-people"><span class="wb-label">${esc(t(lang, titleKey))}</span><ul>${found.shown.map((r) => issueRow(r, lang)).join("")}`
+    + (found.more ? `<li>${esc(t(lang, "vm_and_more", { n: found.more }))}</li>` : "") + "</ul></div>";
+}
+const ISSUE_COLS = "id, subject, email_received, created_at, updated_at, owner, status, sender_email, rule_id, intent, cust_card, caller_card, compose_customer";
+
+// A2, P1: "3rd voicemail from this number in 14 days. Earlier: ..." when the number left one before.
+// Computed from Axle's own rows on every view. Best effort: a failure shows nothing.
+function voicemailCount(w, lang) {
+  try {
+    const earlier = VS.earlierVoicemails(w, db.prepare(VS.VOICEMAIL_ROWS_SQL).all());
+    if (!earlier.length) return "";
+    const links = earlier.map((e) => `<a class="wb-link" href="${BASE.path}/item/${e.id}">${esc(VS.shortWhen(e.at, lang))}</a>`).join(", ");
+    return `<p class="ax-cust ax-vmcount">${esc(t(lang, "vm_count", { nth: VS.ordinal(earlier.length + 1, lang) }))} ${esc(t(lang, "vm_count_earlier"))} ${links}</p>`;
+  } catch (e) {
+    audit("system", "voicemail_count_error", w.id, String(e.message || e).slice(0, 150));
+    return "";
+  }
+}
+
+// A2, P2: returns, complaints and warranty items for the caller's customer card, open first, then
+// closed in the last 30 days. Best effort: a failure hides the panel, never the page.
+function voicemailIssues(w, cardCode, addrs, lang) {
+  try {
+    const rows = db.prepare(`SELECT ${ISSUE_COLS} FROM work_items
+      WHERE (intent = 'return_complaint' OR rule_id = 'warranty_warp')
+        AND (status NOT IN ('done', 'archived') OR updated_at >= datetime('now', '-31 days'))`).all();
+    return issuesList(VS.openIssues(rows, { card: cardCode, addrs, selfId: w.id }), lang, "vm_issues_title");
+  } catch (e) {
+    audit("system", "voicemail_issues_error", w.id, String(e.message || e).slice(0, 150));
+    return "";
+  }
+}
+
+// A2, P3: the caller is only on a supplier's card (Change A's "a supplier, not a customer" line).
+// The supplier is found again by the same read-only phone lookup, suppliers (CardType S) only;
+// a customer hit means the customer rules apply and there is no panel. Best effort: "" on failure.
+async function supplierPanel(w, lang) {
+  try {
+    const nums = C.extractCallerNumbers({ subject: w.subject || "", text: w.email_text || "" });
+    const hits = nums.length ? await C.findCustomersByPhone(nums) : [];
+    if (hits.some((h) => h.CardType === "C")) return "";
+    const sup = hits.find((h) => h.CardType === "S");
+    if (!sup) return "";
+    const d = await C.supplierSheet(sup.CardCode);
+    const name = d.cardName || sup.CardName;
+    const OB = require("../outlook-block.js");
+    const domains = [...VS.supplierDomains(d.email, d.contacts.map((c) => c.email), (a) => OB.isInternal(a))];
+    const people = C.callerPeople({ matched: (sup.contacts || []).join("; "), sap: d.contacts, emailers: emailersFrom([], domains, name) });
+    const due = (ymd) => { const x = new Date(ymd + "T12:00:00Z"); return isNaN(x) ? "" : x.toLocaleDateString(lang === "nl" ? "nl-NL" : "en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }); };
+    const po = (o) => `<li>${esc(t(lang, "vm_po", { n: o.docNum }))} · ${esc(fmtMoney(o.value, o.currency, lang))}`
+      + (o.due ? ` · ${esc(t(lang, "vm_po_due", { date: due(o.due) }))}` : "") + (o.overdue ? " " + pill(t(lang, "vm_po_overdue"), "warn") : "") + "</li>";
+    const orders = d.orders.map((o) => VS.poLine(o));
+    const poHtml = orders.length ? `<div class="ax-people"><span class="wb-label">${esc(t(lang, "vm_po_title"))}</span><ul>${orders.map(po).join("")}`
+      + (d.openCount > VS.PO_LIMIT ? `<li>${esc(t(lang, "vm_po_total", { n: d.openCount }))}</li>` : "") + "</ul></div>" : "";
+    const warranty = domains.length ? VS.supplierIssues(db.prepare(`SELECT ${ISSUE_COLS} FROM work_items
+      WHERE (intent = 'return_complaint' OR rule_id = 'warranty_warp') AND status NOT IN ('done', 'archived')`).all(), domains) : { shown: [], more: 0 };
+    return `<p class="ax-cust">${esc(name)} · ${esc(sup.CardCode)} ${pill(t(lang, "vm_supplier"))}${sup.frozen ? " " + pill(t(lang, "cust_frozen"), "warn") : ""}</p>`
+      + peopleList(people, lang, "vm_people_title_supplier") + poHtml + issuesList(warranty, lang, "vm_warranty_title");
+  } catch (e) {
+    audit("system", "voicemail_supplier_error", w.id, String(e.message || e).slice(0, 150));
     return "";
   }
 }
@@ -348,26 +438,36 @@ app.get("/item/:id", async (req, res) => {
   // Auto-attach: SAP documents this inbound email references and that belong to its customer
   // (read-only; rendered/staged only when the human clicks a chip, via the existing /attach-doc
   // route). Skipped for compose/contact-form/injection-flagged items inside the helper.
-  const sugg = editable ? suggestionParts(w, (await computeItemSuggestions(w)).suggestions, lang, atts.map((a) => a.name)) : null;
+  const sugg = editable && !isVoicemail ? suggestionParts(w, (await computeItemSuggestions(w)).suggestions, lang, atts.map((a) => a.name)) : null;
 
   // FR-0002: the customer line (read-only; 3-min cached). Shown whenever the item resolves to a
   // SAP customer (inbound sender, compose customer or voicemail caller); "Not a SAP customer" for an
   // inbound email whose sender is unknown. Wrapped so SAP slowness/errors never break the page.
   let custHtml = "";
   let custName = "";   // names the customer in the typed-recipient warning
+  let card = null, vmAddrs = [];   // vmAddrs: a voicemail customer's on-file addresses (people, issues)
   try {
-    const card = await itemCardCode(w);
+    card = await itemCardCode(w);
     if (card) {
       const s = await CUSTSUM.summarise(card);
       const isVm = SG.isVoicemailItem(w);
       if (s) custHtml = customerLine(s, lang, { guess: isVm && !!w.caller_card_guess });
       if (s) SEARCH.rememberCustomer(w.id, s.cardCode, s.cardName);
-      if (isVm && s) custHtml += await voicemailPeople(w, card, lang);
+      if (isVm) vmAddrs = await onFileAddresses(card);
+      if (isVm && s) custHtml += await voicemailPeople(w, card, lang, vmAddrs, s.cardName);
       custName = (s && s.name) || "";
     } else if (!isCompose && !isContactForm && !isRN) {
-      custHtml = `<p class="ax-cust">${esc(t(lang, "not_sap"))}</p>`;
+      // A voicemail from a supplier's number gets the supplier panel (A2, P3); without it, as before.
+      if (isVoicemail && VS.isSupplierOnlyLine(w.caller_info)) custHtml = await supplierPanel(w, lang);
+      if (!custHtml) custHtml = `<p class="ax-cust">${esc(t(lang, "not_sap"))}</p>`;
     }
   } catch (e) { audit("system", "cust_summary_error", w.id, String(e.message || e).slice(0, 150)); }
+  // The call back sheet (Change A2): below the people list, how often this number left a voicemail
+  // (P1), then the customer's open returns, complaints and warranty items (P2).
+  if (isVoicemail) {
+    custHtml += voicemailCount(w, lang);
+    if (card) custHtml += voicemailIssues(w, card, vmAddrs, lang);
+  }
 
   // The recipient menu's option set: the thread sender plus whatever the deterministic resolver
   // holds for THIS item's customer. Best-effort, recipient-set swallows a SAP failure, so a slow
@@ -484,7 +584,7 @@ app.get("/item/:id", async (req, res) => {
   // --- The email: the customer's message (compose items have none: their information card
   // takes its place). Rendered by renderTimeline (linkified, folds, translation) + attachments.
   const mailCard = isCompose ? "" : `<section class="wb-card ax-mail" aria-label="${L("customer_email")}"><div class="wb-card__bd">
-    ${renderTimeline(w, lang, emailTr, emailTrPending, thread, DM.notShownFor(w))}${w.caller_info ? `<p class="ax-caller">${esc(w.caller_info)}</p>` : ""}</div></section>`;
+    ${renderTimeline(w, lang, emailTr, emailTrPending, thread, DM.notShownFor(w))}${w.caller_info ? `<p class="ax-caller">${VS.callerLineHtml(w, esc, PHONE.telHref)}</p>` : ""}</div></section>`;
 
   // --- The information cards of the new-outbound kinds, quiet, above the reply. Compose: the
   // trusted instruction and the resolved customer (compose_customer carries NO address; the
@@ -635,7 +735,7 @@ app.get("/item/:id", async (req, res) => {
   const resendHref = resendOrders && resendOrders.length ? `/#/ratchet/resend?axle=${w.id}&orders=${resendOrders.slice(0, 5).join(",")}` : "";
   const teachFlags = db.prepare("SELECT * FROM teach_flags WHERE work_item_id = ? ORDER BY id").all(w.id);
   const teachBtn = `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-teach">${icon("note")}<span>${L("teach_title")}</span>${teachFlags.length ? `<span class="wb-count">${teachFlags.length}</span>` : ""}</button>`;
-  const docsRow = editable && !isContactForm && !isRN ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
+  const docsRow = editable && !isContactForm && !isRN && !isVoicemail ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
   const fmtBtn = (f) => `<button type="button" class="wb-btn wb-btn--ghost wb-btn--icon wb-btn--sm" data-fmt="${f}" aria-pressed="false" aria-label="${L("fmt_" + f)}" title="${L("fmt_" + f)}">${icon(f)}</button>`;
   const replyCard = editable ? `<section class="wb-card ax-reply" aria-label="${L("reply")}" data-max="${MAX_ATTACH_BYTES}">${toLine}${ownNote}${ccRow}${ownToBanner}${offBanner}${wdBanner}${staleBanner}${subjectField}
     <div class="ax-text"><div class="ax-edbar" role="toolbar" aria-label="${L("fmt_toolbar")}" aria-controls="replyed">${["bold", "italic", "underline", "list"].map(fmtBtn).join("")}</div>
@@ -671,7 +771,8 @@ app.get("/item/:id", async (req, res) => {
 
   // Axle's questions directly above the redraft line, one unit with it (the answer goes in that field).
   const ask = qBanner ? `<div class="ax-ask">${qBanner}${redraft}</div>` : redraft;
-  const replyCol = isVoicemail && !closed ? "" : `<div class="ax-replycol">${isCompose ? "" : infoCard}${replyCard}${draftingCard}${closedCard}${ask}${prevDraft}</div>`;
+  // A voicemail has no reply, open or closed (Change A2, P4): no reply box, draft, redraft or documents.
+  const replyCol = isVoicemail ? "" : `<div class="ax-replycol">${isCompose ? "" : infoCard}${replyCard}${draftingCard}${closedCard}${ask}${prevDraft}</div>`;
   const pair = `<div class="ax-pair">${isCompose ? infoCard : mailCard}${replyCol}</div>`;
 
   // --- The dock (from 640 up) and the phone bar. Send posts the work form to /send in place and
@@ -727,7 +828,7 @@ app.get("/item/:id", async (req, res) => {
     toMenu,
     ccMenu,
     admin && !busy ? overlay("ax-brief", t(lang, "what_checked"), lang, `<pre class="ax-brief">${esc(w.brief_md || t(lang, "none_paren"))}</pre>`, "", { kind: "drawer" }) : "",
-    editable && !isContactForm && !isRN ? overlay("ax-doc", t(lang, "other_doc_title"), lang,
+    editable && !isContactForm && !isRN && !isVoicemail ? overlay("ax-doc", t(lang, "other_doc_title"), lang,
       `<form class="ax-ov__bd" id="ax-docform" method="post" action="${U("/attach-doc")}" data-inline novalidate><div data-ax-banner></div>
         <div class="ax-row2"><div class="wb-field"><label class="wb-label" for="ax-doctype">${L("attach_doc_type")}</label><div class="wb-input wb-input--select"><select id="ax-doctype" name="doctype">${["order", "invoice", "quotation", "delivery", "creditnote"].map((d) => `<option value="${d}">${L("doc_" + d)}</option>`).join("")}</select>${icon("chevron-down")}</div></div>
         <div class="wb-field"><label class="wb-label" for="ax-docnum">${L("attach_doc_number")}</label><div class="wb-input"><input id="ax-docnum" name="docnum" inputmode="numeric" autocomplete="off" data-autofocus></div></div></div>
@@ -986,7 +1087,8 @@ app.post("/item/:id/owner", async (req, res) => {
   else if (target) audit(login, "owner_forward_skipped", w.id, `${to} <${target.address}> - AXLE_ACTION_OWNER_FORWARD not enabled`);
   // The receiver's draft: redrafted with the note and the thread in context, unless Axle is busy on
   // it already or the item has nothing to draft (a compose item keeps its draft).
-  if (info.changes && w.status !== "investigating" && w.origin !== "compose" && !w.injection_flag) {
+  // A voicemail is never drafted (Change A2, P5), so its status is left exactly as it was.
+  if (info.changes && w.status !== "investigating" && w.origin !== "compose" && !w.injection_flag && !SG.isVoicemailItem(w)) {
     db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
     audit(login, "redraft_started", w.id, "handover");
     setImmediate(() => runRedraft(w.id, login));
@@ -1202,9 +1304,10 @@ app.post("/item/:id/order-created", async (req, res) => {
   const note = orig
     ? `We created free-of-charge replacement order ${doc.docNum} to re-send order ${orig} for what the customer did not receive. ${att} Confirm this to the customer and say it ships shortly.`
     : `We created order ${doc.docNum} for this request. ${att} Confirm the order to the customer.`;
-  db.prepare("UPDATE work_items SET feedback = ?, status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(note, w.id);
+  // A voicemail is never drafted (Change A2, P5): no staff note, no redraft, its status left as it was.
+  if (!SG.isVoicemailItem(w)) db.prepare("UPDATE work_items SET feedback = ?, status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(note, w.id);
   audit(login, "order_handback", w.id, `order ${doc.docNum}${orig ? ` re-sends ${orig}` : ""}${out.error ? " (not attached)" : ""}`);
-  setImmediate(() => runRedraft(w.id, login));
+  if (!SG.isVoicemailItem(w)) setImmediate(() => runRedraft(w.id, login));
   res.json({ ok: true, attached: !out.error });
 });
 

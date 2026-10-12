@@ -18,6 +18,8 @@ const { anthropic, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, defaultMailbox } = requir
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
 const RULES = require("../rules.js");            // queueBoxSql: a handed-over item lists under the receiver's mailbox
 const SEARCH = require("../search.js");           // the one server-side search (full-text index, LIKE fallback)
+const SG = require("../send-guard.js");             // isVoicemailItem: the same voicemail test as Change A
+const VS = require("../voicemail-sheet.js");       // voicemails from the same number in 14 days (Change A2, P1)
 const { requireAdmin } = require("./admin.js");   // owners only: Sync now
 
 module.exports = function mountInbox(app, { ACTION_COMPOSE_SEND }) {
@@ -145,7 +147,7 @@ function snipHtml(m, lang) {
 // the mailbox pill, the searched words marked where the row shows them, and a snippet of where the
 // search matched unless the row already shows that.
 function rowHtml(w, ctx) {
-  const { lang, sel, sumOf, sumPending, ws } = ctx;
+  const { lang, sel, sumOf, sumPending, ws, vmN } = ctx;
   const closed = w.status === "done" || w.status === "archived";
   let clip = 0;
   if (!closed && w.doc_suggestions_json && !w.injection_flag) {
@@ -154,7 +156,10 @@ function rowHtml(w, ctx) {
   }
   const pill = (text, tone, dot) => `<span class="wb-pill" data-tone="${tone}">${dot ? '<i class="wb-dot" aria-hidden="true"></i>' : ""}${esc(text)}</span>`;
   const tone = { new: "neutral", awaiting_input: "warn", investigating: "info" }[w.status];
-  const end = (w.injection_flag && !closed ? pill(t(lang, "check"), "bad", true)
+  // "3x": this number's voicemails in the 14 days up to this one, from 2 (Change A2, P1).
+  const vmTimes = vmN ? vmN.get(w.id) || 0 : 0;
+  const end = (vmTimes >= 2 ? `<span class="wb-pill" data-tone="neutral" title="${esc(t(lang, "vm_tag_title", { n: vmTimes }))}">${vmTimes}x</span>` : "")
+    + (w.injection_flag && !closed ? pill(t(lang, "check"), "bad", true)
       : closed ? pill(statusWithRes(lang, w), "neutral")
       : tone ? pill(statusLabel(lang, w.status), tone, true) : "")
     + ((w.priority || 2) === 1 && !w.injection_flag && !closed ? pill("P1", "bad") : "")
@@ -220,7 +225,12 @@ async function buildQueuePane(req, opts) {
   }
   const sumOf = (w) => (lang !== "en" && sumTr[w.id]) || w.summary || "";
   const ws = q ? SEARCH.matchWords(q) : null;
-  const rows = items.map((w) => rowHtml(w, { lang, sel, sumOf, sumPending, ws })).join("\n");
+  // Voicemail counts only when the list shows a voicemail; computed from Axle's own rows. Best effort.
+  let vmN = null;
+  if (items.some((w) => SG.isVoicemailItem(w))) {
+    try { vmN = VS.voicemailCounts(db.prepare(VS.VOICEMAIL_ROWS_SQL).all()); } catch (e) { vmN = null; }
+  }
+  const rows = items.map((w) => rowHtml(w, { lang, sel, sumOf, sumPending, ws, vmN })).join("\n");
   const hasMore = paged && offset + items.length < total;
   const moreRow = `<div class="ax-qmore" id="qmoreRow"${pageNo > 1 ? ' hx-swap-oob="true"' : ""}><button type="button" class="wb-btn wb-btn--sm" hx-get="${BASE.path}/queue?${esc(qs)}&page=${pageNo + 1}" hx-target="#qlist" hx-swap="beforeend">${esc(t(lang, "load_more"))}</button></div>`;
   // Page 2 and later: only the new rows and the out-of-band Load more row.

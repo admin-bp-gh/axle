@@ -124,6 +124,9 @@ function returnLabelSeed(w) {
 async function runRedraft(itemId, login, opts = {}) {
   try {
     const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
+    // A voicemail is phone only, so it is never drafted (Change A2, P5): skipped quietly, and the
+    // 'investigating' every caller sets is undone, so a Create order hand-back still just works.
+    if (SG.isVoicemailItem(w)) { db.prepare("UPDATE work_items SET status = 'new', updated_at = datetime('now') WHERE id = ? AND status = 'investigating'").run(itemId); audit(login, "redraft_skipped", itemId, "voicemail"); return; }
 
     // Compose redraft (origin='compose'): re-run COMPOSE mode instead of the inbound reply path.
     // The resolved customer is rebuilt from the stored, address-free compose_customer; the

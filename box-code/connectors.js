@@ -1227,6 +1227,52 @@ function callerPeople({ matched, sap, emailers }, limit = 6) {
   return out.slice(0, limit);
 }
 
+// The people who emailed us, as the "people we know" list shows them (Change A2, P6): a sender
+// name that is the business partner's own name (trimmed, case and spacing ignored) or is itself
+// an address says nothing about the person, so their email address is shown instead. One entry
+// per label, with its latest email. rows: [{ name, email, last }]. Pure, for tests.
+function emailerPeople(rows, bpName) {
+  const bp = normName(bpName);
+  const out = new Map();
+  for (const r of rows || []) {
+    const name = String(r.name || "").trim();
+    const email = normMail(r.email);
+    const label = !name || name.includes("@") || (bp && normName(name) === bp) ? email : name;
+    if (!label) continue;
+    const k = normName(label);
+    const prev = out.get(k);
+    if (!prev || String(r.last || "") > String(prev.last || "")) out.set(k, { name: label, last: r.last || null });
+  }
+  return [...out.values()];
+}
+
+// The supplier panel on a voicemail item (Change A2, P3), read-only: the card's email, its contact
+// persons with their emails (for the domain match), up to 5 open purchase orders by due date and
+// how many are open in all. deps.pool is for tests.
+async function supplierSheet(cardCode, deps = {}) {
+  if (!cardCode) return null;
+  const pool = deps.pool || await getPool();
+  const q = (text) => pool.request().input("cc", sql.NVarChar, cardCode).query(text);
+  const card = await q(`SELECT T0.CardCode, T0.CardName, T0.E_Mail FROM OCRD T0 WHERE T0.CardCode = @cc`);
+  const people = await q(
+    `SELECT Name, Position, E_MailL FROM OCPR WHERE CardCode = @cc AND ISNULL(LTRIM(RTRIM(Name)), '') <> '' ORDER BY Name`
+  );
+  const orders = await q(
+    `SELECT TOP 5 T0.DocNum, T0.DocDate, T0.DocDueDate, T0.DocTotal, T0.DocTotalFC, T0.DocCur
+     FROM OPOR T0
+     WHERE T0.CardCode = @cc AND T0.DocStatus = 'O' AND T0.CANCELED = 'N'
+     ORDER BY T0.DocDueDate ASC`
+  );
+  const count = await q(`SELECT COUNT(*) AS n FROM OPOR T0 WHERE T0.CardCode = @cc AND T0.DocStatus = 'O' AND T0.CANCELED = 'N'`);
+  const c = (card.recordset || [])[0] || {};
+  return {
+    cardCode, cardName: c.CardName || "", email: c.E_Mail || "",
+    contacts: (people.recordset || []).map((r) => ({ name: String(r.Name).trim(), position: String(r.Position || "").trim(), email: String(r.E_MailL || "").trim() })),
+    orders: orders.recordset || [],
+    openCount: Number(((count.recordset || [])[0] || {}).n) || 0,
+  };
+}
+
 // ---------- Shopify (read-only custom app, GraphQL only) ----------
 let shopifyTokenCache = null;
 async function shopifyToken() {
@@ -1976,7 +2022,7 @@ module.exports = {
   shopifyCustomerContext, shopifyOrderByName,
   myparcelSearch, myparcelTrack, extractEntities, shopifyGraphql,
   extractPhoneNumbers, extractCallerNumbers, normalisePhone, samePhone, findCustomersByPhone, findCustomerByPhone,
-  callerCardFacts, decideCallerCard, formatCallerInfo, lookupCaller, contactPersons, callerPeople,
+  callerCardFacts, decideCallerCard, formatCallerInfo, lookupCaller, contactPersons, callerPeople, emailerPeople, supplierSheet,
   returnDossier, whoPaysForReason, businessSignal, electricalHint, refundRoute,
   claimDossier,
   orderStatus, orderState, codeVariants,

@@ -104,7 +104,7 @@ try {
   Say "`n=== 1. Comparing repo -> box ===" "Cyan"
   $changed = @(); $skippedNew = @()
   Get-ChildItem $src -Recurse -File |
-    Where-Object { $_.FullName -notmatch '\\node_modules\\' -and $neverDeploy -notcontains $_.Name } |
+    Where-Object { $_.FullName -notmatch '\\(node_modules|eval)\\' -and $neverDeploy -notcontains $_.Name } |   # eval\: the offline draft eval, repo-only
     ForEach-Object {
       $rel  = $_.FullName.Substring($src.Length).TrimStart('\')
       # Sprocket's help doc is the one thing that does NOT live in the app tree. sprocket.js reads

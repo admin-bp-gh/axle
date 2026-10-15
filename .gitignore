@@ -9,4 +9,5 @@ Backups/
 # One-off sap-doc-pdf skill packaging run - build output, not Axle source.
 _sap-doc-pdf-run/
 render/
-
+# The draft eval regenerates this copy of engine.js on every run.
+box-code/eval/engine-loose.js

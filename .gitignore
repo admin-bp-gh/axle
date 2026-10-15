@@ -11,3 +11,6 @@ _sap-doc-pdf-run/
 render/
 # The draft eval regenerates this copy of engine.js on every run.
 box-code/eval/engine-loose.js
+
+eval-runs/
+work-ai-parity/

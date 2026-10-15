@@ -106,7 +106,9 @@ function mapMessage(m) {
     // Graph says false for inline-only mail (a Gmail or phone photo pasted into the body), so ingest
     // lists the attachments of every message instead of trusting this (message-store.js).
     hasAttachments: Boolean(m.hasAttachments),
-    text: bodyText(m.body).slice(0, 4000),
+    // 12,000 (was 4,000 until 15 Oct 2026): the drafter now reads the newest email up to 12,000
+    // characters and the stored thread whole (conversation.js), so the cap moved here with it.
+    text: bodyText(m.body).slice(0, 12000),
   };
 }
 
@@ -263,6 +265,15 @@ async function threadMessages(mailbox, messageId) {
   const rows = (data.value || []).sort((a, b) => (a.receivedDateTime < b.receivedDateTime ? 1 : a.receivedDateTime > b.receivedDateTime ? -1 : 0));
   for (const m of rows) m.body = await fetchMessageBody(mailbox, m.id);
   return rows.map(mapMessage);
+}
+
+// The Outlook conversationId of one message (backfill-conversation-id.js). Throws when Graph cannot
+// read the message (moved or deleted: the caller tries its internet message id).
+async function messageConversationId(mailbox, messageId) {
+  const data = await graphGetJson(
+    `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${encodeURIComponent(messageId)}?$select=conversationId`);
+  if (data.error) throw new Error(data.error.message);
+  return data.conversationId || null;
 }
 
 // The current Graph id of a message known by its internet message id (a move mints a new Graph id
@@ -2013,7 +2024,7 @@ function extractEntities(text) {
 }
 
 module.exports = {
-  htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, pickAttachments, getAttachment, threadMessages, findMessageByInternetId,
+  htmlToText, graphToken, fetchMessageBody, getMessages, resolveFolderId, searchMailbox, getMessageHtml, listAttachments, pickAttachments, getAttachment, threadMessages, findMessageByInternetId, messageConversationId,
   getMessageStates, folderIds, folderName,
   getPool, closePool, sapCustomerContext, sapStockPrice, customerPriceList, priceListInfo,
   mpAccounts, mpHeaders,

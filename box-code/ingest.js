@@ -44,6 +44,7 @@ const QR = require("./quick-reply.js");          // quick-reply mode: is this a 
 const SEND = require("./send.js");               // markRead: the skipped forward copy is marked read so the sweep lets it go
 const SG = require("./send-guard.js");           // ownMailCase: who a reply to our own mailbox is for
 const SV = require("./send-verify.js");          // did each recent send really leave Drafts? retry once, then tell the user
+const CONV = require("./conversation.js");       // the whole conversation for the drafter; attach by Outlook conversationId
 const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
@@ -130,8 +131,12 @@ async function processThread(anthropic, key, msgs, ctx) {
   const rule = rulesets.matchRule(email, ruleset.rules);
   if (!rule || rule.action === "archive" || rule.action === "junk") return { skip: "noise" };
 
-  const existing = db
-    .prepare("SELECT id, latest_message_id, sender_email, recipient, cc_json, origin FROM work_items WHERE mailbox = ? AND conversation_key = ?")
+  // Which item this belongs to (15 Oct 2026): first by Outlook conversationId, so a reply with a
+  // changed subject or from the customer's second address joins the conversation it answers; then by
+  // sender + subject (conversation_key), as before.
+  const byConversation = CONV.itemByConversation(boxName, msgs);
+  const existing = byConversation || db
+    .prepare("SELECT id, conversation_key, latest_message_id, sender_email, recipient, cc_json, origin FROM work_items WHERE mailbox = ? AND conversation_key = ?")
     .get(boxName, key);
 
   // Our own handover forward (2026-10-09): the handed-over item already moved to the receiver's
@@ -168,6 +173,9 @@ async function processThread(anthropic, key, msgs, ctx) {
   if (existing) {
     itemId = existing.id;
     audit("system", "item_reopened", itemId, `new inbound ${email.id.slice(0, 24)}`);
+    if (byConversation && byConversation.conversation_key !== key) {
+      audit("system", "conversation_attached", itemId, `${String(email.from.address).toLowerCase()} "${String(email.subject || "").slice(0, 60)}" joined by Outlook conversation`);
+    }
 
     // RE-OPEN RULE (editable send recipient, 2026-07-10). A recipient override was confirmed by a
     // human against ONE correspondent. If a DIFFERENT person now writes into the same conversation,
@@ -284,20 +292,21 @@ async function processThread(anthropic, key, msgs, ctx) {
   // whose email they forwarded, and the customer's own records are read for the latter.
   const own = SG.ownMailCase(db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId));
   const seedEmail = own && own.customer ? { ...email, from: { address: own.customer.addr, name: own.customer.name } } : email;
-  const seed = await E.gatherSeed(seedEmail, history);
+  // The whole conversation (15 Oct 2026): every stored customer message and every reply we sent,
+  // oldest first, plus the staff input a redraft would carry (answers, feedback, handover note,
+  // our unsent draft) and the customer's other items. The batch's own history is the fallback.
+  const conv = CONV.buildConversation(itemId, email, { mode: "first", sender: seedEmail.from.address, fallback: history });
+  const seed = await E.gatherSeed(seedEmail, conv.history);
   const audience = E.replyAudience(own, email.from.address);
   if (audience) seed.reply_audience = audience;
   if (callerInfo) seed.caller_match = callerInfo;
-  // A handed-over item that the customer writes back on: the colleague's note still applies.
-  const ho = HO.read(db.prepare("SELECT handover_json FROM work_items WHERE id = ?").get(itemId));
-  if (ho) seed.handover = HO.seedBlock(ho, db.prepare("SELECT to_addr, body, sent_by, sent_at FROM sends WHERE work_item_id = ? AND status = 'sent' ORDER BY sent_at, id").all(itemId)
-    .map((r) => ({ to: r.to_addr, text: r.body || "", by: r.sent_by, sent_at: r.sent_at })));
+  CONV.addToSeed(seed, conv);   // includes seed.handover: a colleague's note still applies when the customer writes back
   const media = await DM.prepare(itemId, boxName, "system");   // never throws; the thread is stored above
   // Quick-reply mode (2026-10-10): a short reply in a thread we are in gets a short answer and at
   // most two lookups. Never for a contact form, a return notification or a voicemail.
   const quick = !isContactForm && !isReturnNotification && !callerMatch && QR.isQuickTurn({ text: email.text,
     priorSends: db.prepare("SELECT COUNT(*) AS n FROM sends WHERE work_item_id = ? AND status = 'sent'").get(itemId).n, files: (atts || []).length });
-  const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX, {
+  const { result, toolLog } = await E.agenticDraft(anthropic, email, conv.history, seed, MAILBOX, {
     exemplars: { intent: cls.intent, language: cls.language, mailbox: boxName, excludeItemId: itemId },
     media,
     ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),
@@ -396,8 +405,9 @@ async function withUnreadSweep(mailbox, boxName, folders, sinceIso) {
   const keyOf = new Map();
   for (const [key, msgs] of E.threadGroup(unread)) for (const m of msgs) keyOf.set(m.id, key);
   const known = db.prepare("SELECT id, email_received FROM work_items WHERE mailbox = ? AND conversation_key = ?");
-  const plan = US.sweepAdditions(unread, new Set(fresh.map((m) => m.id)), (m) => keyOf.get(m.id),
-                                 (key) => (key ? known.get(boxName, key) : null));
+  // Known by sender + subject, or by Outlook conversationId (the item ingest would attach it to).
+  const plan = US.sweepAdditions(unread, new Set(fresh.map((m) => m.id)), (m) => m,
+                                 (m) => (keyOf.get(m.id) && known.get(boxName, keyOf.get(m.id))) || CONV.itemByConversation(boxName, [m]));
   if (plan.add.length) {
     audit("system", "unread_sweep", null,
       `${boxName}: ${plan.add.length} message(s) the watermark missed — ` +

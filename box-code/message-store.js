@@ -77,22 +77,27 @@ const isShowableImage = (contentType, name) => /^image\/(png|jpeg|gif|webp)$/.te
 // One message row for the item, created once. The same mail moved to another folder (new Graph id,
 // same internet message id) keeps its row and takes the new id. Returns the row id.
 function upsertMessage(itemId, box, m) {
+  // The Outlook conversationId (conversation.js attaches a new inbound by it): kept on every row,
+  // and filled in on a row stored before the column existed.
+  const conv = m.conversationId || null;
+  const fillConv = (id) => { if (conv) db.prepare("UPDATE messages SET conversation_id = ? WHERE id = ? AND conversation_id IS NULL").run(conv, id); };
   const byId = db.prepare("SELECT id FROM messages WHERE mailbox = ? AND graph_id = ?").get(box, m.id);
-  if (byId) return byId.id;
+  if (byId) { fillConv(byId.id); return byId.id; }
   if (m.internetMessageId) {
     const moved = db.prepare("SELECT id FROM messages WHERE work_item_id = ? AND internet_id = ?").get(itemId, m.internetMessageId);
     if (moved) {
       db.prepare("UPDATE messages SET graph_id = ?, list_attempts = 0, list_state = CASE WHEN list_state = 'error' THEN 'pending' ELSE list_state END WHERE id = ?").run(m.id, moved.id);
+      fillConv(moved.id);
       return moved.id;
     }
   }
   // DO NOTHING: the ingest task and the server (backfill, healing) may store the same message at once.
   const from = m.from || {};
   db.prepare(
-    "INSERT INTO messages (work_item_id, mailbox, graph_id, internet_id, from_name, from_addr, to_json, cc_json, received, body) " +
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mailbox, graph_id) DO NOTHING"
+    "INSERT INTO messages (work_item_id, mailbox, graph_id, internet_id, from_name, from_addr, to_json, cc_json, received, body, conversation_id) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mailbox, graph_id) DO NOTHING"
   ).run(itemId, box, m.id, m.internetMessageId || null, from.name || null, from.address || null,
-    JSON.stringify(m.to || []), JSON.stringify(m.cc || []), m.received || null, m.text || "");
+    JSON.stringify(m.to || []), JSON.stringify(m.cc || []), m.received || null, m.text || "", conv);
   return db.prepare("SELECT id FROM messages WHERE mailbox = ? AND graph_id = ?").get(box, m.id).id;
 }
 

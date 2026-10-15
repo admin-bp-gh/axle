@@ -413,6 +413,12 @@ ensureColumn("message_attachments", "attempts", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("message_attachments", "tried_at", "TEXT");
 ensureColumn("work_items", "media_not_shown_json", "TEXT");
 ensureColumn("work_items", "cc_json", "TEXT");
+// Whole-conversation drafting (15 Oct 2026, conversation.js). messages.conversation_id: the Outlook
+// conversationId of the message, so a new inbound whose conversationId matches a stored message
+// attaches to that item even when the subject changed or the customer wrote from a second address.
+// NULL on rows stored before it existed (filled in when ingest touches the message again).
+ensureColumn("messages", "conversation_id", "TEXT");
+db.exec("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(mailbox, conversation_id)");
 
 function getMeta(key) {
   const r = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);

@@ -512,6 +512,13 @@ async function sendWorkItem(req, res, w) {
     }
   }
 
+  // An earlier reply on this item is still sitting unsent in Drafts (send-verify.js): it may yet
+  // leave, so a second, different reply must not go out beside it. The banner's Try again is the way.
+  if (w.send_stuck_id) {
+    if (inline(req)) return res.status(409).json(inlineNo("refused", t(lang, "not_sent_send_off")));
+    return res.redirect(BASE.url("/item/" + w.id));
+  }
+
   saveWorkInputs(w, req.body, login);                 // persist the edited reply + any answers/feedback
   const body = String(req.body.reply != null ? req.body.reply : (w.draft_edit || ""));
 
@@ -577,7 +584,8 @@ async function sendWorkItem(req, res, w) {
     });
     // Scoped by to_addr as well: the row just reserved is the (item, address, body) triple, and an
     // earlier send of the SAME body to a DIFFERENT address must not be touched by this update.
-    db.prepare("UPDATE sends SET status = 'sent', graph_message_id = ? WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ?").run(r.sentId || "sent", w.id, payload.to, payload.sha256);
+    // graph_message_id: the message's immutable id, which send-verify.js uses to check it left Drafts.
+    db.prepare("UPDATE sends SET status = 'sent', graph_message_id = ?, verify_state = 'pending' WHERE work_item_id = ? AND to_addr = ? AND body_sha256 = ?").run(r.messageId, w.id, payload.to, payload.sha256);
     db.prepare("UPDATE work_items SET status = 'done', resolution = 'replied', draft_edit = NULL, cc_json = NULL, updated_at = datetime('now') WHERE id = ?").run(w.id);
     db.prepare("DELETE FROM draft_attachments WHERE work_item_id = ?").run(w.id); // bytes no longer needed; metadata kept in sends
     SEARCH.reindexItem(w.id);                                                      // our sent reply is searchable

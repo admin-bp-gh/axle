@@ -39,6 +39,7 @@ const ED = require("../assets/axle-editor.js");    // the reply editor's model: 
 const RL = require("../return-label.js");          // "+ Return label": a MyParcel return label on the reply (gated)
 const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
 const VS = require("../voicemail-sheet.js");       // a voicemail's call back sheet: count, open issues, supplier (Change A2)
+const SV = require("../send-verify.js");           // Not sent: a reply Exchange left in Drafts, and its Try again
 const fs = require("fs");
 const path = require("path");
 
@@ -429,7 +430,7 @@ app.get("/item/:id", async (req, res) => {
   const fwdNeedsRecipient = SG.needsConfirmedRecipient(w);
   // Voicemail items are phone only: send-guard always refuses them, so there is no reply (Change A).
   const isVoicemail = SG.isVoicemailItem(w);
-  const canSend = editable && !w.injection_flag && !fwdNeedsRecipient && !isVoicemail
+  const canSend = editable && !w.injection_flag && !w.send_stuck_id && !fwdNeedsRecipient && !isVoicemail
     && (!isCompose || composeCanSend) && (!isContactForm || cfCanSend) && (!isRN || rnCanSend);
   // The editable reply: the human's saved edit if any, else the AI full draft, else the holding reply.
   const replyText = w.draft_edit != null ? w.draft_edit : (full ? full.body : (interim ? interim.body : ""));
@@ -559,6 +560,7 @@ app.get("/item/:id", async (req, res) => {
     statusPill("ax-st"),
     (w.priority || 2) === 1 ? pill("P1", "bad") : "",
     w.injection_flag ? pill(t(lang, "injection_chip"), "bad") : "",
+    w.send_stuck_id && !closed ? pill(t(lang, "not_sent_chip"), "bad") : "",
     isCompose ? pill(t(lang, "compose_origin_chip")) : "",
     isContactForm ? pill(t(lang, "contactform_chip")) : "",
     isCompose ? (scen ? pill(lang === "nl" ? scen.label_nl : scen.label_en) : "") : pill(intentLabel(lang, w.intent)),
@@ -578,7 +580,10 @@ app.get("/item/:id", async (req, res) => {
   const injForm = editable ? `<form class="ax-injform" method="post" action="${U("/clear-flag")}" data-inline data-toast="${L("inj_cleared")}"><div data-ax-banner></div>
     <div class="wb-field"><label class="wb-label" for="ax-inj-r">${L("inj_reason_label")}</label><div class="wb-input"><input id="ax-inj-r" name="reason" maxlength="200" required autocomplete="off" placeholder="${L("inj_reason_ph")}"></div></div>
     <div class="ax-injform__act"><button type="submit" class="wb-btn wb-btn--primary">${icon("check")}<span>${L("inj_clear")}</span></button><button type="submit" form="ax-f-status" name="to" value="archived" formnovalidate class="wb-btn wb-btn--ghost wb-btn--danger" data-next data-toast="${L("inj_closed")}">${L("inj_scam")}</button></div></form>` : "";
-  const flagBanner = (w.injection_flag && !closed ? banner("bad", `<b>${L("injection_chip")}.</b> ${L("inj_explain")}${injForm}`) : "") + hoBanner;
+  // Not sent (send-verify.js): the earlier reply is stuck in Drafts; Try again sends that same email.
+  const stuckForm = editable ? `<form method="post" action="${U("/resend-stuck")}" data-inline><div data-ax-banner></div><button type="submit" class="wb-btn wb-btn--primary">${icon("send")}<span>${L("not_sent_retry")}</span></button></form>` : "";
+  const stuckBanner = w.send_stuck_id && !closed ? banner("bad", `<b>${L("not_sent_chip")}.</b> ${esc(t(lang, "not_sent_explain", { box: w.mailbox }))}${stuckForm}`) : "";
+  const flagBanner = stuckBanner + (w.injection_flag && !closed ? banner("bad", `<b>${L("injection_chip")}.</b> ${L("inj_explain")}${injForm}`) : "") + hoBanner;
   const voiceBanner = isVoicemail && !closed ? banner("info", L("voicemail_phone_only")) : "";
 
   // --- The email: the customer's message (compose items have none: their information card
@@ -1476,6 +1481,24 @@ app.post("/item/:id/status", async (req, res) => {
     if (to === "done" || to === "archived") await markReadSafe(req.user.tailscale_login, w);
   }
   res.redirect(req.body.to === "reopen" ? BASE.url("/item/" + w.id) : BASE.url("/"));
+});
+
+// Try again on a Not sent item (send-verify.js): sends the same email again from Drafts, or settles
+// the item if it has left or gone meanwhile. Sent: back to the Open list. Restored: the item, with
+// the reply back in the box and Send on.
+app.post("/item/:id/resend-stuck", async (req, res) => {
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT id FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(notFoundPage(req.user));
+  let result;
+  try {
+    result = await SV.retryStuck(w.id, login);
+  } catch (e) {
+    audit(login, "send_retry_failed", w.id, String(e.message || e).slice(0, 200));
+    if (req.get("X-Axle-Inline") === "1") return res.status(502).json({ ok: false, kind: "failed", message: String(e.message || e), unchanged: true });
+    return res.redirect(BASE.url("/item/" + w.id));
+  }
+  res.redirect(result === "sent" || result === "already_sent" ? BASE.url("/") : BASE.url("/item/" + w.id));
 });
 
 // Clear a possible-scam flag (2026-10-11). Anyone who has read the email and judged it genuine

@@ -394,6 +394,15 @@ CREATE TABLE IF NOT EXISTS meta (
 ensureColumn("work_items", "cust_card", "TEXT");
 ensureColumn("work_items", "cust_name", "TEXT");
 ensureColumn("sends", "cc_json", "TEXT");
+// Send verification (15 Oct 2026, send-verify.js). sends.verify_state: NULL on sends from before
+// it existed (never checked), then pending -> verified, or pending -> retried -> verified | stuck,
+// or gone (the unsent message was deleted or moved out of Drafts). sends.verify_at: when the state
+// last changed. graph_message_id holds the message's immutable id for every send since.
+// work_items.send_stuck_id: the sends row Exchange left in Drafts even after the retry; while set,
+// the item is back on the Open list with the Not sent banner and its normal Send is off.
+ensureColumn("sends", "verify_state", "TEXT");
+ensureColumn("sends", "verify_at", "TEXT");
+ensureColumn("work_items", "send_stuck_id", "INTEGER");
 // Round 2 phase 2. Retry bound: failed listings and fetches count their attempts, and an ingest pass
 // stops retrying after 5 (message-store.js). media_not_shown_json: [{name, reason}] of the customer
 // attachments the latest draft could not be shown (draft-media.js). cc_json: the reply's Cc,

@@ -159,7 +159,8 @@ function rowHtml(w, ctx) {
   // "3x": this number's voicemails in the 14 days up to this one, from 2 (Change A2, P1).
   const vmTimes = vmN ? vmN.get(w.id) || 0 : 0;
   const end = (vmTimes >= 2 ? `<span class="wb-pill" data-tone="neutral" title="${esc(t(lang, "vm_tag_title", { n: vmTimes }))}">${vmTimes}x</span>` : "")
-    + (w.injection_flag && !closed ? pill(t(lang, "check"), "bad", true)
+    + (w.send_stuck_id && !closed ? pill(t(lang, "not_sent_chip"), "bad", true)
+      : w.injection_flag && !closed ? pill(t(lang, "check"), "bad", true)
       : closed ? pill(statusWithRes(lang, w), "neutral")
       : tone ? pill(statusLabel(lang, w.status), tone, true) : "")
     + ((w.priority || 2) === 1 && !w.injection_flag && !closed ? pill("P1", "bad") : "")

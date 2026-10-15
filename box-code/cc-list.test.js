@@ -159,7 +159,8 @@ test("send.js hands Graph the Cc as ccRecipients, and none when there is none", 
   global.fetch = async (url, init) => {
     const u = String(url);
     if (u.includes("/oauth2/")) return new Response(JSON.stringify({ access_token: "t" }), { status: 200 });
-    if (u.endsWith("/sendMail")) { sent.push(JSON.parse(init.body).message); return new Response(null, { status: 202 }); }
+    if (u.endsWith("/messages") && init.method === "POST") { sent.push(JSON.parse(init.body)); return new Response(JSON.stringify({ id: "m" + sent.length }), { status: 201 }); }
+    if (u.endsWith("/send")) return new Response(null, { status: 202 });
     return new Response(JSON.stringify({ value: [] }), { status: 200 });
   };
   const SEND = require("./send.js");

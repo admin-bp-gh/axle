@@ -42,6 +42,7 @@ const DM = require("./draft-media.js");          // the customer's images and PD
 const HO = require("./handover.js");
 const QR = require("./quick-reply.js");          // quick-reply mode: is this a short turn in our thread?             // owner handover: skip our own forward, carry the note into a redraft
 const SEND = require("./send.js");               // markRead: the skipped forward copy is marked read so the sweep lets it go
+const SV = require("./send-verify.js");          // did each recent send really leave Drafts? retry once, then tell the user
 const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
@@ -504,6 +505,15 @@ async function runBoxes(boxes, opts = {}) {
         (r.reopen_error ? `  [!] reopen pass: ${r.reopen_error}` : "") +
         (r.folders === 0 ? "  [!] folder lookup failed — 'moved' rule skipped this run" : ""));
     }
+  }
+
+  // Send verification: every recent send is looked up by its immutable id; one Exchange accepted
+  // but left in Drafts is sent again once, and if it is still there the item reopens as Not sent.
+  // Gated by AXLE_ACTION_SEND_VERIFY. Never throws.
+  if (!opts.unreadSeed) {
+    const v = await SV.verifyBoxes(boxes);
+    console.log(v.skipped ? `Send-verify: skipped (${v.skipped})` :
+      `Send-verify: checked ${v.checked}, verified ${v.verified}, sent again ${v.retried}, not sent ${v.stuck}, gone ${v.gone}, errors ${v.errors}`);
   }
 
   // Axle -> Outlook: keep the blocked-sender inbox rule in step with the sender_blocks table.

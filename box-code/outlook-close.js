@@ -138,6 +138,7 @@ function candidates(box) {
         AND status NOT IN ('done', 'archived', 'investigating')
         AND latest_message_id IS NOT NULL
         AND TRIM(latest_message_id) <> ''
+        AND send_stuck_id IS NULL   -- Not sent (send-verify.js): its email was marked read at Send, but the reply never left
       ORDER BY updated_at DESC
       LIMIT ?`
   ).all(box, MAX_ITEMS);

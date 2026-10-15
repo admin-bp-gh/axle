@@ -86,6 +86,15 @@ test("ask the customer: no lookups at all; a normal draft has neither block nor 
   assert.strictEqual(plain.toolLog.length, 3);
 });
 
+// The "messages.N: user messages must have non-empty content" failure (16 items, Jul to Oct 2026):
+// a tool_use stop with no tool call in it must end the loop, never send an empty tool-results turn.
+test("a tool_use stop without a tool call is taken as the final answer", async () => {
+  const c = scripted([toolUse(["a"]), { ...final, stop_reason: "tool_use" }]);
+  const { result } = await E.agenticDraft(c, email, [], {}, "info@budget-parts.nl", {});
+  assert.strictEqual(c.calls.length, 2, "no third call with an empty user turn");
+  assert.strictEqual(result.status, "ready");
+});
+
 (async () => {
   console.log("quick-reply");
   for (const [name, fn] of tests) { await fn(); pass++; console.log("  ok  " + name); }

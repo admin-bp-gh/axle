@@ -810,13 +810,20 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     if (msg.stop_reason === "max_tokens") {
       console.warn(`[engine] response hit max_tokens — the JSON will be incomplete (item draft will fall back)`);
     }
-    if (msg.stop_reason !== "tool_use") {
+    // A tool_use stop with no tool_use block in it (seen since July 2026, 16 items by 15 Oct) left
+    // the tool-results message empty, and the next call failed with "messages.N: user messages
+    // must have non-empty content" (always an even N), losing the whole draft. Treat it as final.
+    const uses = msg.content.filter((b) => b.type === "tool_use");
+    if (msg.stop_reason === "tool_use" && !uses.length) {
+      console.warn(`[engine] tool_use stop without a tool call (blocks: ${msg.content.map((b) => b.type).join(",") || "none"}), taken as the final answer`);
+    }
+    if (msg.stop_reason !== "tool_use" || !uses.length) {
       const text = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("");
       return { result: applyGates(parseResult(text), gateCtx), toolLog };
     }
     messages.push({ role: "assistant", content: msg.content });
     const content = [];
-    for (const block of msg.content.filter((b) => b.type === "tool_use")) {
+    for (const block of uses) {
       if (opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups) {
         content.push({ type: "tool_result", tool_use_id: block.id, is_error: true, content: "Lookup budget used up. Answer now with what you have." });
         continue;

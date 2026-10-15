@@ -166,6 +166,11 @@
 .ax-more[aria-expanded="true"] > .wb-i { rotate: 180deg; }
 .ax-tr { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--surface-2); }
 .ax-tr > .wb-hint { margin-bottom: 6px; }
+/* The reply's translation after the text changed (15 Oct 2026): a quiet hint, the old words dimmed
+   until Translate again; the refresh icon turns while it fetches. */
+.ax-trstale { font-weight: 600; color: var(--warn-fg); }
+.ax-tr[data-stale] > .ax-msg { opacity: .55; }
+[data-tr-again][aria-busy] > .wb-i { animation: wb-spin .7s linear infinite; }
 .ax-caller { margin-top: 10px; font-size: var(--fs-xs); color: var(--ink-2); }
 /* A message's attachments: photo thumbnails (a skeleton until loaded, "Could not load" with Retry
    when they fail), then file chips; the quiet line naming what Axle could not read */

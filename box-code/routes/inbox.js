@@ -77,13 +77,13 @@ app.post("/sync", (req, res) => {
 //    recipients, subject, summary, customer, every stored message, our sent replies or attachment
 //    names; short words on the short fields; "#id" the id. A search ignores the mailbox (its rows
 //    name their own); show and scope still apply.
-function queueFilter(req) {
-  const mb = ["info", "drachten", "all"].includes(req.query.mailbox) ? req.query.mailbox
+function queueFilter(req, query = req.query) {
+  const mb = ["info", "drachten", "all"].includes(query.mailbox) ? query.mailbox
     : (req.user.role === "admin" ? "info" : "all");
-  const show = ["history", "done", "archived", "all"].includes(req.query.show) ? "history" : "open";
-  const scope = ["mine", "all"].includes(req.query.scope) ? req.query.scope
+  const show = ["history", "done", "archived", "all"].includes(query.show) ? "history" : "open";
+  const scope = ["mine", "all"].includes(query.scope) ? query.scope
     : (req.user.role === "admin" ? "all" : "mine");
-  const q = String(req.query.q || "").trim().slice(0, 100);
+  const q = String(query.q || "").trim().slice(0, 100);
   const owner = req.user.owner_label || req.user.display_name;
   const conds = [show === "open" ? "w.status NOT IN ('done','archived')" : "w.status IN ('done','archived')"];
   const params = [];
@@ -97,6 +97,33 @@ function queueFilter(req) {
   if (scope === "mine") { cConds.push("w.owner = ?"); cParams.push(owner); }
   return { mb, show, scope, q, owner, conds, params, cConds, cParams };
 }
+// An email opened from outside the list (a deep link, browser back or forward, a new compose, one of
+// my own actions that moved it, a link to another item) must have its row in the list: the work
+// pane shows an email only while its row is selected (15 Oct 2026). followQuery widens the filter
+// just enough, one step at a time: the list the item is in (Open or History), then All, then every
+// mailbox; History and a search show one page, so an item past it is shown by its "#id".
+const FOLLOW_PAGE = 50;
+function followQuery(req, id) {
+  const w = db.prepare("SELECT id, status, updated_at FROM work_items WHERE id = ?").get(id);
+  if (!w) return req.query;
+  const has = (query) => {
+    const f = queueFilter(req, query);
+    const where = f.conds.join(" AND ");
+    if (!db.prepare(`SELECT 1 FROM work_items w WHERE ${where} AND w.id = ?`).get(...f.params, id)) return false;
+    if (f.show !== "history" && !f.q) return true;   // the Open list is whole
+    return db.prepare(`SELECT COUNT(*) AS n FROM work_items w WHERE ${where} AND (w.updated_at > ? OR (w.updated_at = ? AND w.id > ?))`)
+      .get(...f.params, w.updated_at, w.updated_at, id).n < FOLLOW_PAGE;
+  };
+  let query = { ...req.query };
+  if (has(query)) return query;
+  query = { ...query, show: ["done", "archived"].includes(w.status) ? "history" : "open", q: "" };
+  for (const step of [{}, { scope: "all" }, { mailbox: "all" }]) {
+    query = { ...query, ...step };
+    if (has(query)) return query;
+  }
+  return { ...query, q: "#" + id };
+}
+
 // The filter as the query string the client sends back (refresh, probe, Load more).
 const filterQs = (f) => `mailbox=${f.mb}&scope=${f.scope}&show=${f.show}${f.q ? "&q=" + encodeURIComponent(f.q) : ""}`;
 
@@ -141,7 +168,13 @@ function snipHtml(m, lang) {
   return `<span class="ax-snip">${label ? `<b>${esc(t(lang, label))}</b> ` : ""}${markHtml(text, ranges)}</span>`;
 }
 
-// One list row (the vocabulary list row): sender and time; subject with the suggested-document
+// The Open list's sort key: the newest inbound message (email_received, Graph's ISO instant, set on
+// every new inbound of the thread by ingest), else created_at (a compose item); both UTC, compared as
+// "YYYY-MM-DD HH:MM:SS".
+const RECEIVED_SQL = "REPLACE(SUBSTR(COALESCE(w.email_received, w.created_at), 1, 19), 'T', ' ')";
+
+// One list row (the vocabulary list row): sender and time (the Open list: when the customer's newest
+// message came in, the order it sorts by; History and a search: the last change); subject with the suggested-document
 // count; one line of summary; a status pill only when the email is not simply ready to send (New,
 // Needs your answer, Drafting, Check, or the closed status in History) and a P1 pill. In a search:
 // the mailbox pill, the searched words marked where the row shows them, and a snippet of where the
@@ -173,7 +206,7 @@ function rowHtml(w, ctx) {
   const shown = m && { sender: title.hit, subject: subj.hit, summary: sum.hit }[m.field];
   const snip = m && !shown ? snipHtml(m, lang) : "";
   return `<a class="wb-row" role="option" href="${BASE.path}/item/${w.id}" hx-get="${BASE.path}/item/${w.id}" hx-target="#workpane" hx-swap="innerHTML" hx-push-url="true" data-id="${w.id}" aria-selected="${sel === w.id}">
-<span class="wb-row__title">${title.html}</span><span class="wb-row__meta">${esc(fmtDateTime(w.updated_at, lang))}</span>
+<span class="wb-row__title">${title.html}</span><span class="wb-row__meta">${esc(fmtDateTime(closed || ws ? w.updated_at : w.email_received || w.created_at, lang))}</span>
 <span class="wb-row__line">${clip ? `<span class="ax-clip" aria-label="${esc(t(lang, "sugg_title"))}: ${clip}">${icon("clip")}${clip}</span>` : ""}${w.origin === "compose" ? `<span class="ax-clip" aria-label="${esc(t(lang, "compose_new"))}">${icon("edit")}</span>` : ""}${subj.html}</span>
 <span class="wb-row__sum"${sumPending.has(w.id) ? ` data-trs="${w.id}"` : ""}>${sum.html}${w.caller_info ? `${sumText ? " · " : ""}${esc(w.caller_info)}` : ""}</span>${snip}${end ? `<span class="wb-row__end">${end}</span>` : ""}</a>`;
 }
@@ -194,7 +227,8 @@ function offersHtml(f, counts, lang) {
 async function buildQueuePane(req, opts) {
   const lang = req.user.lang;
   const sel = (opts && opts.sel) || 0;
-  const f = queueFilter(req);
+  const follow = (opts && opts.follow) || 0;
+  const f = queueFilter(req, follow ? followQuery(req, follow) : req.query);
   const { mb, show, scope, q, owner, conds, params } = f;
   const hist = show === "history";
   // History and every search load PAGE_SIZE rows at a time (Load more); the open list is whole.
@@ -202,9 +236,9 @@ async function buildQueuePane(req, opts) {
   const paged = hist || !!q;
   const pageNo = paged ? Math.max(1, parseInt((opts && opts.page) || req.query.page, 10) || 1) : 1;
   const offset = (pageNo - 1) * PAGE_SIZE;
-  // The open list: what needs me next. History: newest first.
-  const order = hist ? " ORDER BY w.updated_at DESC"
-    : " ORDER BY w.injection_flag DESC, CASE WHEN w.status = 'awaiting_input' THEN 0 WHEN w.status = 'ready' THEN 1 WHEN w.status = 'new' THEN 2 ELSE 3 END, w.priority ASC, w.updated_at DESC";
+  // The open list: oldest first by the customer's newest message (15 Oct 2026; nothing pinned, so
+  // priority, status and the injection flag no longer sort), ties by id. History: newest first.
+  const order = hist ? " ORDER BY w.updated_at DESC" : ` ORDER BY ${RECEIVED_SQL} ASC, w.id ASC`;
   // A search runs through search.js (the same rows queueFilter's conditions select), newest first;
   // the counts in the other lists only when it found nothing here.
   const search = { q, show, scope, owner, mailbox: "all", page: pageNo, pageSize: PAGE_SIZE };
@@ -260,7 +294,7 @@ async function buildQueuePane(req, opts) {
   const empty = q ? t(lang, hist ? "history_no_match" : "open_no_match", { q }) : t(lang, hist ? "history_none" : "no_open");
   const count = q ? `<p class="ax-qcount" role="status">${esc(t(lang, total === 1 ? "q_count_1" : total ? "q_count_n" : "q_count_0").replace("{n}", total))}</p>` : "";
   const lastT = sync.finished_at ? fmtTime(parseTS(sync.finished_at), lang) : t(lang, "never");
-  const html = `<div class="ax-q" data-qs="${esc(qs)}" data-stamp="${esc(queueStamp(f))}" data-show="${show}">
+  const html = `<div class="ax-q" data-qs="${esc(qs)}" data-stamp="${esc(queueStamp(f))}" data-show="${show}"${follow ? ` data-followed="${follow}"` : ""}>
 <header class="wb-page__hd ax-ptop">${homeLink(lang)}<h1 class="wb-page__t">Axle</h1>${icons}</header>
 ${head}
 <div data-ax-banner>${opts && opts.syncedBanner ? `<div class="wb-banner ax-flash" data-tone="info">${icon("info")}<div class="wb-banner__body">${L("sync_started")}</div></div>` : ""}</div>
@@ -328,7 +362,7 @@ app.get("/", async (req, res) => {
 // every search, Load more, and the lazy queue of item deep links. Same data path, audit and
 // translations as GET /; ?sel marks the open email's row.
 app.get("/queue", async (req, res) => {
-  const q = await buildQueuePane(req, { sel: parseInt(req.query.sel, 10) || 0 });
+  const q = await buildQueuePane(req, { sel: parseInt(req.query.sel, 10) || 0, follow: parseInt(req.query.follow, 10) || 0 });
   res.send(q.html);
 });
 

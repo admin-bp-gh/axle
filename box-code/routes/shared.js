@@ -23,7 +23,7 @@ const DM = require("../draft-media.js");          // the customer's images and P
 const HO = require("../handover.js");             // owner handover: the record and the drafter's seed block
 const MS = require("../message-store.js");        // the stored thread, for a redraft's history
 const QR = require("../quick-reply.js");          // quick-reply mode and the "Ask the customer" seed
-const SG = require("../send-guard.js");            // isVoicemailItem: a voicemail's card is the caller's
+const SG = require("../send-guard.js");            // isVoicemailItem: a voicemail's card is the caller's; ownMailCase for the drafter
 const CUSTSUM = require("../customer-summary.js"); // the customer's SAP card (cached), for its addresses
 const { db, audit } = require("../db.js");
 const { t, fmtSize } = require("../views/ui.js");
@@ -198,7 +198,11 @@ async function runRedraft(itemId, login, opts = {}) {
     // sees what ingest saw. Our own sent replies ride along in the same order; the model treats the
     // block as untrusted history, and a handed-over item needs exactly this to carry on.
     const history = redraftHistory(w);
-    const seed = await E.gatherSeed(email, history);
+    // Mail from one of our own mailboxes: who the reply is for (as at ingest, 15 Oct 2026).
+    const own = SG.ownMailCase(w);
+    const seed = await E.gatherSeed(own && own.customer ? { ...email, from: { address: own.customer.addr, name: own.customer.name } } : email, history);
+    const audience = E.replyAudience(own, w.sender_email);
+    if (audience) seed.reply_audience = audience;
     const ho = HO.read(w);
     if (ho) seed.handover = HO.seedBlock(ho, ourReplies(w.id));
     if (w.return_label_json) seed.return_label = returnLabelSeed(w);

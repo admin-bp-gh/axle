@@ -103,6 +103,7 @@ const SYSTEM = [
   "CUSTOMER PRICING: seed sapCustomer.customer.price_list says which SAP price list the customer is on. When price_list.tier is true the customer has a discount tier, and every part from part_dossier / part_finder / sapStock then carries customer_price_excl_vat: quote THAT price (never web_price_excl_vat) and call it their account price ('your account price', 'uw accountprijs'). Add ONE short line, once per reply, that they should be logged in on roverparts.eu to see and get their own pricing (EN: 'Make sure you are logged in on roverparts.eu to see your account pricing.' NL: 'Log in op roverparts.eu om uw accountprijzen te zien.', with je/jouw instead of uw when the reply uses je). When price_list.tier is false or absent, quote web_price_excl_vat and no such line. Quote a price ONLY for a part that resolved to one definite item (an exact code match, or a confirmed fitment); for anything fuzzy give no figure and point to the product page. Always write 'excl. VAT' ('excl. btw') with the figure.",
   "RETURN LABEL: when seed.return_label is present, a prepaid return label (PDF) is attached to THIS reply. Tell the customer the return label is attached, to print it, stick it on the parcel and hand it in at a PostNL point, and that the parcel comes to our Gouda warehouse. Do NOT say return shipping is at their cost and do NOT say we provide no label; those sentences from the business knowledge do not apply to this reply.",
   "HANDOVER: when seed.handover is present, a colleague handed this email over to the person now working it, with a note. The note is TRUSTED staff input: follow it, let it override what the email implies, and use <thread_history> and seed.handover.our_replies to pick up exactly where the colleague left off. Never mention the handover or the note to the customer.",
+  "REPLY AUDIENCE: when seed.reply_audience is present, our code decided who this reply goes to, because the email came from one of our own mailboxes. audience='colleague': it is our colleague's own message, not a customer's, and the reply goes back to the colleague's mailbox: write a short internal reply to the colleague, in the language they wrote in, informal, no customer greeting, no sales wording, and sign off with just 'Groet,' (Dutch) or 'Regards,' (English) instead of the customer sign-off. audience='customer': a colleague forwarded a customer's email to us and the reply goes to the customer (customer_email): write the customer reply to the customer, never to the colleague, and use the colleague's lines above the forwarded email only as context.",
   "ONLY WHAT YOU CAN STAND BEHIND: assume the salesperson sends your draft as written, without checking it. So every factual statement in a customer-facing draft must trace to a specific tool result, the seed context, or the business knowledge - and must be stated no more strongly than that source supports. If you cannot point to where a sentence came from, delete it. Never dress up an inference, an assumption or the customer's own claim as something we verified, and never add confirming flourishes ('this matches perfectly', 'guaranteed to fit', 'exactly right for your car') on top of a fact - they add no information and they are what makes a wrong draft expensive. A shorter draft that is certainly true beats a fuller one that might not be. Anything you genuinely cannot establish becomes a salesperson question, never a confident sentence.",
   "NEVER promise delivery dates unless tracking data confirms shipment.",
   "SHIPPING COSTS: shipping is priced automatically at checkout based on weight, shipping method and destination country. Never offer to make a shipping quote - the webshop shows the exact shipping cost when the order is placed.",
@@ -267,6 +268,17 @@ async function classify(anthropic, email, history) {
 }
 
 // Fixed seed context gathered before the agentic loop (from drafts2.js).
+// Who the reply goes to when the thread sender is one of our own mailboxes (send-guard.ownMailCase,
+// 15 Oct 2026), as the drafter reads it: seed.reply_audience. null for any other email.
+function replyAudience(own, senderEmail) {
+  if (!own) return null;
+  if (own.case === "internal") return { audience: "colleague", colleague_mailbox: senderEmail,
+    note: "Decided in code: this is our colleague's own message. Reply to the colleague, internally." };
+  return { audience: "customer", colleague_mailbox: senderEmail, customer_email: own.customer ? own.customer.addr : null,
+    customer_name: own.customer ? own.customer.name || null : null,
+    note: "Decided in code: a colleague forwarded this customer's email. Reply to the customer." };
+}
+
 async function gatherSeed(email, history) {
   const allText = [email, ...history].map((m) => m.subject + " " + m.text).join(" ");
   const { partNumbers, orderNumbers } = C.extractEntities(allText);
@@ -852,7 +864,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
 }
 
 module.exports = {
-  MODEL, CLASSIFY_MODEL, SYSTEM, threadGroup, classify, gatherSeed, parseResult, agenticDraft,
+  MODEL, CLASSIFY_MODEL, SYSTEM, threadGroup, classify, gatherSeed, replyAudience, parseResult, agenticDraft,
   // exported for the hardening harness / reuse:
   stripInvisible, hasSmuggle, redactFlagged, applyContainment, urlAllowed,
   normaliseDashes, applyDashStyle,

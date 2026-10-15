@@ -152,6 +152,7 @@ const STRINGS = {
     cc_too_many: "Cc holds at most {n} addresses.", sent_to_cc: "Sent to {to}, cc {cc}",
     recip_change: "Change recipient", recip_other: "Other address...", recip_use: "Use address",
     recip_from_sender: "sender", recip_on_file: "on file", recip_from_form: "from form", recip_typed: "typed",
+    recip_forwarded: "forwarded", recip_internal: "internal", recip_internal_reply: "internal reply",
     recip_typed_pill: "not on file", recip_typed_warn: "{to} is not one of {customer}'s known addresses. Check it before you send.",
     recip_changed_pill: "changed", recip_changed_title: "This reply is going somewhere other than the default address.",
     own_sender_note: "This email came from our own mailbox ({from}), so replying to the sender would not reach the customer. Choose the customer's address, or choose {from} only if this is an internal reply to a colleague.",
@@ -273,6 +274,7 @@ const STRINGS = {
     viewer_title: "Photo", viewer_count: "{i} of {n}", viewer_prev: "Previous photo", viewer_next: "Next photo", viewer_open: "Open original",
     fmt_toolbar: "Formatting", fmt_bold: "Bold", fmt_italic: "Italic", fmt_underline: "Underline", fmt_list: "Bulleted list", reply_ph: "Write your reply",
     camera: "Take photo", reply_tr_note: "Translated for you: the reply is in {lang}.",
+    translate_again: "Translate again", tr_text_changed: "Text changed",
     cc_add: "Add Cc", cc_label: "Cc", cc_more: "Add", cc_menu: "Add to Cc", cc_src_copied: "copied by the customer", cc_src_internal: "internal", cc_remove: "Remove {addr} from Cc",
     contact_email: "Email", contact_phone: "Phone",
     ad_thresholds: "Unchanged: 97 % or more of the draft kept. Light edit 80 %, moderate 45 %, heavy below 45 %. Drachten is the shared Rob and Huub login.",
@@ -405,6 +407,7 @@ const STRINGS = {
     cc_too_many: "In Cc passen hoogstens {n} adressen.", sent_to_cc: "Verstuurd naar {to}, cc {cc}",
     recip_change: "Ontvanger wijzigen", recip_other: "Ander adres...", recip_use: "Adres gebruiken",
     recip_from_sender: "afzender", recip_on_file: "bekend adres", recip_from_form: "uit formulier", recip_typed: "ingetypt",
+    recip_forwarded: "doorgestuurd", recip_internal: "intern", recip_internal_reply: "intern antwoord",
     recip_typed_pill: "niet bekend", recip_typed_warn: "{to} is geen bekend adres van {customer}. Controleer het voor je verstuurt.",
     recip_changed_pill: "gewijzigd", recip_changed_title: "Dit antwoord gaat naar een ander adres dan het standaardadres.",
     own_sender_note: "Deze e-mail komt uit onze eigen mailbox ({from}), dus een antwoord aan de afzender bereikt de klant niet. Kies het adres van de klant, of kies {from} alleen voor een intern antwoord aan een collega.",
@@ -527,6 +530,7 @@ const STRINGS = {
     viewer_title: "Foto", viewer_count: "{i} van {n}", viewer_prev: "Vorige foto", viewer_next: "Volgende foto", viewer_open: "Origineel openen",
     fmt_toolbar: "Opmaak", fmt_bold: "Vet", fmt_italic: "Cursief", fmt_underline: "Onderstrepen", fmt_list: "Opsomming", reply_ph: "Schrijf je antwoord",
     camera: "Foto maken", reply_tr_note: "Voor je vertaald: het antwoord is in het {lang}.",
+    translate_again: "Opnieuw vertalen", tr_text_changed: "Tekst gewijzigd",
     cc_add: "Cc toevoegen", cc_label: "Cc", cc_more: "Toevoegen", cc_menu: "Toevoegen aan Cc", cc_src_copied: "door de klant in kopie", cc_src_internal: "intern", cc_remove: "{addr} uit Cc halen",
     contact_email: "E-mail", contact_phone: "Telefoon",
     ad_thresholds: "Ongewijzigd: 97 % of meer van het concept behouden. Kleine aanpassing 80 %, matig 45 %, herschreven onder 45 %. Drachten is de gedeelde login van Rob en Huub.",
@@ -845,7 +849,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax19";  // 2026-10-11: Create order split + Re-send order, rule tickbox and Teach under the comment field (ax18: quick-reply chip and "Ask the customer")
+const ASSET_V = "ax20";  // 2026-10-15: no preview without a selection, re-translate on the reply (ax19: Create order split + Re-send order)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

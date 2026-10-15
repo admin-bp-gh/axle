@@ -4,9 +4,11 @@
 // cutover the shell frames Axle at https://axle-box.tail58a804.ts.net/axle/, and the .env then holds:
 //   AXLE_BASE_PATH=/axle
 //   AXLE_ALLOWED_ORIGIN=https://axle-box.tail58a804.ts.net      (comma-separated list accepted)
-//   AXLE_BASE_URL=https://axle-box.tail58a804.ts.net/axle       (the emailed handover link base;
-//                                                               it already carries the prefix, so
-//                                                               nothing appends BASE to it in code)
+//   AXLE_BASE_URL=https://axle-box.tail58a804.ts.net            (the Workbench address: the emailed
+//                                                               handover link opens the item inside
+//                                                               Workbench at /#/axle/item/<id>; only
+//                                                               the origin is used, so a /axle
+//                                                               suffix is harmless)
 //
 // The value is normalised to "" or "/seg[/seg...]": leading slash added, trailing slashes dropped.
 // Only letters, digits, "_" and "-" are allowed in a segment, so the result is safe to drop into

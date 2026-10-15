@@ -31,9 +31,10 @@ async function token() {
   return d.access_token;
 }
 
-// Forward `messageId` out of `mailbox` to the single internal address `to`, with our plain-text
-// handover note on top. Exactly one recipient, never a CC or BCC. Throws on anything but 202 so
-// the caller can leave the work item untouched when the send did not happen.
+// Forward `messageId` out of `mailbox` to the single internal address `to`, with our handover note
+// on top (HTML: Graph puts the comment into the body as HTML, see forward-guard handoverNote).
+// Exactly one recipient, never a CC or BCC. Throws on anything but 202 so the caller can leave the
+// work item untouched when the send did not happen.
 async function forwardMessage({ mailbox, messageId, to, comment }) {
   if (!mailbox) throw new Error("forward: no mailbox");
   if (!messageId) throw new Error("forward: no message id");

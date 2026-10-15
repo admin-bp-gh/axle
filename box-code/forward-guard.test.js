@@ -109,22 +109,41 @@ test("a Drachten item handed to Gouda forwards to info@, out of drachten@", () =
   assert.strictEqual(f.mailboxKey, "drachten");
 });
 
-test("the handover note says who, from where, and where the mail came from", () => {
+test("the handover note says who, from where to where, the customer and the item, one per line", () => {
   const f = FG.assembleForward(item(), by);
-  assert.match(f.comment, /Handed over in Axle by Brad\./);
-  assert.match(f.comment, /From: Sales\(Gouda\) {2}-> {2}To: Brad/);
-  assert.match(f.comment, /Original sender: DHL Express <invoices@dhl\.com>/);
-  assert.match(f.comment, /Axle item #1171/);
+  const lines = f.comment.replace(/^<div[^>]*>|<\/div>$/g, "").split("<br>");
+  assert.deepStrictEqual(lines, [
+    "Handed over in Axle by Brad",
+    "From Sales (Gouda) to Brad",
+    "Customer: DHL Express &lt;invoices@dhl.com&gt;",
+    "Axle item #1171",
+  ]);
 });
 
-test("AXLE_BASE_URL turns the item reference into a deep link", () => {
+test("AXLE_BASE_URL turns the item reference into a link that opens the item inside Workbench", () => {
   const prev = process.env.AXLE_BASE_URL;
-  process.env.AXLE_BASE_URL = "https://axle-box.example.ts.net/";
   try {
-    assert.match(FG.assembleForward(item(), by).comment, /https:\/\/axle-box\.example\.ts\.net\/item\/1171/);
+    for (const base of ["https://axle-box.example.ts.net", "https://axle-box.example.ts.net/", "https://axle-box.example.ts.net/axle"]) {
+      process.env.AXLE_BASE_URL = base;
+      assert.match(FG.assembleForward(item(), by).comment,
+        /Open in Axle: <a href="https:\/\/axle-box\.example\.ts\.net\/#\/axle\/item\/1171">https:\/\/axle-box\.example\.ts\.net\/#\/axle\/item\/1171<\/a>/, base);
+    }
+    process.env.AXLE_BASE_URL = "javascript:alert(1)";
+    assert.match(FG.assembleForward(item(), by).comment, /Axle item #1171/, "only an http(s) base makes a link");
   } finally {
     if (prev === undefined) delete process.env.AXLE_BASE_URL; else process.env.AXLE_BASE_URL = prev;
   }
+});
+
+test("the customer of an email a colleague forwarded is the forwarded sender", () => {
+  const f = FG.assembleForward(item({ sender_email: DRACHTEN, sender_name: "Budget Parts | Drachten", subject: "FW: Afdichting",
+    email_text: "Graag bellen\n\nFrom: Sander Verbeek <Sander@asvhengelo.nl>\nSent: Thursday\nTo: drachten@budget-parts.nl\n\nHallo" }), by);
+  assert.match(f.comment, /Customer: Sander Verbeek &lt;sander@asvhengelo\.nl&gt;/);
+});
+
+test("a colleague's own message is named as the colleague, not as a customer", () => {
+  const f = FG.assembleForward(item({ sender_email: DRACHTEN, sender_name: "Budget Parts | Drachten", subject: "Re: x", email_text: "Done!" }), by);
+  assert.match(f.comment, /Colleague: Budget Parts \| Drachten &lt;drachten@budget-parts\.nl&gt;/);
 });
 
 // --- the note is ours, not the customer's -----------------------------------------------
@@ -143,9 +162,10 @@ test("a hostile display name cannot break out of the handover note", () => {
   const f = FG.assembleForward(item({ sender_name: hostile, sender_email: "jan@dekker4x4.nl" }), by);
   assert.ok(!/attacker@evil\.com/.test(f.comment), "the fake address inside the NAME survived");
   assert.ok(!/victim@evil\.com/.test(f.comment), "the fake header inside the NAME survived");
-  assert.ok(!/\r/.test(f.comment), "a CR could split the note into extra lines");
-  assert.strictEqual(f.comment.split("\n").length, 5, "the note is exactly the lines we wrote");
-  assert.ok(f.comment.includes(`Original sender: ${name} <jan@dekker4x4.nl>`), "the real address is still shown");
+  assert.ok(!/[\r\n]/.test(f.comment), "a line break could split the note into extra lines");
+  assert.strictEqual(f.comment.split("<br>").length, 4, "the note is exactly the lines we wrote");
+  assert.ok(!/<(?!\/?(?:div|br|a)\b)/.test(f.comment), "only our own tags");
+  assert.ok(f.comment.includes(`Customer: ${name} &lt;jan@dekker4x4.nl&gt;`), "the real address is still shown");
 });
 
 test("plainName keeps ordinary names intact, including punctuation and accents", () => {
@@ -158,7 +178,7 @@ test("plainName keeps ordinary names intact, including punctuation and accents",
 test("an unusable sender address is dropped rather than passed through", () => {
   for (const bad of ["a@b.nl, evil@x.com", "not-an-address", "", null, "a@b.nl>x", "a b@c.nl"]) {
     const f = FG.assembleForward(item({ sender_email: bad, sender_name: "" }), by);
-    assert.match(f.comment, /Original sender: unknown/, String(bad));
+    assert.match(f.comment, /Customer: unknown/, String(bad));
   }
 });
 

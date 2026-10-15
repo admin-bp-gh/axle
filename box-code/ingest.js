@@ -42,6 +42,7 @@ const DM = require("./draft-media.js");          // the customer's images and PD
 const HO = require("./handover.js");
 const QR = require("./quick-reply.js");          // quick-reply mode: is this a short turn in our thread?             // owner handover: skip our own forward, carry the note into a redraft
 const SEND = require("./send.js");               // markRead: the skipped forward copy is marked read so the sweep lets it go
+const SG = require("./send-guard.js");           // ownMailCase: who a reply to our own mailbox is for
 const SV = require("./send-verify.js");          // did each recent send really leave Drafts? retry once, then tell the user
 const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWatermark, isBlockedSender } = require("./db.js");
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
@@ -278,8 +279,14 @@ async function processThread(anthropic, key, msgs, ctx) {
     return { itemId, status: "new", drafted: false, threadLen: msgs.length };
   }
 
-  // Agentic investigation + draft (same engine as drafts2).
-  const seed = await E.gatherSeed(email, history);
+  // Agentic investigation + draft (same engine as drafts2). Mail from one of our own mailboxes
+  // (15 Oct 2026): the drafter is told whether the reply is for the colleague or for the customer
+  // whose email they forwarded, and the customer's own records are read for the latter.
+  const own = SG.ownMailCase(db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId));
+  const seedEmail = own && own.customer ? { ...email, from: { address: own.customer.addr, name: own.customer.name } } : email;
+  const seed = await E.gatherSeed(seedEmail, history);
+  const audience = E.replyAudience(own, email.from.address);
+  if (audience) seed.reply_audience = audience;
   if (callerInfo) seed.caller_match = callerInfo;
   // A handed-over item that the customer writes back on: the colleague's note still applies.
   const ho = HO.read(db.prepare("SELECT handover_json FROM work_items WHERE id = ?").get(itemId));

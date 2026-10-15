@@ -352,9 +352,12 @@ async function setRecipient(req, res) {
 
   let recipient = "", source = "";
   if (mode === "known") {
-    recipient = RSET.pickKnown(await knownAddresses(w), posted);
+    const known = await knownAddresses(w);
+    recipient = RSET.pickKnown(known, posted);
     if (!recipient) return refuse("cf_recipient_rejected", "recipient_rejected", `mode=known picked=${posted.slice(0, 80)} not in known set`);
-    source = "onfile";
+    // Our own mailbox and a forwarded customer keep their own label (15 Oct 2026); the rest is on file.
+    const src = (known.find((e) => e.addr === recipient) || {}).source;
+    source = src === "internal" || src === "forwarded" ? src : "onfile";
   } else {
     recipient = SG.acceptTypedRecipient(posted);
     if (!recipient) return refuse("recip_bad_address", "recipient_rejected", `mode=typed picked=${posted.slice(0, 80)} failed the address screen`);
@@ -594,7 +597,8 @@ async function sendWorkItem(req, res, w) {
     // not depend on a live SAP read. NULL means no override -> we replied to whoever wrote to us.
     // A NULL alongside a set recipient can only be a pre-migration row, and every one of those was
     // resolver-produced (compose / contact-form / return), hence the 'onfile' default.
-    const toSource = !w.recipient ? "sender" : (w.recipient_source || "onfile");
+    // No override on a customer email a colleague forwarded: the To is the forwarded customer (send-guard.replyDefault).
+    const toSource = !w.recipient ? ((SG.ownMailCase(w) || {}).customer ? "forwarded" : "sender") : (w.recipient_source || "onfile");
     audit(login, "email_sent", w.id,
       `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} cc=${payload.cc.join(",") || "-"} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
     if (!isComposeItem) await markReadSafe(login, w);

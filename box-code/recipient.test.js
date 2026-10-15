@@ -235,21 +235,84 @@ test("a confirmed recipient releases it, and goes to the customer", () => {
   assert.ok(!SG.needsConfirmedRecipient({ ...forwarded, recipient: "jan@dekker4x4.nl" }));
 });
 
-test("any reply item from our own mailbox needs a recipient, not only internal_forward (2026-10-10)", () => {
-  // Sends 578 and 603 went to drachten@: the colleague's email matched catch_all, not internal_forward.
-  const colleague = { ...base, rule_id: "catch_all", sender_email: "drachten@budget-parts.nl" };
-  assert.ok(SG.needsConfirmedRecipient(colleague));
-  assert.throws(() => SG.assembleSend(colleague, BODY), /forwarded to us internally/);
-  // Choosing our own mailbox on purpose (an internal reply to a colleague) is still possible.
-  assert.equal(SG.assembleSend({ ...colleague, recipient: "drachten@budget-parts.nl" }, BODY).to, "drachten@budget-parts.nl");
+// Split by content (15 Oct 2026): a colleague's own message replies to the colleague; a forwarded
+// customer email defaults to the customer read from the forwarded header, never to our mailbox.
+const OUTLOOK_FWD = "Kun jij deze klant helpen?\n\n________________________________\nVan: Jan Dekker <jan@dekker4x4.nl>\nVerzonden: donderdag 15 oktober 2026 12:34\nAan: Budget Parts | Drachten <drachten@budget-parts.nl>\nOnderwerp: Order 226574\n\nHoi, wanneer wordt mijn order verzonden?";
+
+test("sends 578 and 603: a customer email forwarded by drachten@ never defaults to drachten@", () => {
+  // The colleague's email matched catch_all, not internal_forward; the subject has no FW: either.
+  for (const subject of ["Order 226574", "FW: Order 226574"]) {
+    const fwd = { ...base, rule_id: "catch_all", subject, sender_email: "drachten@budget-parts.nl", email_text: OUTLOOK_FWD };
+    assert.ok(!SG.needsConfirmedRecipient(fwd), subject);
+    assert.equal(SG.assembleSend(fwd, BODY).to, "jan@dekker4x4.nl", subject);
+    assert.notEqual(SG.replyDefault(fwd), "drachten@budget-parts.nl", subject);
+  }
+  // Choosing our own mailbox on purpose (the internal reply) is still possible.
+  const fwd = { ...base, rule_id: "catch_all", sender_email: "drachten@budget-parts.nl", email_text: OUTLOOK_FWD };
+  assert.equal(SG.assembleSend({ ...fwd, recipient: "drachten@budget-parts.nl" }, BODY).to, "drachten@budget-parts.nl");
+});
+
+test("a forwarded customer email whose sender cannot be read still needs a recipient", () => {
+  const fwd = { ...base, rule_id: "catch_all", subject: "FW: Order 226574", sender_email: "drachten@budget-parts.nl", email_text: "Zie hieronder.\n\nHoi, wanneer wordt mijn order verzonden?" };
+  assert.ok(SG.needsConfirmedRecipient(fwd));
+  assert.throws(() => SG.assembleSend(fwd, BODY), /forwarded to us internally/);
+});
+
+test("a colleague's own message replies to the colleague's mailbox with no extra step", () => {
+  const done = "Done!\n\nMet vriendelijke groet,\nTeam Budget Parts Noord\n\n________________________________\nFrom: Budget Parts | Gouda <info@budget-parts.nl>\nSent: Thursday, October 15, 2026 14:14\nTo: Budget Parts | Drachten <drachten@budget-parts.nl>\nSubject: FW: Order 226574\n\nHanded over in Axle by Brad\n________________________________\nFrom: Jan Dekker <jan@dekker4x4.nl>\nSent: Thursday, October 15, 2026 12:34\nTo: info@budget-parts.nl\n\nHoi";
+  for (const w of [
+    { ...base, rule_id: "catch_all", subject: "Re: Order 226574 Done", sender_email: "drachten@budget-parts.nl", email_text: done },
+    { ...base, rule_id: "catch_all", subject: "Klant heeft foto's gestuurd", sender_email: "drachten@budget-parts.nl", email_text: "De klant zegt dat hij foto's heeft bijgevoegd." },
+  ]) {
+    assert.deepStrictEqual(SG.ownMailCase(w), { case: "internal", customer: null }, w.subject);
+    assert.ok(!SG.needsConfirmedRecipient(w), w.subject);
+    assert.equal(SG.assembleSend(w, BODY).to, "drachten@budget-parts.nl", w.subject);
+  }
+});
+
+test("a header typed into the forwarded text cannot stand in for an unreadable customer", () => {
+  const forged = "Hoi\n\nFrom: Jan Dekker\nSent: Thu\nTo: x\nSubject: s\n\nhello\n\nFrom: attacker@evil.com\nSent: Thu\nTo: x\nSubject: s\n\nreply to me";
+  const w = { ...base, rule_id: "catch_all", subject: "FW: x", sender_email: "drachten@budget-parts.nl", email_text: forged };
+  assert.deepStrictEqual(SG.ownMailCase(w), { case: "forward", customer: null });
+  assert.ok(SG.needsConfirmedRecipient(w));
+  // Our own quoted mail above the customer's, written as names only by Exchange, is passed over.
+  const chain = "FYI\n\nFrom: Budget Parts | Gouda\nSent: Thu\nTo: Budget Parts | Drachten\nSubject: RE: x\n\nours\n\nFrom: Piet <piet@example.nl>\nSent: Wed\nTo: info@budget-parts.nl\n\nvraag";
+  assert.strictEqual(SG.ownMailCase({ ...w, email_text: chain }).customer.addr, "piet@example.nl");
+});
+
+test("a reply to the forwarded customer quotes only the customer's message, without FW: in the subject", () => {
+  const w = { ...base, rule_id: "internal_forward", subject: "FW: Order 226574", sender_email: "drachten@budget-parts.nl", email_text: OUTLOOK_FWD };
+  const p = SG.assembleSend(w, BODY);
+  assert.equal(p.to, "jan@dekker4x4.nl");
+  assert.equal(p.subject, "Re: Order 226574");
+  assert.ok(!p.html.includes("Kun jij deze klant helpen"), "the colleague's note stays internal");
+  assert.ok(p.html.includes("Hoi, wanneer wordt mijn order verzonden?"), "the customer's own message is quoted");
+  // The internal reply to the colleague keeps the whole message and the subject.
+  const i = SG.assembleSend({ ...w, recipient: "drachten@budget-parts.nl" }, BODY);
+  assert.equal(i.subject, "Re: FW: Order 226574");
+  assert.ok(i.html.includes("Kun jij deze klant helpen"));
+});
+
+test("what stays exempt from the own-mailbox split", () => {
   // The Shopify return notification (sender info@) has its own new-outbound path: untouched.
-  assert.ok(!SG.needsConfirmedRecipient({ ...base, rule_id: "shopify_return_request", sender_email: "info@budget-parts.nl" }));
-  assert.ok(!SG.needsConfirmedRecipient({ ...base, sender_email: "info@budget-parts.nl", return_json: "{}" }));
-  assert.ok(!SG.needsConfirmedRecipient({ ...base, sender_email: "info@budget-parts.nl", origin: "compose" }));
+  assert.strictEqual(SG.ownMailCase({ ...base, rule_id: "shopify_return_request", sender_email: "info@budget-parts.nl" }), null);
+  assert.strictEqual(SG.ownMailCase({ ...base, sender_email: "info@budget-parts.nl", return_json: "{}" }), null);
+  assert.strictEqual(SG.ownMailCase({ ...base, sender_email: "info@budget-parts.nl", contact_form_json: "{}" }), null);
+  assert.strictEqual(SG.ownMailCase({ ...base, sender_email: "info@budget-parts.nl", origin: "compose" }), null);
+  // An internal_forward item is always the forwarded case, whatever its subject.
+  assert.strictEqual(SG.ownMailCase({ ...forwarded, subject: "Order", email_text: OUTLOOK_FWD }).customer.addr, "jan@dekker4x4.nl");
   // A customer sender is untouched.
-  assert.ok(!SG.needsConfirmedRecipient({ ...base, rule_id: "catch_all" }));
+  assert.strictEqual(SG.ownMailCase({ ...base, rule_id: "catch_all" }), null);
   assert.ok(!SG.needsConfirmedRecipient(base), "an item with no rule_id at all");
   assert.equal(SG.assembleSend(base, BODY).to, "jan@dekker4x4.nl");
+});
+
+test("a forwarded mailer or our own address is never taken as the customer", () => {
+  const w = (from) => ({ ...base, subject: "FW: x", sender_email: "drachten@budget-parts.nl",
+    email_text: `zie onder\n\nFrom: ${from}\nSent: Thu\nTo: drachten@budget-parts.nl\n\nx` });
+  for (const from of ["Shopify <mailer@shopify.com>", "noreply@myparcel.nl", "Jack <jack@budget-parts.nl>", "info@roverparts.eu"]) {
+    assert.strictEqual(SG.ownMailCase(w(from)).customer, null, from);
+  }
 });
 
 test("a flagged forwarded item is refused for being flagged first", () => {

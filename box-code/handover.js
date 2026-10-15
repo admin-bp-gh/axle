@@ -4,10 +4,12 @@
 // module holds is the RECORD of the handover (work_items.handover_json), the note's sanitiser and
 // the two things built from the record: the seed block the drafter reads and the text that rides
 // on top of a cross-mailbox forward. Pure: no network, no DB.
+const FG = require("./forward-guard.js");   // noteBlock: the forward note's HTML block
+const SG = require("./send-guard.js");      // escapeHtml
 const MAX_NOTE = 1000;
 
-// The note is staff input, trusted by the drafter, but it still travels into a plain-text Graph
-// comment and into HTML, so it is kept to printable text: no control characters, capped.
+// The note is staff input, trusted by the drafter, but it still travels into the HTML of a Graph
+// forward comment and of the item page, so it is kept to printable text: no control characters, capped.
 function cleanNote(s) {
   return String(s == null ? "" : s)
     .replace(/\r\n?/g, "\n")
@@ -49,11 +51,11 @@ function seedBlock(h, ourReplies = []) {
   };
 }
 
-// The forward's plain-text comment: forward-guard's own note (who, from, original sender, link)
-// with the colleague's note under it, so the receiver sees it in Outlook too.
+// The forward's comment: forward-guard's own note (who, from, customer, link) and, after a blank
+// line, the colleague's note, escaped, one line per line, so the receiver reads it in Outlook as typed.
 function forwardComment(baseNote, note) {
   const n = cleanNote(note);
-  return n ? `${baseNote}Note from the colleague:\n${n}\n\n` : baseNote;
+  return n ? `${baseNote}<br>${FG.noteBlock(["Note:", ...n.split("\n").map(SG.escapeHtml)])}` : baseNote;
 }
 
 // Did this inbound email come from our own handover forward? The receiving mailbox re-ingests a

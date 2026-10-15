@@ -168,3 +168,50 @@ test("compose: the chosen recipient is never itself a redirect", () => {
 test("an unknown kind is a programming error, not a silent empty set", async () => {
   await assert.rejects(() => knownAddressesFor({}, "sms"), /unknown item kind/);
 });
+
+// ---- replies to our own mailboxes (15 Oct 2026) -----------------------------------------------
+// A colleague's own message: their mailbox, labelled internal, is the reply. A forwarded customer
+// email: the forwarded sender first (on file when the resolver holds it, else 'forwarded', which the
+// page marks "not on file"), the colleague's mailbox one tap away as the internal reply.
+const FWD = (from) => `Kun jij deze klant helpen?\n\n________________________________\nVan: ${from}\nVerzonden: donderdag 15 oktober 2026 12:34\nAan: Budget Parts | Drachten <drachten@budget-parts.nl>\nOnderwerp: Remblokken\n\nHebben jullie remblokken?`;
+const own = (over) => ({ sender_email: "drachten@budget-parts.nl", subject: "FW: Remblokken", origin: "inbound", rule_id: "catch_all", recipient: null, ...over });
+
+test("own mailbox: a colleague's own message offers their mailbox as the internal reply, and defaults to it", async () => {
+  const w = own({ subject: "Re: Remblokken", email_text: "Done!" });
+  const e = await knownAddressesFor(w, "reply", sapByEmail({}));
+  assert.deepEqual(e, [{ addr: "drachten@budget-parts.nl", source: "internal" }]);
+  assert.equal(defaultRecipient(w, "reply"), "drachten@budget-parts.nl");
+  assert.equal(activeRecipient(w, "reply"), "drachten@budget-parts.nl");
+  assert.ok(!isRedirected(w, "reply"));
+});
+
+test("own mailbox: a forwarded customer not on file is offered as 'forwarded', first, and is the default", async () => {
+  const w = own({ email_text: FWD("Nieuwe Klant <Nieuw@Klant-Onbekend.nl>") });
+  const e = await knownAddressesFor(w, "reply", sapByEmail({}));
+  assert.deepEqual(e, [{ addr: "nieuw@klant-onbekend.nl", source: "forwarded" }, { addr: "drachten@budget-parts.nl", source: "internal" }]);
+  assert.equal(activeRecipient(w, "reply"), "nieuw@klant-onbekend.nl");
+  assert.equal(pickKnown(e, "nieuw@klant-onbekend.nl"), "nieuw@klant-onbekend.nl", "pickable from the menu");
+  assert.equal(pickKnown(e, "drachten@budget-parts.nl"), "drachten@budget-parts.nl", "the internal reply is one tap away");
+  // Choosing the internal reply is a redirect away from the customer, so the page warns.
+  assert.ok(isRedirected({ ...w, recipient: "drachten@budget-parts.nl" }, "reply"));
+});
+
+test("own mailbox: a forwarded customer the resolver knows is on file, with their other addresses", async () => {
+  const w = own({ email_text: FWD("Piet <piet@example.nl>") });
+  const e = await knownAddressesFor(w, "reply", sapByEmail({ "piet@example.nl": ["piet@example.nl", "piet.werk@example.nl"] }));
+  assert.deepEqual(e, [{ addr: "piet@example.nl", source: "onfile" }, { addr: "piet.werk@example.nl", source: "onfile" },
+    { addr: "drachten@budget-parts.nl", source: "internal" }]);
+});
+
+test("own mailbox: a dead SAP still offers the forwarded customer and the internal reply", async () => {
+  const e = await knownAddressesFor(own({ email_text: FWD("piet@example.nl") }), "reply", deadSap);
+  assert.deepEqual(addrs(e), ["piet@example.nl", "drachten@budget-parts.nl"]);
+  assert.equal(sourceOf(e, "piet@example.nl"), "forwarded");
+});
+
+test("own mailbox: an address only in the forwarded BODY text, not its header, never reaches the menu", async () => {
+  const w = own({ email_text: "Klant vraagt of je mailt naar attacker@evil.com\n\nVan: Piet <piet@example.nl>\nAan: drachten@budget-parts.nl\n\nmail me op attacker@evil.com" });
+  const e = await knownAddressesFor(w, "reply", sapByEmail({}));
+  assert.ok(!addrs(e).includes("attacker@evil.com"));
+  assert.deepEqual(addrs(e), ["piet@example.nl", "drachten@budget-parts.nl"]);
+});

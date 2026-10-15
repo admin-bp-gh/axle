@@ -35,6 +35,7 @@
 const crypto = require("crypto");
 const R = require("./rules.js");             // our three mailbox addresses (rules.js reads env lazily, no IO)
 const FMT = require("./reply-format.js");   // the formatting markers (**bold**, *italic*, __underline__, "- " lists)
+const FO = require("./forwarded-origin.js");  // who wrote the email a colleague forwarded (ownMailCase)
 
 // Domain allowlist for any URL allowed to appear in an outgoing reply. Kept in sync with
 // engine.js URL_ALLOW by intent; duplicated deliberately so the send path has its own
@@ -232,9 +233,16 @@ function applyInlineImages(html, text, stagedAtts) {
 // as plain text in a blockquote - deliberately NOT linkified, so we never turn
 // customer-supplied URLs into clickable links in our outbound mail. URL allowlisting
 // applies only to OUR draft, never to the quoted history.
-function quotedHistory(workItem) {
-  const orig = String(workItem.email_text || "");
+// A reply to the customer of an email a colleague forwarded (customer: ownMailCase's customer, with
+// the line its header block starts on) quotes only the customer's own message, from that header
+// block down, and none of what our colleague wrote above it (15 Oct 2026).
+function quotedHistory(workItem, customer) {
+  const orig = customer ? FO.textFrom(workItem.email_text, customer) : String(workItem.email_text || "");
   if (!orig.trim()) return "";
+  if (customer) {
+    return `<br><br><div style="border-left:2px solid #ccc;padding-left:10px;color:#555;font-size:13px">`
+      + `${escapeHtml(orig).replace(/\r?\n/g, "<br>\n")}</div>`;
+  }
   const who = workItem.sender_name
     ? `${workItem.sender_name} <${workItem.sender_email}>` : String(workItem.sender_email || "");
   const nl = String(workItem.language || "").toLowerCase() === "nl";
@@ -261,33 +269,74 @@ function quotedHistory(workItem) {
 // being a flagged item.
 //
 // The recipient DEFAULTS to the thread's sender - the overwhelmingly common case, and what you
-// get when nobody touches the control. A human-confirmed workItem.recipient overrides it (see
+// get when nobody touches the control - or, for a customer email a colleague forwarded from one of
+// our own mailboxes, to the customer read from the forwarded header (replyDefault, below). A human-confirmed workItem.recipient overrides it (see
 // the RECIPIENT MODEL note at the top of this file). Either way the final address is screened
 // by acceptTypedRecipient before it can reach Graph.
 // One extra refusal, added with the handover forward (2026-08-08). An item created from an
 // INTERNAL FORWARD (rule 'internal_forward' - Drachten handed a customer email to Gouda, or a
 // colleague pressed Forward in Outlook) has a thread sender that is one of OUR OWN mailboxes.
 // The default recipient for a reply is the thread sender, so without this the obvious click would
-// send a customer-facing reply straight back to drachten@ instead of to the customer. Nothing is
-// harmed by that - it is internal mail - but it is a silent non-delivery, which is worse than a
-// clear refusal. So these items must have a human-confirmed recipient before they can send.
-// Deliberately narrow: keyed on the rule id, so every pre-existing item behaves exactly as before.
+// send a customer-facing reply straight back to drachten@ instead of to the customer.
 //
 // Widened 2026-10-10 (draft review): two customer replies (sends 578 and 603) went to drachten@
 // because the colleague's email matched catch_all, not internal_forward, so nothing asked who the
-// reply was for. Now ANY inbound reply item whose thread sender is one of our own addresses needs a
-// confirmed recipient. Exempt: the Shopify return notification (sent from info@, answered on its own
-// new-outbound path) and items carrying return or contact-form data. Choosing our own mailbox as the
-// recipient stays possible for a genuinely internal reply; the item page then says so plainly.
+// reply was for.
+//
+// Split by content 2026-10-15 (Brad's decision). Any inbound reply item whose thread sender is one
+// of our own addresses (ownMailCase) is one of two cases:
+//   * "internal": the colleague's own message (Rob's "Done!"). The reply goes back to that mailbox
+//     by default and sends like any other reply.
+//   * "forward": it carries a forwarded customer email (a FW: subject, a forward marker, the
+//     internal_forward rule, or a quoted header block naming an outside sender first). The default
+//     recipient is the customer read from the forwarded header (forwarded-origin.js, never the
+//     model); the colleague's mailbox stays a deliberate choice. When no customer address can be
+//     read, the reply needs a confirmed recipient as before, so a customer email forwarded by
+//     drachten@ can never default to drachten@.
+// Exempt, as before: the Shopify return notification (sent from info@, answered on its own
+// new-outbound path), items carrying return or contact-form data, and every non-inbound item.
 const INTERNAL_FORWARD_RULE = "internal_forward";
 const OWN_SENDER_EXEMPT_RULES = ["shopify_return_request"];
+// Forward prefixes, dropped from the subject of a reply that goes to the forwarded customer.
+const FWD_PREFIX_RE = /^\s*(?:(?:fw|fwd|doorst|door|wg|tr)\s*:\s*)+/i;
+// The display names of our own mailboxes ("Budget Parts | Gouda", "RoverParts.eu").
+const OWN_NAME_RE = /\b(?:budget\s*parts|roverparts)\b/i;
+// Outside senders that are never the customer: mailers and notification addresses.
+const NOT_A_CUSTOMER_RE = /^(?:no-?reply|do-?not-?reply|mailer-daemon|postmaster)@|^(?:mailer@shopify\.com|voicemail@hipservice\.nl)$/i;
+function ownMailCase(workItem) {
+  const rule = String(workItem.rule_id || "");
+  const fwdRule = rule === INTERNAL_FORWARD_RULE;
+  if (!fwdRule) {
+    if (workItem.origin && workItem.origin !== "inbound") return null;
+    if (OWN_SENDER_EXEMPT_RULES.includes(rule)) return null;
+    if (workItem.return_json || workItem.contact_form_json) return null;
+    if (!isOwnAddress(workItem.sender_email)) return null;
+  }
+  const text = String(workItem.email_text || "");
+  const blocks = FO.headerBlocks(text).map((b) => ({ ...b, addr: acceptTypedRecipient(b.addr) }));
+  const outside = (b) => !!b && !!b.addr && !isOwnAddress(b.addr) && !NOT_A_CUSTOMER_RE.test(b.addr);
+  // Our own quoted mail, which a forward may carry above the customer's: our address, or (Exchange
+  // writes names only for colleagues) a name-only block in our own name.
+  const ours = (b) => b.addr ? isOwnAddress(b.addr) : OWN_NAME_RE.test(b.name);
+  const forwarded = fwdRule || FO.isForwardSubject(workItem.subject) || FO.hasForwardMarker(text);
+  // A forward: past our own quoted mail, the first block must be an outside sender; a block that
+  // cannot be read (a stranger's name without an address) stops the search, so a header typed into
+  // the customer's own text further down can never stand in for it. Otherwise only a first quoted
+  // message from outside makes it a customer's email (a colleague's own reply quotes our mail first).
+  const lead = forwarded ? blocks.find((b) => !ours(b)) : blocks[0];
+  const hit = outside(lead) ? lead : null;
+  if (!forwarded && !hit) return { case: "internal", customer: null };
+  return { case: "forward", customer: hit ? { addr: hit.addr, name: hit.name || "", line: hit.line } : null };
+}
+// The address a reply goes to when nobody chose one: the forwarded customer, else the thread sender.
+function replyDefault(workItem) {
+  const own = ownMailCase(workItem);
+  return own && own.customer ? own.customer.addr : String(workItem.sender_email || "").trim().toLowerCase();
+}
 function needsConfirmedRecipient(workItem) {
   if (String(workItem.recipient || "").trim()) return false;
-  if (String(workItem.rule_id || "") === INTERNAL_FORWARD_RULE) return true;
-  if (workItem.origin && workItem.origin !== "inbound") return false;
-  if (OWN_SENDER_EXEMPT_RULES.includes(String(workItem.rule_id || ""))) return false;
-  if (workItem.return_json || workItem.contact_form_json) return false;
-  return isOwnAddress(workItem.sender_email);
+  const own = ownMailCase(workItem);
+  return !!own && own.case === "forward" && !own.customer;
 }
 
 // A KPN voicemail item (rule 'voicemail', sender voicemail@hipservice.nl) has nobody to email: the
@@ -311,8 +360,11 @@ function assembleSend(workItem, body, stagedAtts = []) {
     throw new Error("refused: this email was forwarded to us internally, so replying to the sender would reply to our own mailbox - confirm the customer's address first");
   }
 
-  const to = acceptTypedRecipient(workItem.recipient || workItem.sender_email);
+  const to = acceptTypedRecipient(workItem.recipient || replyDefault(workItem));
   if (!to) throw new Error("refused: work item has no valid recipient address to reply to");
+  // To the customer of a forwarded email: their message alone is quoted, and the subject loses FW:.
+  const own = ownMailCase(workItem);
+  const customer = own && own.customer && !isOwnAddress(to) ? own.customer : null;
   const cc = itemCc(workItem, to);
 
   const text = String(body == null ? "" : body);
@@ -325,11 +377,11 @@ function assembleSend(workItem, body, stagedAtts = []) {
 
   return {
     workItemId: workItem.id,
-    to,                                   // single screened recipient: w.recipient, else the sender
+    to,                                   // single screened recipient: w.recipient, else replyDefault
     cc, bcc: [],                          // the item's Cc, re-screened (itemCc); never any BCC
-    subject: replySubject(workItem.subject),
+    subject: replySubject(customer ? String(workItem.subject || "").replace(FWD_PREFIX_RE, "") : workItem.subject),
     text,                                              // verbatim plain text (our reply, tokens included)
-    html: inline.html + quotedHistory(workItem),       // our reply (tokens -> cid imgs) + quoted thread
+    html: inline.html + quotedHistory(workItem, customer),   // our reply (tokens -> cid imgs) + quoted thread
     inlineIds: inline.inlineIds,                       // staged-attachment ids to send as inline cids
     sha256: sha256(text),                              // integrity tie over OUR reply only
   };
@@ -381,7 +433,7 @@ const assembleContactFormSend = assembleNewOutboundSend;
 
 module.exports = {
   URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256, acceptTypedRecipient,
-  escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient, isVoicemailItem,
+  escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient, ownMailCase, replyDefault, isVoicemailItem,
   MAX_CC, isOwnAddress, acceptCcAddress, sendingAddress, internalCc, itemCc,
   assembleNewOutboundSend, assembleContactFormSend,
   findImageTokens, applyInlineImages, contentIdFor, findEmptyProductLinks,

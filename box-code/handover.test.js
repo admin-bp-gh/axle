@@ -4,6 +4,7 @@
 // Run: node handover.test.js
 const assert = require("assert");
 const HO = require("./handover.js");
+const FG = require("./forward-guard.js");
 
 let pass = 0;
 const test = (name, fn) => { fn(); pass++; console.log("  ok  " + name); };
@@ -47,10 +48,17 @@ test("seedBlock names the note as trusted staff input and carries our replies, c
   assert.strictEqual(HO.seedBlock(null), null);
 });
 
-test("forwardComment puts the note under forward-guard's own note, nothing when empty", () => {
-  const base = "Handed over in Axle by Jack.\nFrom: Sales(Gouda)  ->  To: Drachten\n\n";
+test("forwardComment puts the note under forward-guard's own note after a blank line, nothing when empty", () => {
+  const base = FG.noteBlock(["Handed over in Axle by Jack", "From Sales (Gouda) to Drachten"]);
   assert.strictEqual(HO.forwardComment(base, "  "), base);
-  assert.strictEqual(HO.forwardComment(base, "please call them"), base + "Note from the colleague:\nplease call them\n\n");
+  assert.strictEqual(HO.forwardComment(base, "Hi Rob, pls can you give him a call"),
+    base + "<br>" + FG.noteBlock(["Note:", "Hi Rob, pls can you give him a call"]));
+});
+
+test("the colleague's note keeps its lines and is escaped", () => {
+  const out = HO.forwardComment("", "Line one\nLine <b>two</b> & \"three\"\n\nAfter a blank line");
+  assert.match(out, /Note:<br>Line one<br>Line &lt;b&gt;two&lt;\/b&gt; &amp; &quot;three&quot;<br><br>After a blank line<\/div>$/);
+  assert.ok(!/<b>/.test(out));
 });
 
 test("isOwnForward matches a recent handover to this box by subject once FW: is stripped", () => {

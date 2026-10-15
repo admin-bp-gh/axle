@@ -36,6 +36,7 @@
 //   * the handover note is built from OUR strings plus a sanitised sender name/address - never
 //     raw email content, which travels in the forwarded body where it belongs.
 const rulesets = require("./rules.js");
+const SG = require("./send-guard.js");   // escapeHtml, and ownMailCase for a forwarded customer
 
 // Owner labels the forward path knows about, with their home mailbox. Single source: rules.js.
 const { ownerHome } = rulesets;
@@ -53,8 +54,8 @@ function forwardTargetFor(itemMailbox, toOwner) {
 
 // Strip anything that is not safely displayable from a customer-controlled display name before it
 // goes into our handover note. The note is a plain-text `comment` on a Graph forward; Graph places
-// it in the message body, so angle brackets, ampersands and newlines are removed rather than
-// trusted to be encoded. The address is not sanitised but SCREENED (below): it either looks like
+// it in the message body as HTML, so angle brackets, ampersands and newlines are removed here and the
+// note escapes what is left as well. The address is not sanitised but SCREENED (below): it either looks like
 // one address or it is dropped.
 function plainName(s) {
   return String(s == null ? "" : s)
@@ -75,24 +76,39 @@ function plainAddress(s) {
 }
 
 // The handover note placed above the forwarded message. Ours, not the customer's: it says who
-// handed the item over, from which queue, and where the original came from, so the receiving
-// person has the context Axle had without opening Axle. A base URL (AXLE_BASE_URL, e.g.
-// https://axle-box.tail58a804.ts.net) adds a deep link; without one the item number still shows.
+// handed the item over, from which queue to which, who the customer is, and where to open it, so
+// the receiving person has the context Axle had. Graph puts the forward's `comment` into the body as
+// HTML (15 Oct 2026: the plain-text note of items 2717 and 2724 arrived on one line, and the
+// "<address>" after the sender's name vanished as an unknown tag), so the note is HTML: our fixed
+// words, every value escaped (on top of the scrubbing above), one line per fact. The customer of an
+// email a colleague forwarded from one of our own mailboxes is the forwarded sender
+// (send-guard.ownMailCase). With AXLE_BASE_URL set (the Workbench address, see base-path.js) the last
+// line links to the item inside Workbench; without it the item number shows.
+const NOTE_STYLE = "font-family:system-ui,Arial,sans-serif;font-size:14px;line-height:1.5";
+const noteBlock = (lines) => `<div style="${NOTE_STYLE}">${lines.join("<br>")}</div>`;
+const label = (owner) => plainName(owner).replace(/(\S)\(/, "$1 (");
+function workbenchLink(id) {
+  const base = String(process.env.AXLE_BASE_URL || "").trim();
+  if (!base) return "";
+  try { const u = new URL(base); return /^https?:$/.test(u.protocol) ? `${u.origin}/#/axle/item/${id}` : ""; } catch (e) { return ""; }
+}
 function handoverNote(workItem, { fromOwner, toOwner, byName, byLogin }) {
+  const E = SG.escapeHtml;
   const who = plainName(byName) || plainName(byLogin) || "Axle";
-  const from = plainName(fromOwner) || "unassigned";
-  const senderName = plainName(workItem.sender_name);
-  const senderAddr = plainAddress(workItem.sender_email);
+  // Mail from our own mailbox with no customer in it (a colleague's own message) names the colleague.
+  const own = SG.ownMailCase(workItem);
+  const cust = own && own.customer ? { name: own.customer.name, email: own.customer.addr } : { name: workItem.sender_name, email: workItem.sender_email };
+  const whoLabel = own && !own.customer ? "Colleague" : "Customer";
+  const senderName = plainName(cust.name);
+  const senderAddr = plainAddress(cust.email);
   const origin = senderName && senderAddr ? `${senderName} <${senderAddr}>` : (senderAddr || senderName || "unknown");
-  const base = String(process.env.AXLE_BASE_URL || "").trim().replace(/\/+$/, "");
-  const link = base ? `${base}/item/${workItem.id}` : `Axle item #${workItem.id}`;
-  return [
-    `Handed over in Axle by ${who}.`,
-    `From: ${from}  ->  To: ${plainName(toOwner)}`,
-    `Original sender: ${origin}`,
-    link,
-    "",
-  ].join("\n");
+  const link = workbenchLink(workItem.id);
+  return noteBlock([
+    `Handed over in Axle by ${E(who)}`,
+    `From ${E(label(fromOwner) || "unassigned")} to ${E(label(toOwner))}`,
+    `${whoLabel}: ${E(origin)}`,
+    link ? `Open in Axle: <a href="${E(link)}">${E(link)}</a>` : `Axle item #${Number(workItem.id)}`,
+  ]);
 }
 
 // Assemble and validate a handover forward. Returns { to, box, mailboxKey, messageId, comment,
@@ -122,4 +138,4 @@ function assembleForward(workItem, { toOwner, byName, byLogin } = {}) {
   };
 }
 
-module.exports = { forwardTargetFor, assembleForward, handoverNote, plainName, plainAddress };
+module.exports = { forwardTargetFor, assembleForward, handoverNote, noteBlock, workbenchLink, plainName, plainAddress };

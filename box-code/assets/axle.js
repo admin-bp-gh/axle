@@ -393,6 +393,7 @@
     else {
       if (html && !opts.noSwap) swapInto($(attr("target") || "#workpane"), html, path, attr("select"));
       if (attr("toast")) toast(attr("toast"));
+      if (itemIdOf(path)) followEmail();
     }
     form.dispatchEvent(new CustomEvent("ax:posted", { detail: { path }, bubbles: true }));
     return { ok: true, path };
@@ -518,7 +519,7 @@
   /* ---------- 5. Queue ---------- */
   // Q: the queue as rendered (filter query string, change stamp) and the reader's place. F: the
   // search in flight (debounce timer, request number, abort controller).
-  const Q = { qs: "", stamp: "", inflight: 0, prev: null, keepY: null, focus: null, touch: 0, listY: 0, listUrl: "", rowReq: null, lastReturn: 0, pollY: null };
+  const Q = { qs: "", stamp: "", inflight: 0, prev: null, keepY: null, focus: null, touch: 0, listY: 0, listUrl: "", rowReq: null, lastReturn: 0, pollY: null, follow: null };
   const F = { timer: 0, seq: 0, ctl: null };
   const qp = () => D.getElementById("queuepane");
   const setParams = (qs, more) => { const p = new URLSearchParams(qs); new URLSearchParams(more).forEach((v, k) => p.set(k, v)); if (!p.get("q")) p.delete("q"); return p.toString(); };
@@ -550,10 +551,17 @@
       }))
       .catch(() => { /* the English summaries stay */ });
   }
-  // After every render of the list (the whole queue, or the list part after a search).
+  // After every render of the list (the whole queue, or the list part after a search). The one
+  // place that keeps the rule of 15 Oct 2026: the work pane shows an email only while its row is in
+  // the list and selected. A list without it (a filter or search that leaves it out, a refresh after
+  // it was closed, handed over or moved elsewhere) clears the pane, unless the list that brings it
+  // back is still on its way (Q.follow: the email was opened from outside the list).
   function afterList() {
     const cur = openId();
+    const followed = $("#queuepane .ax-q")?.dataset.followed;
+    if (followed && followed === Q.follow) Q.follow = null;
     if (cur && $(`#qlist .wb-row[data-id="${cur}"]`)) markSelected(cur);
+    else if (cur && Q.follow !== cur) clearPane();
     $(".ax")?.toggleAttribute("data-empty", $("#queuepane .ax-q")?.dataset.show === "open" && !searchOf(Q.qs) && !$("#qlist .wb-row"));
     markDraftKept();
     fillSummaries();
@@ -593,20 +601,30 @@
     const list = D.getElementById("qlist");
     if (opts.skeleton && list) { list.innerHTML = skelRows(); $$("#qmoreRow, .ax-qcount").forEach((n) => n.remove()); }
     Q.inflight = Date.now();
-    W.htmx.ajax("GET", `${B}/queue?${qs}&sel=${opts.sel ?? (openId() || 0)}`, { target: pane, swap: "innerHTML" });
+    if (opts.follow) Q.follow = String(opts.follow);
+    W.htmx.ajax("GET", `${B}/queue?${qs}&sel=${opts.sel ?? (openId() || 0)}${opts.follow ? "&follow=" + opts.follow : ""}`, { target: pane, swap: "innerHTML" });
+  }
+  // The work pane back to empty, the open email's text saved first: the list no longer holds it.
+  function clearPane() {
+    flush(true);
+    draftFlush();
+    if (Q.rowReq && W.htmx) { W.htmx.trigger(Q.rowReq, "htmx:abort"); Q.rowReq = null; }
+    if (!$("#workpane > .ax-void")) showVoid(true);
+    markSelected("");
+  }
+  // An email that came into the pane from outside the list, or that one of my own actions moved to
+  // the other list (Reopen, a new compose): the list follows it, so its row is there and selected.
+  function followEmail() {
+    const em = emailEl(), pane = $("#queuepane .ax-q");
+    if (!em || !pane || !D.getElementById("qlist") || Q.follow === em.dataset.email) return;
+    if ($(`#qlist .wb-row[data-id="${em.dataset.email}"]`) && pane.dataset.show === em.dataset.list) return;
+    refreshQueue({ follow: em.dataset.email, sel: em.dataset.email });
   }
   // A switch of Mine | All, Open | History or Mailbox (or an offer of an empty search): in place,
-  // the search text stays. Open | History (even the one already chosen) also closes the open email,
-  // so the work area never shows an email from the list that is not on screen; Mine | All and
-  // Mailbox keep it.
+  // the search text stays. Open | History (even the one already chosen) also closes the open email;
+  // after Mine | All and Mailbox the email stays only if the new list holds it (afterList).
   function switchFilter(more) {
-    if (new URLSearchParams(more).has("show") && !$("#workpane > .ax-void")) {
-      flush(true);
-      draftFlush();
-      if (Q.rowReq && W.htmx) { W.htmx.trigger(Q.rowReq, "htmx:abort"); Q.rowReq = null; }
-      showVoid(true);
-      markSelected("");
-    }
+    if (new URLSearchParams(more).has("show") && !$("#workpane > .ax-void")) clearPane();
     const field = D.getElementById("q");
     const qs = setParams(setParams(Q.qs, more), { q: field ? field.value.trim() : searchOf(Q.qs) });
     if (qs === Q.qs) return;
@@ -798,6 +816,7 @@
   // After an email renders in the work area: one-pane view, text areas sized, local draft restored.
   function afterWork(fresh) {
     if (!$("#workpane > .ax-void")) D.body.classList.add("ax-detail");
+    if (fresh && !Q.rowReq && !Q.inflight) followEmail();
     if (fresh && ONEPANE.matches) scrollTo(0, 0);
     growAll();
     draftRender();
@@ -817,6 +836,7 @@
     draftFlush();
     if (Q.rowReq && W.htmx) { W.htmx.trigger(Q.rowReq, "htmx:abort"); Q.rowReq = null; }
     showVoid(false);
+    markSelected("");
     scrollTo(0, Q.listY || 0);
     history.pushState({ htmx: true }, "", Q.listUrl || listUrl());
     markDraftKept();
@@ -972,8 +992,7 @@
     post(form, btn).then((r) => {
       if (!r.ok) return;
       layerOf(form)?.close();
-      cmpReset();
-      refreshQueue({ sel: currentId() || 0 });
+      cmpReset();   // the list follows the new email (post, followEmail)
     });
   }
   function wireCompose() {
@@ -1498,11 +1517,45 @@
       .catch(() => { if (ly.el.isConnected) banner(ly.el, { tone: "bad", message: t("load_failed_title"), unchanged: true }); });
   }
 
+  // The reply's translation (15 Oct 2026). translateReply fetches the reply's current text (the
+  // skeleton first time, the old words dimmed after); trState keeps Translate again and the "Text
+  // changed" hint in step: both only while the translation is open, the button usable only when the
+  // text differs from what was last translated, and turning while a fetch runs.
+  function trState() {
+    const box = D.getElementById("replytr"), again = $("#workpane [data-tr-again]");
+    if (!box || !again) return;
+    const stale = !box.hidden && box.dataset.text !== replyBox().value;
+    again.hidden = box.hidden;
+    again.disabled = !stale || again.hasAttribute("aria-busy");
+    box.toggleAttribute("data-stale", stale && !again.hasAttribute("aria-busy") && !!box.dataset.text);
+    $("[data-tr-stale]", box).hidden = !box.hasAttribute("data-stale");
+  }
+  function translateReply(box) {
+    const out = box.lastElementChild, text = replyBox().value, again = $("#workpane [data-tr-again]");
+    box.axSkel ??= out.innerHTML;
+    if (!box.dataset.text) out.innerHTML = box.axSkel;
+    box.dataset.text = text;
+    const seq = box.axSeq = (box.axSeq || 0) + 1, latest = () => box.axSeq === seq;
+    again?.setAttribute("aria-busy", "true");
+    trState();
+    const done = () => { again?.removeAttribute("aria-busy"); trState(); };
+    fetch(itemUrl(emailEl().dataset.email, "/translate-reply"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "text=" + encodeURIComponent(text), credentials: "same-origin" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!latest()) return;
+        if (d.error) delete box.dataset.text;
+        out.replaceChildren(...nodes(String(d.text || d.error || "").split(/\n[ \t\r]*\n/).filter((x) => x.trim()).map((x) => `<p>${esc(x)}</p>`).join("")));
+        done();
+      })
+      .catch(() => { if (latest()) { delete box.dataset.text; out.textContent = t("post_failed"); done(); } });
+  }
+  D.addEventListener("input", (e) => { if (e.target.id === "replybox") trState(); });
+
   // The email's own clicks; true when one was handled.
   function emailClick(tg) {
     const em = tg.closest?.(".ax-email, .ax-ov, .wb-menu, .wb-sheet");
     if (!em) return false;
-    const b = tg.closest("[data-tr-email], [data-tr-reply], [data-more-toggle], [data-reset], [data-insimg], [data-attach], [data-camera], [data-to-other], [data-to-cancel], [data-cc-open], [data-cc-other], [data-cc-cancel], [data-photo], [data-photo-retry], [data-remote]");
+    const b = tg.closest("[data-tr-email], [data-tr-reply], [data-tr-again], [data-more-toggle], [data-reset], [data-insimg], [data-attach], [data-camera], [data-to-other], [data-to-cancel], [data-cc-open], [data-cc-other], [data-cc-cancel], [data-photo], [data-photo-retry], [data-remote]");
     if (!b) return false;
     // Translate, the same control on the customer's message and on the reply: the label swaps, the
     // translation shows in its box below the text.
@@ -1516,20 +1569,13 @@
     if (b.matches("[data-tr-email]")) trToggle($("#workpane [data-tr-box]"));
     else if (b.matches("[data-tr-reply]")) {
       // The reply's words (the server strips the markers), fetched when switched on and again when
-      // switched on after the text changed; the skeleton meanwhile.
-      const box = D.getElementById("replytr"), out = box.lastElementChild, text = replyBox().value;
-      box.axSkel ??= out.innerHTML;
-      if (!trToggle(box) || box.dataset.text === text) return true;
-      box.dataset.text = text;
-      out.innerHTML = box.axSkel;
-      fetch(itemUrl(emailEl().dataset.email, "/translate-reply"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "text=" + encodeURIComponent(text), credentials: "same-origin" })
-        .then((r) => r.json())
-        .then((d) => {
-          if (box.dataset.text !== text) return;
-          if (d.error) delete box.dataset.text;
-          out.replaceChildren(...nodes(String(d.text || d.error || "").split(/\n[ \t\r]*\n/).filter((x) => x.trim()).map((x) => `<p>${esc(x)}</p>`).join("")));
-        })
-        .catch(() => { if (box.dataset.text === text) { delete box.dataset.text; out.textContent = t("post_failed"); } });
+      // switched on after the text changed; the skeleton meanwhile. Translate again shows while open.
+      const box = D.getElementById("replytr");
+      const on = trToggle(box);
+      if (on && box.dataset.text !== replyBox().value) translateReply(box);
+      trState();
+    } else if (b.matches("[data-tr-again]")) {
+      translateReply(D.getElementById("replytr"));
     } else if (b.matches("[data-more-toggle]")) {
       const m = b.previousElementSibling, on = m.classList.toggle("is-open");
       b.firstChild.textContent = on ? b.dataset.less : b.dataset.more;

@@ -9,8 +9,15 @@
 //   * the inbound thread's own sender address;
 //   * addresses the deterministic resolver produced for THIS item's customer (SAP/Shopify contact
 //     records reached via a CardCode or the sender address, never via anything in the email body);
-//   * for a contact-form item, the address the customer typed into OUR OWN form at submission.
-// No email body, no tool result and no model output can add an entry here. A poisoned SAP contact
+//   * for a contact-form item, the address the customer typed into OUR OWN form at submission;
+//   * for a reply to mail sent by one of OUR OWN mailboxes (15 Oct 2026): that mailbox itself
+//     ('internal', the colleague's reply path) and, when the mail carries a forwarded customer
+//     email, the original sender read deterministically from the forwarded header block
+//     (send-guard.ownMailCase over forwarded-origin.js). That address is the one entry that comes
+//     from an email body. It is admitted only because the mail was sent by our own mailbox, it is
+//     tagged 'forwarded' and shown with the amber "not on file" pill unless the resolver holds it
+//     for a customer (then it is 'onfile'), and nothing sends it without a human pressing Send.
+// No other email body text, no tool result and no model output can add an entry here. A poisoned SAP contact
 // record can put an attacker address in a NAME field; it cannot put one in this set, because only
 // the resolver's sendableAddresses are read, never free-text name columns.
 //
@@ -23,6 +30,7 @@
 // The four item kinds. The caller classifies (server.js/routes already own isContactFormItem etc.)
 // and passes the kind in, so this module never re-implements that test either.
 const KINDS = ["reply", "compose", "contactform", "return"];
+const SG = require("./send-guard.js");   // ownMailCase and replyDefault: pure, no IO
 
 function norm(a) { return String(a == null ? "" : a).trim().toLowerCase(); }
 function parseJson(s) { try { return JSON.parse(s || "null"); } catch (e) { return null; } }
@@ -41,10 +49,10 @@ function dedupe(entries) {
 }
 
 // The address a send would use with NO override in place. The "changed" pill compares against this.
-//   reply  -> the thread sender (send-guard's fallback)
+//   reply  -> the thread sender, or the forwarded customer (send-guard.replyDefault, the send's fallback)
 //   others -> the resolver's own default, if it produced exactly one obvious address
 function defaultRecipient(w, kind) {
-  if (kind === "reply") return norm(w.sender_email);
+  if (kind === "reply") return norm(SG.replyDefault(w));
   if (kind === "contactform") { const cf = parseJson(w.contact_form_json); return norm(cf && cf.defaultRecipient); }
   if (kind === "return") { const rn = parseJson(w.return_json); return norm(rn && rn.defaultRecipient); }
   return "";   // compose: there is no default; the recipient was chosen at creation
@@ -52,7 +60,7 @@ function defaultRecipient(w, kind) {
 
 // What a send would actually use right now.
 function activeRecipient(w, kind) {
-  return norm(w.recipient) || (kind === "reply" ? norm(w.sender_email) : "");
+  return norm(w.recipient) || (kind === "reply" ? defaultRecipient(w, kind) : "");
 }
 
 // True when the active recipient differs from the untouched default - drives the amber pill.
@@ -68,7 +76,7 @@ function isRedirected(w, kind) {
 // Both are best-effort: a lookup failure degrades the set, it never throws out of here. A slow or
 // dead SAP must cost the operator a radio option, not the ability to open the item.
 //
-// Returns [{ addr, source }] with source in 'sender' | 'onfile' | 'form' | 'typed'.
+// Returns [{ addr, source }] with source in 'sender' | 'onfile' | 'form' | 'forwarded' | 'internal' | 'typed'.
 //
 // NOTE on labels: resolve-customer.sendableAddresses does not carry per-address provenance (it
 // merges OCRD E_Mail/U_E_Mail and the Shopify contact into one list), so on-file addresses are
@@ -98,6 +106,18 @@ async function knownAddressesFor(w, kind, deps = {}) {
     if (cc && cc.cardCode && deps.addressesByCardCode) {
       try { for (const a of await deps.addressesByCardCode(cc.cardCode)) push(a, "onfile"); } catch (e) { /* best-effort */ }
     }
+
+  } else if (SG.ownMailCase(w)) {   // a reply to mail from one of our own mailboxes
+    const own = SG.ownMailCase(w);
+    if (own.customer) {
+      let onfile = [];
+      if (deps.addressesByEmail) {
+        try { onfile = (await deps.addressesByEmail(own.customer.addr)).map(norm); } catch (e) { /* best-effort */ }
+      }
+      push(own.customer.addr, onfile.includes(norm(own.customer.addr)) ? "onfile" : "forwarded");
+      for (const a of onfile) push(a, "onfile");
+    }
+    push(w.sender_email, "internal");
 
   } else {   // reply
     push(w.sender_email, "sender");

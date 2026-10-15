@@ -17,7 +17,7 @@ const PHONE = require("../phone-numbers.js");       // a phone number's tel: tar
 const RSET = require("../recipient-set.js");       // the single definition of an item's known addresses
 const FG = require("../forward-guard.js");         // handover forward: deterministic internal-only guardrails
 const FWD = require("../forward.js");              // handover forward: the Graph call (Mail.Send)
-const SG = require("../send-guard.js");            // only for needsConfirmedRecipient (the UI mirror of the send refusal)
+const SG = require("../send-guard.js");            // needsConfirmedRecipient and ownMailCase (the UI mirror of the send path)
 const DS = require("../draft-staleness.js");       // is the newest stored draft still this email's draft?
 const { db, audit } = require("../db.js");
 const { esc, t, page, splitQuoted, fmtSize, replyParas, pill, icon, iconBtn, TR_SKEL,
@@ -424,9 +424,10 @@ app.get("/item/:id", async (req, res) => {
   const cfCanSend = isContactForm && ACTION_CONTACTFORM_SEND && !!w.recipient;
   const composeCanSend = isCompose && ACTION_COMPOSE_SEND && !!w.recipient;
   const rnCanSend = isRN && ACTION_RETURN_SEND && !!w.recipient;
-  // internal_forward: a colleague handed this customer email to us, so the thread sender is one of
-  // OUR OWN mailboxes. Replying to the sender would mail ourselves, so send-guard refuses until a
-  // recipient is confirmed - mirrored here so the To line says "Choose recipient" and Send waits.
+  // Mail from one of OUR OWN mailboxes (send-guard.ownMailCase, 15 Oct 2026): a colleague's own message
+  // replies to their mailbox; a forwarded customer email defaults to the customer read from its
+  // header. Only a forward whose customer cannot be read still needs a confirmed recipient, mirrored
+  // here so the To line says "Choose recipient" and Send waits.
   const fwdNeedsRecipient = SG.needsConfirmedRecipient(w);
   // Voicemail items are phone only: send-guard always refuses them, so there is no reply (Change A).
   const isVoicemail = SG.isVoicemailItem(w);
@@ -505,7 +506,10 @@ app.get("/item/:id", async (req, res) => {
   const U = (p) => `${BASE.path}/item/${w.id}${p || ""}`;
   const admin = req.user.role === "admin";
   const srcLabel = { sender: t(lang, "recip_from_sender"), onfile: t(lang, "recip_on_file"),
-                     form: t(lang, "recip_from_form"), typed: t(lang, "recip_typed") };
+                     form: t(lang, "recip_from_form"), typed: t(lang, "recip_typed"),
+                     forwarded: t(lang, "recip_forwarded"), internal: t(lang, "recip_internal") };
+  // The To menu names our own mailbox as the internal reply path (15 Oct 2026).
+  const menuLabel = (src) => src === "internal" ? t(lang, "recip_internal_reply") : srcLabel[src] || src;
 
   // --- The title row: the subject, then the pills. The status (with the closed resolution
   // wording), P1, the injection warning, the compose and contact-form markers, the intent (the
@@ -645,7 +649,7 @@ app.get("/item/:id", async (req, res) => {
     ${typedEntry ? `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="true" disabled><span>${esc(typedEntry.addr)}<small>${esc(srcLabel.typed)}</small></span>${icon("check", "wb-menu__mark")}</button>` : ""}
     ${pickable.map((e) => {
       const on = e.addr === sendTo && !recipNeed;
-      return `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${on}"${on ? "" : ` data-submit="ax-f-recip" name="addr" value="${esc(e.addr)}"`}><span>${esc(e.addr)}<small>${esc(srcLabel[e.source] || e.source)}</small></span>${on ? icon("check", "wb-menu__mark") : ""}</button>`;
+      return `<button type="button" class="wb-menu__item" role="menuitemradio" aria-checked="${on}"${on ? "" : ` data-submit="ax-f-recip" name="addr" value="${esc(e.addr)}"`}><span>${esc(e.addr)}<small>${esc(menuLabel(e.source))}</small></span>${on ? icon("check", "wb-menu__mark") : ""}</button>`;
     }).join("")}
     ${pickable.length || typedEntry ? `<div class="wb-menu__sep" role="separator"></div>` : ""}
     <button type="button" class="wb-menu__item" role="menuitem" data-to-other><span>${L("recip_other")}</span></button></template>` : "";
@@ -658,13 +662,14 @@ app.get("/item/:id", async (req, res) => {
   // pills (round 3); at the right of the To line, alone, Translate, the same control the customer's
   // message carries (needContent: the customer writes in another language than the reader). Both
   // stay put while the typed-address field is open.
-  const trReply = needContent ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-tr-reply aria-expanded="false" aria-controls="replytr" data-on="${L("hide_translation")}" data-off="${L("translate")}">${L("translate")}</button>` : "";
+  // Translate again (15 Oct 2026): icon only, beside Translate, shown while the translation is open.
+  const trReply = needContent ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--icon wb-btn--sm" data-tr-again aria-label="${L("translate_again")}" title="${L("translate_again")}" disabled hidden>${icon("refresh")}</button><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-tr-reply aria-expanded="false" aria-controls="replytr" data-on="${L("hide_translation")}" data-off="${L("translate")}">${L("translate")}</button>` : "";
   const ccOpen = canPick ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-cc-open aria-expanded="${ccList.length > 0}" aria-controls="ax-ccrow"${ccList.length ? " hidden" : ""}>${L("cc_add")}</button>` : "";
   const toEnd = trReply ? `<span class="ax-to__end">${trReply}</span>` : "";
   const otherField = (form, attr, label) => `<div class="wb-input wb-input--sm ax-toother" ${attr} hidden><input type="email" name="addr" form="${form}" autocomplete="off" spellcheck="false" required placeholder="${L("recip_email_ph")}" aria-label="${esc(label)}"></div><button type="submit" form="${form}" class="wb-btn wb-btn--sm" ${attr} hidden>${L("recip_use")}</button>`;
   const toLine = `<div class="ax-to"><span class="wb-label">${L("to_label")}</span>${toPill}
     ${!recipNeed ? `<span class="wb-pill" data-tone="neutral" data-to-pill>${esc(srcLabel[curSrc] || curSrc)}</span>` : ""}
-    ${!recipNeed && typedTo ? `<span class="wb-pill" data-tone="warn" data-to-pill title="${esc(typedWarn(sendTo))}">${L("recip_typed_pill")}</span>`
+    ${!recipNeed && (typedTo || curSrc === "forwarded") ? `<span class="wb-pill" data-tone="warn" data-to-pill title="${esc(typedWarn(sendTo))}">${L("recip_typed_pill")}</span>`
       : !recipNeed && redirected ? `<span class="wb-pill" data-tone="warn" data-to-pill title="${L("recip_changed_title")}">${L("recip_changed_pill")}</span>` : ""}${ccOpen}
     ${canPick ? otherField("ax-f-typed", "data-to-other-field", t(lang, "recip_other")) + iconBtn(t(lang, "cancel"), "x", "data-to-cancel data-to-other-field hidden", "wb-btn--sm") : ""}${toEnd}</div>`;
 
@@ -715,7 +720,9 @@ app.get("/item/:id", async (req, res) => {
   // and a draft read on a later day can say "vandaag" or "Goedenavond" about the wrong day (481, 509).
   const ownNote = editable && kind === "reply" && fwdNeedsRecipient && SG.isOwnAddress(w.sender_email)
     ? note("warn", t(lang, "own_sender_note", { from: RSET.norm(w.sender_email) })) : "";
-  const ownToBanner = editable && kind === "reply" && !recipNeed && SG.isOwnAddress(sendTo)
+  // Not for a colleague's own message (15 Oct 2026): replying to their mailbox is the point there.
+  const ownCase = kind === "reply" ? SG.ownMailCase(w) : null;
+  const ownToBanner = editable && kind === "reply" && !recipNeed && SG.isOwnAddress(sendTo) && !(ownCase && ownCase.case === "internal")
     ? banner("warn", esc(t(lang, "own_recipient_banner", { to: sendTo }))) : "";
   const staleBanner = editable && w.draft_edit == null && aiSeed && DS.isDayOldWording(aiSeed, replyText)
     ? banner("warn", esc(t(lang, "stale_day_banner", { when: fmtDateTime(aiSeed.created_at, lang) }))) : "";
@@ -747,7 +754,7 @@ app.get("/item/:id", async (req, res) => {
       <div class="ax-ed" id="replyed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="${L("reply")}" data-placeholder="${L("reply_ph")}" spellcheck="true">${ED.toHtml(ED.parse(replyText))}</div>
       <textarea id="replybox" name="reply" hidden>${esc(replyText)}</textarea></div>
     ${aiSeed ? `<textarea id="ai_seed" hidden readonly>${esc(aiSeed.body)}</textarea>` : ""}
-    ${needContent ? `<div class="ax-tr" id="replytr" hidden><p class="wb-hint">${esc(t(lang, "reply_tr_note").replace("{lang}", langDisplay(lang, custLang)))}</p><div class="ax-msg">${TR_SKEL(lang)}</div></div>` : ""}
+    ${needContent ? `<div class="ax-tr" id="replytr" hidden><p class="wb-hint">${esc(t(lang, "reply_tr_note").replace("{lang}", langDisplay(lang, custLang)))} <span class="ax-trstale" data-tr-stale hidden>${L("tr_text_changed")}</span></p><div class="ax-msg">${TR_SKEL(lang)}</div></div>` : ""}
     <div class="ax-atts"${atts.length ? "" : " hidden"}>${atts.map((a) => attChip(a, true)).join("")}</div>
     <div class="ax-tools"><button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-attach>${icon("clip")}<span>${L("attach")}</span></button><input type="file" id="att_file" multiple hidden>${retLabelBtn}
       <button type="button" class="wb-btn wb-btn--ghost wb-btn--sm ax-cam" data-camera>${icon("camera")}<span>${L("camera")}</span></button><input type="file" id="att_cam" accept="image/*" capture="environment" hidden>
@@ -867,7 +874,7 @@ app.get("/item/:id", async (req, res) => {
   const col = editable
     ? `<form class="ax-col ax-col--split" id="workform" method="post" action="${U("/work")}" data-autosave novalidate>${colInner}</form>`
     : `<div class="ax-col ax-col--split">${colInner}</div>`;
-  const email = `<div class="ax-email" data-email="${w.id}">${ptop}${col}${bar}${templates}${hiddenForms}</div>`;
+  const email = `<div class="ax-email" data-email="${w.id}" data-list="${closed ? "history" : "open"}">${ptop}${col}${bar}${templates}${hiddenForms}</div>`;
 
   // While the item is busy, a small self-poller re-swaps the work area every 10 s: a busy item
   // renders no edit surface, so the swap can never lose typed work. It targets #workpane only, so
@@ -880,7 +887,7 @@ app.get("/item/:id", async (req, res) => {
   }
   // Plain navigation (deep link / old link): the full shell. The queue pane is
   // lazy-loaded from /queue, so this route keeps exactly its old side effects.
-  res.send(page(`Item ${w.id}`, req.user, shell(lazyQueue(lang, "sel=" + w.id), email + busyPoll) + (req.app.locals.composeUi ? req.app.locals.composeUi(req) : ""), 0, { shell: true, bodyClass: "ax-detail" }));
+  res.send(page(`Item ${w.id}`, req.user, shell(lazyQueue(lang, `sel=${w.id}&follow=${w.id}`), email + busyPoll) + (req.app.locals.composeUi ? req.app.locals.composeUi(req) : ""), 0, { shell: true, bodyClass: "ax-detail" }));
 });
 
 

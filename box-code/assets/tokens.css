@@ -100,9 +100,11 @@
   --z-sticky: 10;
   --z-dock: 20;
   --z-header: 30;
-  --z-menu: 40;
   --z-drawer: 50;
   --z-dialog: 60;
+  /* A menu is always the last thing opened, so it sits over the drawer or dialog it was opened from
+     (the label modal's More menu sat behind the dialog, 15 Oct 2026). */
+  --z-menu: 65;
   --z-toast: 70;
   --z-top: 80;
 

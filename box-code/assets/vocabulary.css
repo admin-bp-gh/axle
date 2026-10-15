@@ -51,6 +51,12 @@
 .wb-btn--commit { background: var(--commit); border-color: var(--commit); color: var(--on-brand); }
 .wb-btn--commit .wb-i { color: inherit; }
 .wb-btn--commit:not(:disabled):hover { background: var(--commit-hover); border-color: var(--commit-hover); }
+.wb-btn--warn { background: var(--warn-bg); border-color: var(--warn-fg); color: var(--warn-fg); }
+.wb-btn--warn .wb-i, .wb-btn--warn .wb-lock { color: inherit; }
+.wb-btn--warn:not(:disabled):hover { background: var(--warn-bg); filter: brightness(.96); }
+.wb-btn--ok { background: var(--ok-bg); border-color: var(--ok-fg); color: var(--ok-fg); }
+.wb-btn--ok .wb-i, .wb-btn--ok .wb-lock { color: inherit; }
+.wb-btn--ok:not(:disabled):hover { background: var(--ok-bg); filter: brightness(.96); }
 .wb-btn--ghost { background: transparent; border-color: transparent; }
 .wb-btn--danger { color: var(--bad-fg); }
 .wb-btn--danger .wb-i { color: inherit; }
@@ -462,3 +468,8 @@
   .wb-input--quiet.wb-input--select > .wb-i { transition: none; }
   .wb-spin { border-right-color: currentColor; opacity: .5; }
 }
+
+/* A code as plain text that still opens its menu (ItemCode plain): no chip, a dotted underline on hover. */
+.wb-codebtn { padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-underline-offset: 3px; }
+.wb-codebtn:hover { text-decoration: underline dotted; }
+.wb-codebtn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 2px; }

@@ -35,7 +35,10 @@ const GRADER_MODEL = SONNET;
 // The configurations. engine: "today" = ../engine.js as is, "loose" = eval/engine-loose.js.
 // maxTokens/effort null = leave the engine's own request untouched. thread: true = the drafter gets
 // the real conversation, built by ../conversation.js as of the send (before: sent_at), the way
-// ingest and the redraft build it since 15 Oct 2026.
+// ingest and the redraft build it since 15 Oct 2026. agent: true = through the Workbench shared agent
+// (agent-client.js, channel axle-draft, AGENT_URL / AGENT_TOKEN from the env file): the channel profile
+// picks model, effort and max_tokens and the knowledge pack goes in front, so `step` against
+// `today-thread` compares the direct call with the agent call on the same input. Workbench must be running.
 const CONFIGS = {
   "today":               { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: false },
   "sonnet-loose":        { model: SONNET, engine: "loose", maxTokens: 8000, effort: "high", quick: false, thread: false },
@@ -43,6 +46,7 @@ const CONFIGS = {
   "opus-loose":          { model: OPUS,   engine: "loose", maxTokens: 8000, effort: "high", quick: false, thread: false },
   "sonnet-loose-thread": { model: SONNET, engine: "loose", maxTokens: 8000, effort: "high", quick: false, thread: true },
   "today-thread":        { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: true },
+  "step":                { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: true, agent: true },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -143,15 +147,20 @@ function isQuick(QR, c) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The metered client: sets model / max_tokens / effort per config and sums usage.
+// The metered client: sets model / max_tokens / effort per config and sums usage. In front of the
+// agent client it changes nothing (the channel profile decides) and keeps isAgentStep visible to the
+// engine; the agent client reports usage, cache tokens included, under the SDK's names.
 function meteredClient(real, cfg, meter) {
+  const agent = Boolean(real.isAgentStep);
   return {
+    isAgentStep: agent,
     messages: {
       create: async (params) => {
-        const p = { ...params, model: cfg.model };
-        if (cfg.maxTokens) p.max_tokens = cfg.maxTokens;
-        if (cfg.effort) p.output_config = { effort: cfg.effort };
+        const p = agent ? params : { ...params, model: cfg.model };
+        if (!agent && cfg.maxTokens) p.max_tokens = cfg.maxTokens;
+        if (!agent && cfg.effort) p.output_config = { effort: cfg.effort };
         const msg = await real.messages.create(p);
+        if (msg.model) meter.model = msg.model;
         const u = msg.usage || {};
         meter.calls++;
         meter.in += u.input_tokens || 0;
@@ -164,7 +173,7 @@ function meteredClient(real, cfg, meter) {
     },
   };
 }
-const newMeter = () => ({ calls: 0, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, stops: [] });
+const newMeter = () => ({ calls: 0, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, stops: [], model: null });
 function costOf(model, m) {
   const pr = PRICES[model];
   if (!pr) return null;
@@ -178,7 +187,7 @@ async function replay(ctx, c, cfgName, rep) {
   const E = cfg.engine === "loose" ? ctx.Eloose : ctx.Etoday;
   const email = emailOf(c);
   const meter = newMeter();
-  const client = meteredClient(ctx.anthropic, cfg, meter);
+  const client = meteredClient(cfg.agent ? ctx.agent : ctx.anthropic, cfg, meter);
   const mailbox = ctx.mailboxOf(c.mailbox);
   const t0 = Date.now();
   const run = { case_id: c.id, config: cfgName, rep, followup: c.followup, model: cfg.model, mailbox: c.mailbox };
@@ -219,7 +228,8 @@ async function replay(ctx, c, cfgName, rep) {
   }
   run.tokens = { in: meter.in, out: meter.out, cache_read: meter.cacheRead, cache_write: meter.cacheWrite, calls: meter.calls };
   run.stops = meter.stops;
-  run.cost_usd = costOf(cfg.model, meter);
+  if (meter.model) run.model = meter.model;   // the agent's profile may name another model than the config
+  run.cost_usd = costOf(run.model, meter);
   return run;
 }
 
@@ -368,7 +378,7 @@ async function main() {
   const cases = picked.cases;
   fs.writeFileSync(path.join(out, "cases.json"), JSON.stringify({ db: dbPath, picked_at: new Date().toISOString(), stats: picked.stats, notes: picked.notes, cases }, null, 2));
 
-  const configs = args.config || Object.keys(CONFIGS);
+  const configs = args.config || Object.keys(CONFIGS).filter((k) => !CONFIGS[k].agent);   // step only when named
   for (const k of configs) if (!CONFIGS[k]) throw new Error(`unknown config ${k} (known: ${Object.keys(CONFIGS).join(", ")})`);
 
   if (args.pick) {
@@ -406,6 +416,10 @@ async function main() {
 
   const Anthropic = require("@anthropic-ai/sdk");
   ctx.anthropic = new Anthropic();
+  if (configs.some((k) => CONFIGS[k].agent)) {
+    if (!process.env.AGENT_TOKEN) throw new Error(`config step needs AGENT_TOKEN (and AGENT_URL unless Workbench is on ${require("../agent-client.js").DEFAULT_URL}) in ${ENV_FILE}`);
+    ctx.agent = require("../agent-client.js").createAgentClient({ baseUrl: process.env.AGENT_URL || undefined, token: process.env.AGENT_TOKEN });
+  }
   const runsFile = path.join(out, "runs.jsonl");
   const runs = [];
   const total = cases.length * configs.length * args.repeat;

@@ -755,9 +755,14 @@ function applyGates(result, ctx = {}) {
 //                      instruction for a short turn, placed after the seed context (2026-10-10).
 //   opts.maxLookups  - a cap on tool calls (quick replies: 2). Calls past it are not run; the
 //                      model is told the budget is used up and must answer with what it has.
+// anthropic is the SDK client, or agent-client.js's client (isAgentStep) when drafts go through the
+// Workbench shared agent: then the business knowledge travels apart so Workbench caches it, and the
+// channel profile decides model and max_tokens.
 async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {}) {
   const toolLog = [];
-  const system = (opts.system || SYSTEM) + "\n\n" + K.block();
+  const agent = Boolean(anthropic && anthropic.isAgentStep);
+  const system = agent ? (opts.system || SYSTEM) : (opts.system || SYSTEM) + "\n\n" + K.block();
+  const knowledge = agent ? K.block() : null;
   const senderAddr = opts.senderAddr || (email && email.from && email.from.address) || "";
   // The customer's SAP price list, so part_dossier / part_finder price every part on it (tier pricing).
   const priceList = opts.priceList != null ? opts.priceList
@@ -816,7 +821,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     }
   }
   const messages = [{ role: "user", content: firstContent }];
-  const ask = () => anthropic.messages.create({
+  const ask = () => anthropic.messages.create(agent ? { system, extra_knowledge: knowledge, tools: T.toolDefs, messages } : {
     // 2026-08-12: raised 2000 -> 4096. Requiring an interim on every hold made replies longer
     // (a full reply AND the questions, all escaped into one JSON object), and item 1244, a
     // long Dutch window-frame enquiry, was truncated mid-JSON, so parseResult fell back to

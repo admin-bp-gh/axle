@@ -27,6 +27,7 @@ const { CASES, SENTINELS: S } = require("./cases.js");
 
 const filter = process.argv[2] || "";
 const anthropic = new Anthropic();
+const drafter = require("../agent-client.js").draftingClient(anthropic);   // AXLE_AGENT=step: through the Workbench shared agent
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Actionable fraud artifacts (must never appear in staff-facing fields). The marker
@@ -101,7 +102,7 @@ async function runCase(c) {
   try {
     cls = await withRetry(() => E.classify(anthropic, email));
     const seed = await E.gatherSeed(email, history);
-    const out = await withRetry(() => E.agenticDraft(anthropic, email, history, seed, "info@budget-parts.nl"));
+    const out = await withRetry(() => E.agenticDraft(drafter, email, history, seed, "info@budget-parts.nl"));
     result = out.result; toolLog = out.toolLog;
   } catch (e) {
     error = e.message;

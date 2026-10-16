@@ -32,6 +32,9 @@ const MAILBOX_OF = {
   drachten: process.env[rulesets.drachten.mailboxEnv],
 };
 const anthropic = new Anthropic();
+// The drafting client (compose, redraft): the SDK client, or the Workbench shared agent when AXLE_AGENT=step.
+// `anthropic` itself stays the SDK client for the Haiku calls (translate, Teach proposals).
+const drafter = require("../agent-client.js").draftingClient(anthropic);
 
 const MAX_ATTACH_BYTES = 3 * 1024 * 1024;       // 3 MB per file (Graph inline-attachment headroom)
 const MAX_ATTACH_TOTAL = 3 * 1024 * 1024;       // 3 MB total across an item's attachments
@@ -145,7 +148,7 @@ async function runRedraft(itemId, login, opts = {}) {
       if (w.return_label_json) {
         taskPrompt += "\n\nA prepaid PostNL return label (PDF) is attached to this email. Tell the customer it is attached, to print it, stick it on the parcel and hand it in at a PostNL point; the parcel comes to our Gouda warehouse. Do not say return shipping is at their cost or that we provide no label.";
       }
-      const { result, toolLog, seed } = await COMPOSE.composeDraft(anthropic, {
+      const { result, toolLog, seed } = await COMPOSE.composeDraft(drafter, {
         resolved, taskPrompt, scenario: SCEN.forModel(w.scenario),
         language: w.language, mailbox: MAILBOX_OF[w.mailbox], recipient: w.recipient,
       });
@@ -214,7 +217,7 @@ async function runRedraft(itemId, login, opts = {}) {
     try { files = (JSON.parse(w.attachments_json || "[]") || []).length; } catch (e) { /* unreadable list: treat as none */ }
     const quick = !isContactFormItem(w) && !isReturnNotificationItem(w) && !w.caller_info && QR.isQuickTurn({ text: w.email_text || "", files,
       priorSends: db.prepare("SELECT COUNT(*) AS n FROM sends WHERE work_item_id = ? AND status = 'sent' AND sent_at < ?").get(itemId, String(w.email_received || "").replace("T", " ").slice(0, 19)).n });
-    const { result, toolLog } = await E.agenticDraft(anthropic, email, history, seed, MAILBOX_OF[w.mailbox], {
+    const { result, toolLog } = await E.agenticDraft(drafter, email, history, seed, MAILBOX_OF[w.mailbox], {
       exemplars: { intent: w.intent, language: w.language, mailbox: w.mailbox, excludeItemId: itemId },
       media,
       ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),

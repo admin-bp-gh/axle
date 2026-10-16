@@ -26,6 +26,7 @@
 //   populate a newly-onboarded mailbox's queue (e.g. drachten@) with just the open mail.
 require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 const Anthropic = require("@anthropic-ai/sdk");
+const AC = require("./agent-client.js");      // the drafting client: the SDK, or the Workbench shared agent (AXLE_AGENT=step)
 const rulesets = require("./rules.js");
 const C = require("./connectors.js");
 const E = require("./engine.js");
@@ -306,7 +307,7 @@ async function processThread(anthropic, key, msgs, ctx) {
   // most two lookups. Never for a contact form, a return notification or a voicemail.
   const quick = !isContactForm && !isReturnNotification && !callerMatch && QR.isQuickTurn({ text: email.text,
     priorSends: db.prepare("SELECT COUNT(*) AS n FROM sends WHERE work_item_id = ? AND status = 'sent'").get(itemId).n, files: (atts || []).length });
-  const { result, toolLog } = await E.agenticDraft(anthropic, email, conv.history, seed, MAILBOX, {
+  const { result, toolLog } = await E.agenticDraft(ctx.drafter || anthropic, email, conv.history, seed, MAILBOX, {
     exemplars: { intent: cls.intent, language: cls.language, mailbox: boxName, excludeItemId: itemId },
     media,
     ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),
@@ -446,7 +447,7 @@ async function runBox(anthropic, boxName, opts = {}) {
   for (const [key, msgs] of threads) {
     const email = msgs[0];
     try {
-      const r = await processThread(anthropic, key, msgs, { boxName, ruleset, MAILBOX });
+      const r = await processThread(anthropic, key, msgs, { boxName, ruleset, MAILBOX, drafter: opts.drafter });
       summary.push({
         from: email.from.address.slice(0, 28), subject: email.subject.slice(0, 30),
         result: r.skip || r.status, item: r.itemId || "-", msgs: msgs.length, tools: r.tools || 0,
@@ -492,12 +493,13 @@ async function runBox(anthropic, boxName, opts = {}) {
 // scheduled task; the server's in-process manual Sync otherwise), so this just does the work.
 async function runBoxes(boxes, opts = {}) {
   const anthropic = opts.anthropic || new Anthropic();
+  const drafter = AC.draftingClient(anthropic);   // classify stays on the SDK client
   for (const boxName of boxes) {
     // Per-mailbox isolation: one mailbox failing must never stop the others in the same run. Before
     // 2026-09-01 info@ ran first and a throw in its fetch aborted the whole run, so a Graph fault on
     // info@ silently stalled drachten@ too (and froze the reconciliation passes below).
     try {
-      await runBox(anthropic, boxName, { unreadSeed: !!opts.unreadSeed });
+      await runBox(anthropic, boxName, { unreadSeed: !!opts.unreadSeed, drafter });
     } catch (e) {
       audit("system", "ingest_error", null, `${boxName}: ${String(e.message || e).slice(0, 200)}`);
       console.error(`ERROR ${boxName}:`, e.message || e);

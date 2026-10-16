@@ -240,7 +240,7 @@ async function replay(ctx, c, cfgName, rep) {
     run.result = result;
     run.slot = result.draft ? "draft" : result.interim_draft ? "interim_draft" : "";
     run.draft_text = result.draft || result.interim_draft || "";
-    run.open_questions = [...(result.questions_for_salesperson || []), ...(result.physical_checks || [])];
+    run.open_questions = [...(result.questions_for_salesperson || []), ...(result.physical_checks || []), ...(result.notes_for_salesperson || [])];
     run.gate_withdrawn = !!result.withdrawn_draft;
     run.flags = result.flags || [];
     run.blocking_open = (result.questions_for_salesperson || []).length;

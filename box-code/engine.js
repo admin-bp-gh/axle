@@ -373,6 +373,7 @@ function applyContainment(result, senderAddr) {
   result.interim_draft = redactFlagged(result.interim_draft || "", senderAddr);
   result.questions_for_salesperson = (result.questions_for_salesperson || []).map((x) => redactFlagged(String(x), senderAddr));
   result.physical_checks = (result.physical_checks || []).map((x) => redactFlagged(String(x), senderAddr));
+  if (Array.isArray(result.notes_for_salesperson)) result.notes_for_salesperson = result.notes_for_salesperson.map((x) => redactFlagged(String(x), senderAddr));
   result.referenced_documents = [];   // a flagged email never contributes attachment hints
   return result;
 }

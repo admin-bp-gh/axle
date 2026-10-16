@@ -30,6 +30,9 @@ const held = item({});
 db.prepare("INSERT INTO questions (work_item_id, kind, question) VALUES (?, 'blocking', 'Quote price and lead time for STC50512?')").run(held);
 const answered = item({ flags: null });
 db.prepare("INSERT INTO questions (work_item_id, kind, question) VALUES (?, 'physical', 'Check the shelf')").run(answered);
+const withNotes = item({ flags: null });
+db.prepare("UPDATE work_items SET status = 'ready' WHERE id = ?").run(withNotes);
+db.prepare("INSERT INTO questions (work_item_id, kind, question) VALUES (?, 'optional', 'Create the credit note on receipt')").run(withNotes);
 const jsonDrafted = item({ flags: null, output: null });   // drafted before the flip, or by compose: today's Send
 db.prepare("INSERT INTO questions (work_item_id, kind, question) VALUES (?, 'blocking', 'Which engine?')").run(jsonDrafted);
 
@@ -75,6 +78,12 @@ test("item page: a JSON-drafted item keeps today's Send even with a blocking que
   const { body } = await req("GET", `/item/${jsonDrafted}`, "jack@bp");
   assert.doesNotMatch(sendTag(body), / disabled/);
   assert.doesNotMatch(body, /ax-answerfirst/);
+});
+
+test("item page: notes on a ready item show as Notes from Axle and never hold Send", async () => {
+  const { body } = await req("GET", `/item/${withNotes}`, "jack@bp");
+  assert.match(body, /Notes from Axle<\/b><ul class="ax-gflags"><li><span[^>]*>Create the credit note on receipt</);
+  assert.doesNotMatch(sendTag(body), / disabled/);
 });
 
 test("send route: refused while a blocking question is open, for sales and for an owner without a reason", async () => {

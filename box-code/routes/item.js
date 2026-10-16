@@ -718,6 +718,11 @@ app.get("/item/:id", async (req, res) => {
     // "Ask the customer" (quick-reply round, 2026-10-10): the questions only the customer can answer
     // become a short reply to them, drafted in the background like Redraft.
     `<button type="submit" class="wb-btn wb-btn--sm ax-askcust" name="action" value="ask_customer" data-inline title="${L("ask_customer_hint")}">${L("ask_customer")}</button>`) : "";
+  // Notes from Axle (prose path: salesperson actions and context, never blocking) on an item that is not
+  // waiting for an answer; when it is, they are in the question list above.
+  const notesOpen = open.filter((q) => q.kind === "optional");
+  const notesBanner = editable && !needsAnswers && notesOpen.length && !w.injection_flag
+    ? banner("info", `<b>${L("axle_notes")}</b><ul class="ax-gflags">${notesOpen.map((q) => `<li><span${qTrAttr(q)}>${esc(qText(q))}</span></li>`).join("")}</ul>`) : "";
   const wdBanner = withdrawn ? banner("warn", `<b>${L("withdrawn_title")}</b> ${esc(withdrawn.reasons.map((r) => t(lang, "withdrawn_" + r)).join(" "))} ${L("withdrawn_next")}<details class="wb-details"><summary>${L("withdrawn_show")}${icon("chevron-right")}</summary><pre>${esc(withdrawn.text)}</pre></details>`) : "";
   // A new outbound whose sending is switched off says so in the card (the button stays disabled).
   const offBanner = (isContactForm && !ACTION_CONTACTFORM_SEND || isRN && !ACTION_RETURN_SEND) && w.recipient ? banner("info", L("cf_send_not_enabled")) : "";
@@ -793,7 +798,7 @@ app.get("/item/:id", async (req, res) => {
   const prevDraft = supersededRow ? `<details class="wb-disclosure ax-prev"><summary>${L("prev_draft_summary")}${icon("chevron-right")}</summary><div><p class="wb-hint">${L("prev_draft_hint")}</p><div class="ax-msg">${replyParas(supersededRow.body)}</div></div></details>` : "";
 
   // Axle's questions directly above the redraft line, one unit with it (the answer goes in that field).
-  const ask = qBanner ? `<div class="ax-ask">${qBanner}${redraft}</div>` : redraft;
+  const ask = qBanner ? `<div class="ax-ask">${qBanner}${redraft}</div>` : notesBanner + redraft;
   // A voicemail has no reply, open or closed (Change A2, P4): no reply box, draft, redraft or documents.
   const replyCol = isVoicemail ? "" : `<div class="ax-replycol">${isCompose ? "" : infoCard}${replyCard}${draftingCard}${closedCard}${ask}${prevDraft}</div>`;
   const pair = `<div class="ax-pair">${isCompose ? infoCard : mailCard}${replyCol}</div>`;

@@ -119,7 +119,7 @@ async function runCase(c) {
   const fields = {
     draft: result.draft || "", interim_draft: result.interim_draft || "",
     questions: (result.questions_for_salesperson || []).join("\n"),
-    checks: (result.physical_checks || []).join("\n"), summary: cls.summary || "",
+    checks: (result.physical_checks || []).concat(result.notes_for_salesperson || []).join("\n"), summary: cls.summary || "",
   };
   const customer = [fields.draft, fields.interim_draft].join("\n");
   const staff = [fields.questions, fields.checks, fields.summary].join("\n");

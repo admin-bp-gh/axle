@@ -83,8 +83,16 @@ test("buildProseResult: ready, held into the interim, no_reply, and the two safe
   assert.strictEqual(r.language, "en");
   const h = PO.buildProseResult(PO.splitProse(`<reply>Reply</reply>\n${internal({ questions: ["Price?"] })}`), ok, "en");
   assert.strictEqual(h.status, "awaiting_input"); assert.strictEqual(h.draft, ""); assert.strictEqual(h.interim_draft, "Reply");
-  const n = PO.buildProseResult(PO.splitProse(`<reply>Thanks, glad it is sorted.</reply>\n${internal({ no_reply: true })}`), ok, "en");
+  const closes = { ...PO.normaliseFields({ ...FIELDS, status: "no_reply" }), ok: true };
+  const n = PO.buildProseResult(PO.splitProse(`<reply>Thanks, glad it is sorted.</reply>\n${internal({ no_reply: true })}`), closes, "en");
   assert.strictEqual(n.status, "no_reply"); assert.strictEqual(n.draft, "Thanks, glad it is sorted.");
+  const real = PO.buildProseResult(PO.splitProse(`<reply>We do not ship to the US.</reply>\n${internal({ no_reply: true })}`), ok, "en");
+  assert.strictEqual(real.status, "ready", "a real answer the field read does not call closing stays a reply");
+  const notes = PO.buildProseResult(PO.splitProse(`<reply>Send it back to Gouda.</reply>\n${internal({ notes: ["Credit note on receipt"], blocking: [] })}`), ok, "en");
+  assert.strictEqual(notes.status, "ready", "notes never hold"); assert.deepStrictEqual(notes.notes_for_salesperson, ["Credit note on receipt"]);
+  assert.deepStrictEqual(notes.questions_for_salesperson, []);
+  const blk = PO.buildProseResult(PO.splitProse(`<reply>x</reply>\n${internal({ blocking: ["Price?"] })}`), ok, "en");
+  assert.deepStrictEqual(blk.questions_for_salesperson, ["Price?"]); assert.strictEqual(blk.status, "awaiting_input");
   const lost = PO.buildProseResult(PO.splitProse("Reply only"), { ...PO.normaliseFields(null), ok: false }, "nl");
   assert.strictEqual(lost.status, "awaiting_input");
   assert.deepStrictEqual(lost.questions_for_salesperson, [PO.Q_INTERNAL, PO.Q_EXTRACT]);

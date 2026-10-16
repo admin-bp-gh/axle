@@ -371,6 +371,7 @@ async function processThread(anthropic, key, msgs, ctx) {
   const addQ = (kind, q) => { const n = normQ(q); if (!n || seenQ.has(n)) return; seenQ.add(n); insQ.run(itemId, kind, String(q)); };
   for (const q of result.questions_for_salesperson || []) addQ("blocking", q);
   for (const q of result.physical_checks || []) addQ("physical", q);
+  for (const q of result.notes_for_salesperson || []) addQ("optional", q);   // prose path: notes, never blocking
 
   // Carrier claim (step 4): detect, assemble the dossier, and stage the sales invoice + the
   // purchase-value statement on the draft. Read-only against every business system; staging sits

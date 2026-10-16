@@ -89,6 +89,7 @@ function persistResult(itemId, result, toolLog, seed) {
   const addQ = (kind, q) => { const n = normQuestion(q); if (!n || seenQ.has(n)) return; seenQ.add(n); insQ.run(itemId, kind, String(q)); };
   for (const q of result.questions_for_salesperson || []) addQ("blocking", q);
   for (const q of result.physical_checks || []) addQ("physical", q);
+  for (const q of result.notes_for_salesperson || []) addQ("optional", q);   // prose path: notes, never blocking
   return { status, ver };
 }
 

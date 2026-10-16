@@ -17,6 +17,7 @@ const C = require("./connectors.js");
 const T = require("./agent-tools.js");
 const X = require("./exemplars.js");
 const K = require("./knowledge.js");   // business-knowledge.md + Brad-approved "Teach Axle" entries
+const PO = require("./prose-output.js");   // AXLE_OUTPUT=prose: the reply as prose plus a Haiku field read (AI parity Step B)
 
 const MODEL = "claude-sonnet-5-5";   // upgraded from claude-sonnet-4-6 on 2026-09-30; watch draft quality
 const CLASSIFY_MODEL = "claude-haiku-4-5-20251001";
@@ -125,6 +126,9 @@ const SYSTEM_EPC = SYSTEM
   .replace("VIN-specific and genuine parts ALWAYS get a human check (fitment_confirmed=false).",
     "VIN-specific and genuine parts ALWAYS get a human check (fitment_confirmed=false), unless epc_part_lookup with the customer's VIN returned applicableToVin=true for that part.")
   .split("\n").flatMap((line) => (line.startsWith("PART LOOKUP:") ? [line, NOT_STOCKED_RULE] : [line])).join("\n");
+// SYSTEM_PROSE: SYSTEM_EPC with the JSON output contract swapped for prose plus an <internal> block
+// (AXLE_OUTPUT=prose, AI parity Step B). Every reply rule is the same text.
+const SYSTEM_PROSE = PO.proseSystem(SYSTEM_EPC);
 
 // The <business_knowledge> block is NOT part of SYSTEM: agenticDraft appends K.block() per run, so
 // Teach Axle approvals reach the very next draft (reply and compose alike) without a restart.
@@ -433,8 +437,14 @@ function capToolResult(out, maxChars) {
 // instead of being salvaged into interim_draft. The interim is SENDABLE and shown in the send
 // box, so an unconfirmed fitment assertion must never land there — that is the whole point of
 // the gate. The model's own interim, phrased as a suggestion to confirm, is kept as-is.
-function applyFitmentGate(result) {
+function applyFitmentGate(result, flagMode) {
   if (!result || result.fitment_confirmed !== false) return result;
+  if (flagMode) {
+    addFlag(result, "fitment", "", "A part is recommended for the customer's vehicle but its fitment is not confirmed.");
+    // A physical check is not a blocking question, so only a question already asked stands in for this one.
+    const asked = (result.questions_for_salesperson || []).length;
+    return holdInPlace(result, asked ? null : "Confirm this part actually fits before sending: fitment is not yet verified from our data or JLR EPC.");
+  }
   if (result.status === "ready") {
     if (result.draft && !result.withdrawn_draft) result.withdrawn_draft = result.draft;
     result.draft = "";
@@ -513,6 +523,31 @@ function holdDraft(result, question) {
   return result;
 }
 
+// Flag mode (AXLE_OUTPUT=prose, AI parity Step B, 16 Oct 2026): a gate that would withdraw text keeps it,
+// records { gate, fragment, reason } for the yellow strip on the item page, and holds the reply as the
+// interim (the sendable holding reply) with its question. Send then waits for an answer or an owner's
+// logged override (send-guard.blockingSend), so nothing flagged goes out silently.
+function addFlag(result, gate, fragment, reason) {
+  const flags = result.flags || (result.flags = []);
+  const frag = String(fragment || "").slice(0, 200);
+  if (!flags.some((f) => f.gate === gate && f.fragment === frag)) flags.push({ gate, fragment: frag, reason });
+  return result;
+}
+function holdInPlace(result, question) {
+  if (result.draft) {
+    if (!result.interim_draft) result.interim_draft = result.draft;
+    result.draft = "";
+  }
+  if (result.status !== "no_reply" || result.interim_draft) result.status = "awaiting_input";
+  if (question) {
+    const qs = result.questions_for_salesperson || (result.questions_for_salesperson = []);
+    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!qs.some((q) => norm(q) === norm(question))) qs.push(question);
+  }
+  if (result.confidence === "high") result.confidence = "medium";
+  return result;
+}
+
 // Withdraw one customer-facing slot ('draft' or 'interim_draft'): move its text to the read-only
 // withdrawn reference and blank the slot. Both slots are sendable — the interim IS what the send
 // box shows on a held item — so an offending sentence has to be REMOVED from whichever slot holds
@@ -555,16 +590,24 @@ function applyClaimGate(result, ctx = {}) {
     const vinClaim = matchAny(vinPatterns, text);
     const sourcing = matchAny(SOURCING_CLAIM_PATTERNS, text);
     if (!vinClaim && !sourcing) continue;
+    if (ctx.flagMode) {
+      if (vinClaim) { addFlag(result, "vin_claim", vinClaim, "Says a part fits or was checked against the customer's VIN, which JLR EPC has not confirmed."); reasons.add(Q_VIN_FLAG); }
+      if (sourcing) { addFlag(result, "sourcing", sourcing, "Tells the customer how we source the part; customers are told the lead time only."); reasons.add(Q_SRC_FLAG); }
+      continue;
+    }
     if (vinClaim) reasons.add(Q_VIN);
     if (sourcing) reasons.add(Q_SRC);
     withdrawSlot(result, slot);
   }
   if (!reasons.size) return result;
+  if (ctx.flagMode) { for (const q of reasons) holdInPlace(result, q); return result; }
 
   result.status = "awaiting_input";
   for (const q of reasons) holdDraft(result, q);
   return result;
 }
+const Q_VIN_FLAG = "The reply says something was checked against the customer's VIN that JLR EPC has not confirmed (highlighted). Confirm on JLR EPC, then edit the reply or answer here.";
+const Q_SRC_FLAG = "The reply tells the customer how we source the part (highlighted). That is not true; customers are told the lead time only. Edit it out before sending.";
 
 // Gate 2 — availability. Facts are collected from the tool results during the run (see
 // collectItemFacts), so this does not depend on the model reporting anything. Any part the
@@ -572,7 +615,7 @@ function applyClaimGate(result, ctx = {}) {
 // stock-order item — usually NLA) means nothing about availability is knowable yet.
 // Per slot, like the claim gate: a 'check_first' part named in sendable text means nothing about
 // its availability is knowable, so that text is withdrawn rather than left to be sent.
-function applyAvailabilityGate(result, facts) {
+function applyAvailabilityGate(result, facts, flagMode) {
   if (!result || !facts || !facts.items || !facts.items.size) return result;
   const questions = new Set();
   for (const slot of ["draft", "interim_draft"]) {
@@ -585,9 +628,10 @@ function applyAvailabilityGate(result, facts) {
     }
     if (!hit) continue;
     questions.add(`Check availability with the supplier for ${hit} before replying — it is out of stock and not a stock-order item, so no lead time can be promised (these are often NLA).`);
+    if (flagMode) { addFlag(result, "availability", hit, "Out of stock and not a stock-order item: no availability or lead time can be promised yet."); continue; }
     withdrawSlot(result, slot);
   }
-  for (const q of questions) holdDraft(result, q);
+  for (const q of questions) (flagMode ? holdInPlace : holdDraft)(result, q);
   return result;
 }
 
@@ -735,11 +779,12 @@ const ACTION_CLAIM_PATTERNS = [
   /\b(?:wurde|wurden|haben wir|habe ich)\b[^.!?\n]{0,30}\b(?:storniert|erstattet|zurückerstattet|erneut (?:gesendet|verschickt|versandt)|geändert|aktualisiert)\b/i,
   /\bwir\s+(?:melden uns|geben (?:ihnen|dir) bescheid)\b/i,
 ];
-function applyActionClaimCheck(result, staffInput) {
+function applyActionClaimCheck(result, staffInput, flagMode) {
   if (!result || staffInput) return result;
   for (const slot of ["draft", "interim_draft"]) {
     const hit = matchAny(ACTION_CLAIM_PATTERNS, result[slot]);
     if (!hit) continue;
+    if (flagMode) { addFlag(result, "action_claim", hit, "Says something was done or will be done; make sure it has been, or take it out."); continue; }
     const q = `The reply says "${hit}". Make sure that has actually been done or agreed, or take it out, before sending.`;
     const qs = result.questions_for_salesperson || (result.questions_for_salesperson = []);
     if (!qs.includes(q)) qs.push(q);
@@ -750,11 +795,13 @@ function applyActionClaimCheck(result, staffInput) {
 
 // Every post-processing gate, in one place, in the order they must run.
 function applyGates(result, ctx = {}) {
-  let r = applyFitmentGate(applyContainment(result, ctx.senderAddr));
+  // ctx.flagMode (the prose path): the fitment, claim, availability and claimed-action gates flag instead
+  // of withdrawing. Containment (injection) and the language gate keep their hard behaviour.
+  let r = applyFitmentGate(applyContainment(result, ctx.senderAddr), ctx.flagMode);
   r = applyClaimGate(r, ctx);
-  r = applyAvailabilityGate(r, ctx.facts);
+  r = applyAvailabilityGate(r, ctx.facts, ctx.flagMode);
   r = applyVinCheck(r, ctx.emailText, ctx.epcPartVins);
-  r = applyActionClaimCheck(r, ctx.staffInput);
+  r = applyActionClaimCheck(r, ctx.staffInput, ctx.flagMode);
   r = applyLanguageGate(r, ctx.language);
   // Last: the gates above may move text between slots, so style is applied to the final wording.
   r = applyDashStyle(r);
@@ -780,6 +827,10 @@ function applyGates(result, ctx = {}) {
 //                      instruction for a short turn, placed after the seed context (2026-10-10).
 //   opts.maxLookups  - a cap on tool calls (quick replies: 2). Calls past it are not run; the
 //                      model is told the budget is used up and must answer with what it has.
+//   opts.output      - "prose" or "json": overrides AXLE_OUTPUT (the eval sets it per config). Prose
+//                      applies on the agent path in reply mode only (compose keeps its JSON prompt).
+//   opts.extractor   - the Anthropic SDK client for the prose path's Haiku field read; a new SDK
+//                      client when absent. Never the agent client.
 // anthropic is the SDK client, or agent-client.js's client (isAgentStep) when drafts go through the
 // Workbench shared agent: then the business knowledge travels apart so Workbench caches it, and the
 // channel profile decides model and max_tokens.
@@ -789,7 +840,8 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
   // Through the Workbench agent the JLR EPC lookups are offered too, with the reply rules that use them
   // (compose keeps its own prompt and the tools it was written for).
   const tools = T.toolDefsFor(agent && !opts.system);
-  const system = agent ? (opts.system || SYSTEM_EPC) : (opts.system || SYSTEM) + "\n\n" + K.block();
+  const prose = agent && !opts.system && (opts.output ? opts.output === "prose" : PO.enabled());
+  const system = prose ? SYSTEM_PROSE : agent ? (opts.system || SYSTEM_EPC) : (opts.system || SYSTEM) + "\n\n" + K.block();
   const knowledge = agent ? K.block() : null;
   const senderAddr = opts.senderAddr || (email && email.from && email.from.address) || "";
   // The customer's SAP price list, so part_dossier / part_finder price every part on it (tier pricing).
@@ -808,6 +860,19 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     language: (opts.exemplars && opts.exemplars.language) || "",
     staffInput: Boolean(seed && (seed.salesperson_feedback || seed.salesperson_answers || seed.handover)),
     epcVins: new Set(), epcPartVins: new Set(),   // filled from the EPC tool results below
+    flagMode: prose,
+  };
+  // The final text to the result object: the JSON parse, or on the prose path the split plus the Haiku read.
+  const finish = async (text) => {
+    if (!prose) return applyGates(parseResult(text), gateCtx);
+    const split = PO.splitProse(text);
+    const fields = await PO.extractFields(opts.extractor || new (require("@anthropic-ai/sdk"))(),
+      { reply: split.reply, toolLog, strip: stripInvisible, parse: balancedObjects });
+    // The field read only sees the reply and a trimmed log, so a "confirmed" fitment must be backed by a
+    // lookup that can confirm one (EPC applicableToVin for a VIN, or our own part data); otherwise it fails closed.
+    if (fields.fitment_confirmed === true && !gateCtx.epcPartVins.size
+      && !toolLog.some((t) => t.ok && (t.tool === "part_dossier" || t.tool === "part_finder"))) fields.fitment_confirmed = false;
+    return applyGates(PO.buildProseResult(split, fields, gateCtx.language), gateCtx);
   };
   let firstContent, media = null, textWith = null;
   if (opts.userContent) {
@@ -816,11 +881,13 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
   } else {
     // Reply mode (unchanged): build the inbound-email-shaped user message.
     // D1: sanitise all untrusted inputs before they reach the model.
-    const eName = stripInvisible(email.from.name || ""), eSubj = stripInvisible(email.subject || "");
-    const eBody = stripInvisible(email.text || "");
+    // On the prose path an <internal> tag in customer text could pose as the drafter's own block: neutralised.
+    const untag = prose ? PO.untag : (s) => s;
+    const eName = untag(stripInvisible(email.from.name || "")), eSubj = untag(stripInvisible(email.subject || ""));
+    const eBody = untag(stripInvisible(email.text || ""));
     // The whole conversation (conversation.js), both sides labelled. No per-message cap: the total is
     // capped where it is built (60,000 characters, newest kept whole).
-    const threadBlock = history.length ? `<thread_history>\n${renderHistory(history)}\n</thread_history>\n\n` : "";
+    const threadBlock = history.length ? `<thread_history>\n${untag(renderHistory(history))}\n</thread_history>\n\n` : "";
     // Style exemplars (2026-10-04): real replies our team sent for the same intent + language,
     // so the draft reads like the team writes. Tone only; the block forbids reusing their facts.
     // Logged as a pseudo tool call so the item brief shows which sends shaped the draft.
@@ -838,10 +905,10 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       `<email_untrusted_data>\nFrom: ${eName} <${email.from.address}>\nSubject: ${eSubj}\nReceived: ${email.received}\nBody: ${eBody.slice(0, 12000)}\n</email_untrusted_data>\n\n` +
       threadBlock +
       (manifest ? manifest + "\n\n" : "") +
-      `<seed_context>\n${stripInvisible(JSON.stringify(seed, null, 2))}\n</seed_context>\n\n` +
+      `<seed_context>\n${untag(stripInvisible(JSON.stringify(seed, null, 2)))}\n</seed_context>\n\n` +
       styleBlock +
       (opts.quick || "") +
-      "Investigate with the tools as needed, then produce the final JSON.";
+      (prose ? "Investigate with the tools as needed, then write the reply and the <internal> block." : "Investigate with the tools as needed, then produce the final JSON.");
     firstContent = textWith(media.manifest);
     if (media.blocks.length) {
       const last = media.blocks.length - 1;
@@ -883,7 +950,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     }
     if (msg.stop_reason !== "tool_use" || !uses.length) {
       const text = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-      return { result: applyGates(parseResult(text), gateCtx), toolLog };
+      return { result: await finish(text), toolLog };
     }
     messages.push({ role: "assistant", content: msg.content });
     const content = [];
@@ -910,19 +977,19 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
                    : String((out && out.error) || "").slice(0, 200),
       });
       // D1: tool results are untrusted too (poisoned SAP/Shopify fields) - sanitise.
-      content.push({ type: "tool_result", tool_use_id: block.id, content: stripInvisible(capToolResult(out, capFor(block.name))) });
+      content.push({ type: "tool_result", tool_use_id: block.id, content: (prose ? PO.untag : String)(stripInvisible(capToolResult(out, capFor(block.name)))) });
     }
     const spent = opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups;
     if (turn === MAX_TOOL_TURNS - 1 || spent) {
-      content.push({ type: "text", text: "Tool budget exhausted. Respond now with ONLY the final JSON object." });
+      content.push({ type: "text", text: prose ? "Tool budget exhausted. Write the reply and the <internal> block now." : "Tool budget exhausted. Respond now with ONLY the final JSON object." });
     }
     messages.push({ role: "user", content });
   }
-  return { result: applyGates(parseResult(""), gateCtx), toolLog };
+  return { result: await finish(""), toolLog };
 }
 
 module.exports = {
-  MODEL, CLASSIFY_MODEL, SYSTEM, SYSTEM_EPC, threadGroup, classify, gatherSeed, replyAudience, parseResult, agenticDraft,
+  MODEL, CLASSIFY_MODEL, SYSTEM, SYSTEM_EPC, SYSTEM_PROSE, threadGroup, classify, gatherSeed, replyAudience, parseResult, agenticDraft,
   // exported for the hardening harness / reuse:
   stripInvisible, hasSmuggle, redactFlagged, applyContainment, urlAllowed,
   normaliseDashes, applyDashStyle,
@@ -933,4 +1000,6 @@ module.exports = {
   VIN_CLAIM_PATTERNS, SOURCING_CLAIM_PATTERNS,
   // 2026-10-10 draft review:
   applyLanguageGate, applyActionClaimCheck, textLanguage, ACTION_CLAIM_PATTERNS,
+  // AI parity Step B (prose path):
+  balancedObjects, addFlag, holdInPlace,
 };

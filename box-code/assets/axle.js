@@ -821,6 +821,23 @@
     growAll();
     draftRender();
     emailInit();
+    markFlags();
+  }
+  // Gate flags (AI parity Step B): the flagged words are marked in the reply editor with the CSS Custom
+  // Highlight API, which paints without touching the editor's DOM, so no marking can ever be sent.
+  function markFlags() {
+    if (!W.CSS?.highlights || !W.Highlight) return;
+    W.CSS.highlights.delete("ax-flag");
+    const ed = $("#replyed"), frags = $$("[data-ax-flag]").map((m) => m.dataset.axFlag.toLowerCase()).filter(Boolean);
+    if (!ed || !frags.length) return;
+    const ranges = [], walk = D.createTreeWalker(ed, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const low = n.data.toLowerCase();
+      for (const f of frags) for (let i = low.indexOf(f); i !== -1; i = low.indexOf(f, i + f.length)) {
+        const r = new Range(); r.setStart(n, i); r.setEnd(n, i + f.length); ranges.push(r);
+      }
+    }
+    if (ranges.length) W.CSS.highlights.set("ax-flag", new W.Highlight(...ranges));
   }
   // The void work area (no email open); on one pane the list comes back.
   function showVoid(push) {

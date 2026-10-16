@@ -69,6 +69,7 @@ function persistResult(itemId, result, toolLog, seed) {
     JSON.stringify(seed, null, 2),
     "```",
   ].join("\n"), itemId);
+  db.prepare("UPDATE work_items SET draft_flags = ?, draft_output = ? WHERE id = ?").run(result.flags && result.flags.length ? JSON.stringify(result.flags) : null, result.output === "prose" ? "prose" : null, itemId);
   const ver = (db.prepare("SELECT MAX(version) AS v FROM drafts WHERE work_item_id = ?").get(itemId).v || 0) + 1;
   if (result.draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body) VALUES (?, ?, 0, ?)").run(itemId, ver, result.draft);
   if (result.interim_draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body) VALUES (?, ?, 1, ?)").run(itemId, ver, result.interim_draft);
@@ -220,6 +221,7 @@ async function runRedraft(itemId, login, opts = {}) {
     const { result, toolLog } = await E.agenticDraft(drafter, email, history, seed, MAILBOX_OF[w.mailbox], {
       exemplars: { intent: w.intent, language: w.language, mailbox: w.mailbox, excludeItemId: itemId },
       media,
+      extractor: anthropic,
       ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),
       ...(seed.ask_customer ? { maxLookups: 0 } : {}),
     });

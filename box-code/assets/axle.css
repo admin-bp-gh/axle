@@ -512,3 +512,10 @@
 .ax-split { display: inline-flex; }
 .ax-split > .wb-btn:first-child:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .ax-split > .wb-btn + .wb-btn { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+
+/* AI parity Step B (16 Oct 2026): gate flags above the reply, the flagged words marked in the editor, and
+   the Answer first hint beside a held Send. */
+.ax-gflags { margin: 4px 0 0; padding-left: 18px; }
+.ax-gflags mark { background: color-mix(in srgb, var(--warn-fg) 16%, transparent); color: inherit; border-radius: 3px; padding: 0 3px; }
+::highlight(ax-flag) { background-color: color-mix(in srgb, var(--warn-fg) 22%, transparent); }
+.ax-answerfirst { align-self: center; white-space: nowrap; }

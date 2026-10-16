@@ -17,6 +17,7 @@
 require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 const express = require("express");
 const SG = require("./send-guard.js");
+const PO = require("./prose-output.js");             // AXLE_OUTPUT=prose: Send waits on blocking questions (Step B)
 const SEND = require("./send.js");
 const RESOLVE = require("./resolve-customer.js");   // Compose: deterministic read-only customer resolver
 const RSET = require("./recipient-set.js");         // the single definition of an item's known addresses
@@ -523,6 +524,15 @@ async function sendWorkItem(req, res, w) {
   }
 
   saveWorkInputs(w, req.body, login);                 // persist the edited reply + any answers/feedback
+  // Blocking questions still open (AI parity Step B, AXLE_OUTPUT=prose): answer first, or an owner's override.
+  const openBlocking = SG.openBlockingCount(db, w.id);
+  const gate = SG.blockingSend({ prose: PO.enabled() && w.draft_output === "prose", openBlocking, isOwner: req.user.role === "admin", reason: req.body.override_reason });
+  if (!gate.ok) {
+    audit(login, "send_blocked_questions", w.id, `${openBlocking} open blocking question(s)`);
+    if (inline(req)) return res.status(409).json(inlineNo("refused", t(lang, "answer_first_refused")));
+    return res.redirect(BASE.url("/item/" + w.id));
+  }
+  if (gate.override) audit(login, "send_override_blocking", w.id, `${openBlocking} open: ${gate.override}`);
   const body = String(req.body.reply != null ? req.body.reply : (w.draft_edit || ""));
 
   // The AI draft this reply was edited from (latest AI full, else AI holding) - for lineage.

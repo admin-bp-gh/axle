@@ -40,6 +40,7 @@ const RL = require("../return-label.js");          // "+ Return label": a MyParc
 const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
 const VS = require("../voicemail-sheet.js");       // a voicemail's call back sheet: count, open issues, supplier (Change A2)
 const SV = require("../send-verify.js");           // Not sent: a reply Exchange left in Drafts, and its Try again
+const PO = require("../prose-output.js");          // AXLE_OUTPUT=prose: Send waits on blocking questions (Step B)
 const fs = require("fs");
 const path = require("path");
 
@@ -433,6 +434,13 @@ app.get("/item/:id", async (req, res) => {
   const isVoicemail = SG.isVoicemailItem(w);
   const canSend = editable && !w.injection_flag && !w.send_stuck_id && !fwdNeedsRecipient && !isVoicemail
     && (!isCompose || composeCanSend) && (!isContactForm || cfCanSend) && (!isRN || rnCanSend);
+  // AI parity Step B (AXLE_OUTPUT=prose): Send waits while a blocking question is open; an owner can
+  // send anyway with a reason (Send anyway). Mirrors send-guard.blockingSend on the send route.
+  const openBlocking = open.filter((q) => q.kind === "blocking").length;
+  const answerFirst = canSend && PO.enabled() && w.draft_output === "prose" && openBlocking > 0;
+  // The gate flags of the current draft (prose path): the yellow strip above the reply.
+  let gateFlags = [];
+  try { gateFlags = editable ? (JSON.parse(w.draft_flags || "[]") || []).filter((f) => f && f.gate) : []; } catch (e) { /* unreadable: none */ }
   // The editable reply: the human's saved edit if any, else the AI full draft, else the holding reply.
   const replyText = w.draft_edit != null ? w.draft_edit : (full ? full.body : (interim ? interim.body : ""));
   const atts = db.prepare("SELECT id, name, content_type, size FROM draft_attachments WHERE work_item_id = ? ORDER BY id").all(w.id);
@@ -749,7 +757,10 @@ app.get("/item/:id", async (req, res) => {
   const teachBtn = `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-teach">${icon("note")}<span>${L("teach_title")}</span>${teachFlags.length ? `<span class="wb-count">${teachFlags.length}</span>` : ""}</button>`;
   const docsRow = editable && !isContactForm && !isRN && !isVoicemail ? `<div class="ax-sugg">${sugg.chips ? `<span class="wb-label">${L("sugg_label")}</span>${sugg.chips}` : ""}<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-overlay="ax-doc">${L("other_doc")}</button></div>` : "";
   const fmtBtn = (f) => `<button type="button" class="wb-btn wb-btn--ghost wb-btn--icon wb-btn--sm" data-fmt="${f}" aria-pressed="false" aria-label="${L("fmt_" + f)}" title="${L("fmt_" + f)}">${icon(f)}</button>`;
-  const replyCard = editable ? `<section class="wb-card ax-reply" aria-label="${L("reply")}" data-max="${MAX_ATTACH_BYTES}">${toLine}${ownNote}${ccRow}${ownToBanner}${offBanner}${wdBanner}${staleBanner}${subjectField}
+  // The flagged words are quoted here and marked in the editor (assets/axle.js markFlags).
+  const flagStrip = gateFlags.length ? banner("warn", `<b>${L("flags_title")}</b><ul class="ax-gflags">${gateFlags.map((f) =>
+    `<li>${esc(t(lang, "flag_" + f.gate) || f.reason || f.gate)}${f.fragment ? ` <mark data-ax-flag="${esc(f.fragment)}">${esc(f.fragment)}</mark>` : ""}</li>`).join("")}</ul>`) : "";
+  const replyCard = editable ? `<section class="wb-card ax-reply" aria-label="${L("reply")}" data-max="${MAX_ATTACH_BYTES}">${toLine}${ownNote}${ccRow}${ownToBanner}${offBanner}${wdBanner}${staleBanner}${flagStrip}${subjectField}
     <div class="ax-text"><div class="ax-edbar" role="toolbar" aria-label="${L("fmt_toolbar")}" aria-controls="replyed">${["bold", "italic", "underline", "list"].map(fmtBtn).join("")}</div>
       <div class="ax-ed" id="replyed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="${L("reply")}" data-placeholder="${L("reply_ph")}" spellcheck="true">${ED.toHtml(ED.parse(replyText))}</div>
       <textarea id="replybox" name="reply" hidden>${esc(replyText)}</textarea></div>
@@ -794,7 +805,12 @@ app.get("/item/:id", async (req, res) => {
   // inBar: the phone bar's short label (two actions and More must fit at 360 in Dutch too).
   const markDone = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="done" class="wb-btn" data-next data-toast="${L("marked_done")}" title="${L("done_tip")}"${busy ? " disabled" : ""}>${icon("check")}<span>${L(inBar ? "mark_done_bar" : "mark_done")}</span></button>`;
   const phoneBtn = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="phone" class="wb-btn wb-btn--primary" data-next data-toast="${L("mark_phone")}" title="${L("phone_tip")}"><span>${L(inBar ? "mark_phone_bar" : "mark_phone")}</span></button>`;
-  const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}"${canSend ? "" : " disabled"}>${icon("send")}<span>${L("send")}</span></button>`;
+  const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}"${canSend && !answerFirst ? "" : " disabled"}${answerFirst ? ` title="${L("answer_first_tip")}"` : ""}>${icon("send")}<span>${L("send")}</span></button>`
+    + (answerFirst && !inBar ? `<span class="wb-hint ax-answerfirst">${L("answer_first")}</span>` : "");
+  // Send anyway (owners only, while blocking questions are open): a reason, then the normal send.
+  const overrideOk = answerFirst && admin;
+  const overrideBtn = overrideOk ? `<button type="button" class="wb-btn wb-btn--ghost" data-overlay="ax-override">${L("send_anyway")}</button>` : "";
+  const overrideRow = overrideOk ? `<button type="button" class="wb-menu__item" role="menuitem" data-overlay="ax-override"><span>${L("send_anyway")}</span></button>` : "";
   // Create order (2026-10-11): one dock control for order creation. The button opens Ratchet's builder
   // with this e-mail read in; when an order resolved, a chevron offers Re-send order (a zero-priced copy
   // of it). Both open in this tab: once the order is created Ratchet hands it back to this e-mail.
@@ -817,7 +833,7 @@ app.get("/item/:id", async (req, res) => {
   // fold into it when the dock is too narrow (data-fold: Block sender first, then Create order;
   // axle.js dockFold shows their rows and More); on the phone also Create order and Block sender.
   const sepRow = (attr) => `<div class="wb-menu__sep" role="separator"${attr || ""}></div>`;
-  const pmoreRows = `${ratchetRow}${resendRow}${blockRow}${checkedRow && (ratchetRow || resendRow || blockRow) ? sepRow() : ""}${checkedRow}`;
+  const pmoreRows = `${overrideRow}${ratchetRow}${resendRow}${blockRow}${checkedRow && (ratchetRow || resendRow || blockRow) ? sepRow() : ""}${checkedRow}`;
   const foldRows = busy ? "" : ratchetRow.replace("<a ", '<a data-fold-row="2" hidden ') + resendRow.replace("<a ", '<a data-fold-row="2" hidden ') + blockRow.replace("<button ", '<button data-fold-row="1" hidden ');
   let dock, bar;
   if (closed) {
@@ -827,7 +843,7 @@ app.get("/item/:id", async (req, res) => {
     dock = `<div class="wb-dock"><div class="wb-dock__group">${phoneBtn()}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${ratchet}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${phoneBtn(true)}${moreBtn(true)}</div>`;
   } else {
-    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${blockBtn}${moreBtn()}</div></div>`;
+    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${overrideBtn}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${sendBtn(true)}${moreBtn(true)}</div>`;
   }
 
@@ -839,6 +855,10 @@ app.get("/item/:id", async (req, res) => {
     ownerEditable ? `<template id="m-owner" data-title="${L("owner_fix")}" data-align="start">${ownerOpts.map(ownerRow).join("")}</template>${ownerOpts.map(ownerDialog).join("")}` : "",
     toMenu,
     ccMenu,
+    overrideOk ? overlay("ax-override", t(lang, "send_anyway_title"), lang,
+      `<p class="wb-hint">${esc(t(lang, "send_anyway_note", { n: openBlocking }))}</p><div class="wb-field"><label class="wb-label" for="ax-ovr">${L("send_anyway_reason")}</label><div class="wb-input wb-input--area"><textarea id="ax-ovr" name="override_reason" form="workform" maxlength="500" required data-autofocus></textarea></div></div>`,
+      `<button type="button" class="wb-btn ax-ov-desk" data-close>${L("cancel")}</button><button type="submit" form="workform" class="wb-btn wb-btn--commit" formaction="${U("/send")}" formnovalidate data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}">${icon("send")}<span>${L("send_anyway")}</span></button>`,
+      { form: true }) : "",
     admin && !busy ? overlay("ax-brief", t(lang, "what_checked"), lang, `<pre class="ax-brief">${esc(w.brief_md || t(lang, "none_paren"))}</pre>`, "", { kind: "drawer" }) : "",
     editable && !isContactForm && !isRN && !isVoicemail ? overlay("ax-doc", t(lang, "other_doc_title"), lang,
       `<form class="ax-ov__bd" id="ax-docform" method="post" action="${U("/attach-doc")}" data-inline novalidate><div data-ax-banner></div>

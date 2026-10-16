@@ -431,7 +431,22 @@ function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
 // Back-compat alias: assembleContactFormSend === the generalised new-outbound assembler.
 const assembleContactFormSend = assembleNewOutboundSend;
 
+// Unanswered blocking questions (AI parity Step B, 16 Oct 2026; prose is AXLE_OUTPUT=prose AND the item's
+// current draft came from the prose path, so flipping back, compose and older drafts keep today's Send): Send waits while any blocking question on the item is unanswered. The
+// salesperson answers in the redraft field and redrafts; the new draft replaces the questions. An owner
+// may send anyway with a reason, which the route audits as send_override_blocking.
+function blockingSend({ prose, openBlocking, isOwner, reason }) {
+  if (!prose || !openBlocking) return { ok: true };
+  const r = String(reason || "").replace(/\s+/g, " ").trim();
+  if (isOwner && r) return { ok: true, override: r.slice(0, 500) };
+  return { ok: false };
+}
+function openBlockingCount(db, itemId) {
+  return db.prepare("SELECT COUNT(*) AS n FROM questions WHERE work_item_id = ? AND kind = 'blocking' AND answer IS NULL").get(itemId).n;
+}
+
 module.exports = {
+  blockingSend, openBlockingCount,
   URL_ALLOW, urlAllowed, findUrls, findDisallowedUrls, sha256, acceptTypedRecipient,
   escapeHtml, toSafeHtml, replySubject, quotedHistory, assembleSend, needsConfirmedRecipient, ownMailCase, replyDefault, isVoicemailItem,
   MAX_CC, isOwnAddress, acceptCcAddress, sendingAddress, internalCc, itemCc,

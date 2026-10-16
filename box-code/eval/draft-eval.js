@@ -14,6 +14,10 @@
 //   node draft-eval.js --db <copy> --dry                             cases x configs plan, no API or live reads
 //   node draft-eval.js --db <copy> [--config a,b] [--cases id,id] [--repeat N] [--out <dir>]
 //   node draft-eval.js --regrade <run dir>                           re-grade runs.jsonl, rewrite summary.md
+//   --from-first-message   replay each case from the customer's first stored message alone (no thread,
+//                          no staff input), judged against our first send after it (AI parity Step B)
+//   --not-in-sap [code]    add the synthetic not-in-SAP case: a part EPC knows and SAP does not (the code,
+//                          or the first of NOT_IN_SAP_CANDIDATES that qualifies when checked live)
 const fs = require("fs");
 const path = require("path");
 const P = require("./case-picker.js");
@@ -28,8 +32,9 @@ const PROTECTED_DIRS = ["C:\\Axle\\data", "C:\\Admin\\Projects\\Axle\\Backups"];
 const PRICES = {
   "claude-sonnet-5-5": { in: 3, out: 15 },
   "claude-opus-5-5": { in: 15, out: 75 },
+  "claude-haiku-4-5-20251001": { in: 1, out: 5 },
 };
-const SONNET = "claude-sonnet-5-5", OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5", OPUS = "claude-opus-5-5", HAIKU = "claude-haiku-4-5-20251001";
 const GRADER_MODEL = SONNET;
 
 // The configurations. engine: "today" = ../engine.js as is, "loose" = eval/engine-loose.js.
@@ -47,6 +52,8 @@ const CONFIGS = {
   "sonnet-loose-thread": { model: SONNET, engine: "loose", maxTokens: 8000, effort: "high", quick: false, thread: true },
   "today-thread":        { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: true },
   "step":                { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: true, agent: true },
+  // AI parity Step B: the step transport plus the prose output (AXLE_OUTPUT=prose) and its Haiku field read.
+  "prose":               { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: true, agent: true, output: "prose" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -63,6 +70,8 @@ function parseArgs(argv) {
     else if (k === "--repeat") { a.repeat = Math.max(1, Number(v) || 1); i++; }
     else if (k === "--out") { a.out = v; i++; }
     else if (k === "--regrade") { a.regrade = v; i++; }
+    else if (k === "--from-first-message") a.fromFirst = true;
+    else if (k === "--not-in-sap") { a.notInSap = v && !v.startsWith("--") ? (i++, v.toUpperCase()) : true; }
     else throw new Error(`unknown argument ${k}`);
   }
   return a;
@@ -135,7 +144,7 @@ function threadHistory(c) {
 }
 // The real conversation (../conversation.js) as it stood when the reply was sent, for the thread configs.
 function conversationOf(ctx, c, email, sender) {
-  return ctx.CONV.buildConversation(c.id, email, { mode: "first", before: c.sent.sent_at, sender });
+  return ctx.CONV.buildConversation(c.id, email, { mode: "first", before: c.replay_before || c.sent.sent_at, sender });
 }
 // The thread as text, for the grader (all configs see the same reference).
 function threadText(c) {
@@ -186,7 +195,7 @@ async function replay(ctx, c, cfgName, rep) {
   const cfg = CONFIGS[cfgName];
   const E = cfg.engine === "loose" ? ctx.Eloose : ctx.Etoday;
   const email = emailOf(c);
-  const meter = newMeter();
+  const meter = newMeter(), xmeter = newMeter();
   const client = meteredClient(cfg.agent ? ctx.agent : ctx.anthropic, cfg, meter);
   const mailbox = ctx.mailboxOf(c.mailbox);
   const t0 = Date.now();
@@ -213,6 +222,9 @@ async function replay(ctx, c, cfgName, rep) {
     const { result, toolLog } = await E.agenticDraft(client, email, history, seed, mailbox, {
       exemplars: { intent: c.intent, language: c.language, mailbox: c.mailbox, excludeItemId: c.id },
       ...(quick ? { quick: ctx.QR.QUICK_BLOCK, maxLookups: ctx.QR.MAX_LOOKUPS } : {}),
+      // Explicit, so AXLE_OUTPUT in the env file never changes a config; the field read is metered apart.
+      output: cfg.output || "json",
+      extractor: meteredClient(ctx.anthropic, { model: HAIKU }, xmeter),
     });
     run.ms = Date.now() - t0;
     run.result = result;
@@ -220,6 +232,8 @@ async function replay(ctx, c, cfgName, rep) {
     run.draft_text = result.draft || result.interim_draft || "";
     run.open_questions = [...(result.questions_for_salesperson || []), ...(result.physical_checks || [])];
     run.gate_withdrawn = !!result.withdrawn_draft;
+    run.flags = result.flags || [];
+    run.blocking_open = (result.questions_for_salesperson || []).length;
     run.toolLog = toolLog;
     run.lookups = toolLog.filter((t) => t.tool !== "style_exemplars").length;
   } catch (e) {
@@ -230,7 +244,47 @@ async function replay(ctx, c, cfgName, rep) {
   run.stops = meter.stops;
   if (meter.model) run.model = meter.model;   // the agent's profile may name another model than the config
   run.cost_usd = costOf(run.model, meter);
+  if (xmeter.calls) {
+    run.extract_tokens = { in: xmeter.in, out: xmeter.out };
+    run.cost_usd = (run.cost_usd || 0) + costOf(HAIKU, xmeter);
+  }
   return run;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The synthetic not-in-SAP case (AI parity Step B). A customer asks for a part number we do not stock but
+// JLR's catalogue knows. The code is checked live before the run: part_dossier must find nothing in SAP
+// and epc_part_lookup must know it; the first candidate that qualifies is used, none stops the run. The
+// reference reply is written here for the grader (it is not a send) and follows the PART NOT IN OUR
+// CATALOGUE rule: the code named, not stocked but can be ordered, no price.
+const NOT_IN_SAP_VIN = "SALLPAMW8WA388595";
+const NOT_IN_SAP_CANDIDATES = ["ERR6779", "FTC4625", "FRC9534", "FTC1786", "ERR4700", "STC1052", "UTP100430", "FTC5201", "MXC6909", "ALR9348"];
+async function notInSapCase(ctx, candidates) {
+  const T = require("../agent-tools.js");
+  const checked = [];
+  for (const code of candidates) {
+    const sap = await T.runTool("part_dossier", { code, purpose: "eval: not-in-SAP check" }, {});
+    if (sap && Array.isArray(sap.items) && sap.items.length) { checked.push(`${code} in SAP`); continue; }
+    const epc = await T.runTool("epc_part_lookup", { code, purpose: "eval: not-in-SAP check" }, { agent: ctx.agent });
+    const hit = epc && Array.isArray(epc.results) && epc.results[0];
+    if (!hit) { checked.push(`${code} unknown to EPC`); continue; }
+    checked.push(`${code} qualifies`);
+    const desc = String(hit.description || hit.desc || "").replace(/\s+/g, " ").trim() || "the part";
+    const at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+    const body = `Hello,\n\nI need part number ${code} for my Range Rover P38, VIN ${NOT_IN_SAP_VIN}. Do you have it and what does it cost?\n\nRegards,\nTom Jansen`;
+    return { desc, checked, case: {
+      id: "not-in-sap", synthetic: true, part: code, mailbox: "info", subject: `Part ${code}`, language: "en", intent: "stock_price_enquiry", rule_id: "", followup: false, followup_reason: "",
+      flags: { contact_form: false, return_notification: false },
+      item: { sender_email: "tom.jansen@example.com", sender_name: "Tom Jansen", origin: "inbound", rule_id: null, return_json: null, contact_form_json: null },
+      newest: { message_id: null, graph_id: "synthetic-not-in-sap", internet_id: null, from: { name: "Tom Jansen", address: "tom.jansen@example.com" }, to: [], cc: [],
+        received: at, body, files: 0, sends_before: 0 },
+      sent: { id: null, sent_at: at.replace("T", " ").replace("Z", ""), sent_by: "reference (synthetic)", to: "tom.jansen@example.com",
+        body: `Dear Tom,\n\nPart number ${code} (${desc}) is not an item we keep in stock, but we can order it for you. Let us know if you would like us to, and we will confirm the price and delivery time before ordering.\n\nKind regards,\nTeam Budget Parts` },
+      ai_draft: null, answered_questions: [], feedback: [], feedback_latest_unbounded: null, handover: null,
+      thread: [{ kind: "in", at: at.replace("T", " ").replace("Z", ""), received: at, from: { name: "Tom Jansen", address: "tom.jansen@example.com" }, own: false, body, answered: true }],
+    } };
+  }
+  throw new Error(`--not-in-sap: no candidate qualified (${checked.join("; ")}). Pass a code: --not-in-sap <code>`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -331,7 +385,7 @@ function summarise(runs, cases, meta) {
     for (const r of rs) {
       const g = r.grade || {};
       const id = r.rep > 1 || rs.some((x) => x.case_id === r.case_id && x.rep > 1) ? `${r.case_id}#${r.rep}` : r.case_id;
-      const comment = r.error ? `ERROR: ${r.error}` : g.error ? `GRADER ERROR: ${g.error}` : `${g.comment || ""}${r.gate_withdrawn ? " [gate withdrew text]" : ""}${r.quick ? " [quick]" : ""}`;
+      const comment = r.error ? `ERROR: ${r.error}` : g.error ? `GRADER ERROR: ${g.error}` : `${g.comment || ""}${r.gate_withdrawn ? " [gate withdrew text]" : ""}${r.flags && r.flags.length ? ` [flagged: ${r.flags.map((f) => f.gate).join(", ")}]` : ""}${r.blocking_open ? ` [${r.blocking_open} blocking]` : ""}${r.quick ? " [quick]" : ""}`;
       L.push(`| ${id} | ${r.followup ? "yes" : "no"} | ${g.facts ?? "-"} | ${g.questions ?? "-"} | ${g.thread_context ?? "-"} | ${g.tone ?? "-"} | ${g.total ?? "-"} | ${r.error ? "error" : g.verdict || "-"} | ${r.ms ?? "-"} | ${r.tokens ? `${r.tokens.in}/${r.tokens.out}` : "-"} | ${usd(r.cost_usd)} | ${r.lookups ?? "-"} | ${cell(comment)} |`);
     }
   }
@@ -374,7 +428,8 @@ async function main() {
   const out = path.resolve(args.out || path.join(RUNS_ROOT, stamp()));
   fs.mkdirSync(out, { recursive: true });
   const { db } = require("../db.js");
-  const picked = P.pickCases(db, args.cases ? { ids: args.cases } : {});
+  const picked = P.pickCases(db, { ...(args.cases ? { ids: args.cases } : {}), fromFirst: !!args.fromFirst });
+  if (args.fromFirst) picked.notes.push("--from-first-message: each case is the customer's first message alone, judged against our first send after it");
   const cases = picked.cases;
   fs.writeFileSync(path.join(out, "cases.json"), JSON.stringify({ db: dbPath, picked_at: new Date().toISOString(), stats: picked.stats, notes: picked.notes, cases }, null, 2));
 
@@ -416,9 +471,15 @@ async function main() {
 
   const Anthropic = require("@anthropic-ai/sdk");
   ctx.anthropic = new Anthropic();
-  if (configs.some((k) => CONFIGS[k].agent)) {
+  if (configs.some((k) => CONFIGS[k].agent) || args.notInSap) {
     if (!process.env.AGENT_TOKEN) throw new Error(`config step needs AGENT_TOKEN (and AGENT_URL unless Workbench is on ${require("../agent-client.js").DEFAULT_URL}) in ${ENV_FILE}`);
     ctx.agent = require("../agent-client.js").createAgentClient({ baseUrl: process.env.AGENT_URL || undefined, token: process.env.AGENT_TOKEN });
+  }
+  if (args.notInSap) {
+    const s = await notInSapCase(ctx, args.notInSap === true ? NOT_IN_SAP_CANDIDATES : [args.notInSap]);
+    cases.push(s.case);
+    log(`not-in-SAP case: ${s.case.part} (${s.desc}); checked ${s.checked.join(", ")}`);
+    fs.writeFileSync(path.join(out, "cases.json"), JSON.stringify({ db: dbPath, picked_at: new Date().toISOString(), stats: picked.stats, notes: picked.notes, cases }, null, 2));
   }
   const runsFile = path.join(out, "runs.jsonl");
   const runs = [];
@@ -472,5 +533,5 @@ if (require.main === module) {
   main().then(() => process.exit(0), (e) => { console.error(`draft-eval: ${e.message}`); process.exit(1); });
 }
 
-module.exports = { CONFIGS, PRICES, parseArgs, checkDbCopy, writeLooseEngine, emailOf, threadHistory, threadText, conversationOf, isQuick,
+module.exports = { CONFIGS, PRICES, NOT_IN_SAP_CANDIDATES, notInSapCase, parseArgs, checkDbCopy, writeLooseEngine, emailOf, threadHistory, threadText, conversationOf, isQuick,
   meteredClient, costOf, grade, graderInput, verdictOf, firstJson, summarise, replay, GRADER_SYSTEM };

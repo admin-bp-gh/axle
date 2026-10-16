@@ -413,6 +413,11 @@ ensureColumn("message_attachments", "attempts", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("message_attachments", "tried_at", "TEXT");
 ensureColumn("work_items", "media_not_shown_json", "TEXT");
 ensureColumn("work_items", "cc_json", "TEXT");
+// The prose path's gate flags for the current draft, JSON [{ gate, fragment, reason }] (AI parity Step B,
+// 16 Oct 2026): shown as the yellow strip above the reply. Replaced on every draft; NULL when none.
+ensureColumn("work_items", "draft_flags", "TEXT");
+// 'prose' when the current draft came from the prose path: only then does Send wait on blocking questions.
+ensureColumn("work_items", "draft_output", "TEXT");
 // Whole-conversation drafting (15 Oct 2026, conversation.js). messages.conversation_id: the Outlook
 // conversationId of the message, so a new inbound whose conversationId matches a stored message
 // attaches to that item even when the subject changed or the customer wrote from a second address.

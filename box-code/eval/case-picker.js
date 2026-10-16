@@ -64,20 +64,29 @@ function anchorFor(sends, msgs) {
   return null;
 }
 
-// Build the full case record for one work item row, or { skip: reason }.
-function buildCase(db, w, nameOf) {
+// --from-first-message (AI parity Step B): the case is the customer's FIRST stored message alone, judged
+// against our first send after it. No earlier thread, no staff input, no handover: what Axle would draft
+// the moment the email arrived. replay_before tells the thread builder where to cut.
+function firstAnchor(sends, msgs) {
+  const first = msgs[0];
+  const send = sends.find((s) => ts(s.sent_at) > ts(first.received));
+  return send ? { send, answered: first, prev: null, inbound: [first], priorSends: [] } : null;
+}
+
+// Build the full case record for one work item row, or { skip: reason }. opts.fromFirst: see firstAnchor.
+function buildCase(db, w, nameOf, opts = {}) {
   nameOf = nameOf || userNames(db);
   const sends = db.prepare(`SELECT id, to_addr, body, sent_by, sent_at, source_draft_id FROM sends
     WHERE work_item_id = ? AND status = 'sent' AND body IS NOT NULL AND length(trim(body)) > 0 ORDER BY sent_at, id`).all(w.id);
   const msgs = db.prepare("SELECT * FROM messages WHERE work_item_id = ? ORDER BY received, id").all(w.id);
   if (!sends.length) return { skip: "no human send with a body" };
   if (!msgs.length) return { skip: "no stored messages" };
-  const a = anchorFor(sends, msgs);
-  if (!a) return { skip: "no send answers a stored inbound message" };
+  const a = opts.fromFirst ? firstAnchor(sends, msgs) : anchorFor(sends, msgs);
+  if (!a) return { skip: opts.fromFirst ? "no send after the first stored message" : "no send answers a stored inbound message" };
   const at = ts(a.send.sent_at);
   const prevAt = a.prev ? ts(a.prev.sent_at) : "";
   const sendsBeforeAnswered = a.priorSends.filter((p) => ts(p.sent_at) < ts(a.answered.received)).length;
-  const followup = sendsBeforeAnswered > 0 || a.inbound.length >= 2;
+  const followup = !opts.fromFirst && (sendsBeforeAnswered > 0 || a.inbound.length >= 2);
   const files = db.prepare("SELECT COUNT(*) AS n FROM message_attachments WHERE message_id = ?").get(a.answered.id).n;
   const parse = (s) => { try { return JSON.parse(s || "[]") || []; } catch (e) { return []; } };
 
@@ -92,17 +101,17 @@ function buildCase(db, w, nameOf) {
 
   const aiDraft = db.prepare(`SELECT id, version, is_interim, body, created_at FROM drafts
     WHERE work_item_id = ? AND source = 'ai' AND created_at <= ? ORDER BY created_at DESC, is_interim ASC, id DESC LIMIT 1`).get(w.id, at) || null;
-  const answeredQs = db.prepare(`SELECT kind, question, answer, answered_by, answered_at FROM questions
+  const answeredQs = opts.fromFirst ? [] : db.prepare(`SELECT kind, question, answer, answered_by, answered_at FROM questions
     WHERE work_item_id = ? AND answer IS NOT NULL AND answered_at IS NOT NULL AND answered_at <= ? ORDER BY id`).all(w.id, at);
   let feedback = [];
-  try {
+  if (!opts.fromFirst) try {
     feedback = db.prepare(`SELECT author, text, created_at FROM draft_feedback
       WHERE work_item_id = ? AND created_at <= ? AND created_at > ? ORDER BY id`).all(w.id, at, prevAt);
   } catch (e) { /* older database without draft_feedback */ }
   let handover = null;
   try {
     const h = w.handover_json ? JSON.parse(w.handover_json) : null;
-    if (h && h.to_owner && (!h.at || ts(h.at) <= at)) handover = h;
+    if (h && h.to_owner && (!h.at || ts(h.at) <= at) && !opts.fromFirst) handover = h;
   } catch (e) { /* unreadable handover: none */ }
 
   return {
@@ -129,6 +138,7 @@ function buildCase(db, w, nameOf) {
     feedback_latest_unbounded: w.feedback || null,   // reference only: no timestamp, may postdate the send
     handover,
     thread,
+    ...(opts.fromFirst ? { from_first: true, replay_before: a.answered.received } : {}),
   };
 }
 
@@ -143,14 +153,14 @@ function pickCases(db, opts = {}) {
     for (const id of o.ids) {
       const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(Number(id));
       if (!w) { notes.push(`item ${id}: not in this database`); continue; }
-      const c = buildCase(db, w, nameOf);
+      const c = buildCase(db, w, nameOf, o);
       if (c.skip) notes.push(`item ${id}: ${c.skip}`); else cases.push(c);
     }
     return { cases, notes, stats: { requested: o.ids.length, built: cases.length } };
   }
   const all = [], skipped = {};
   for (const w of db.prepare(ITEMS_SQL).all()) {
-    const c = buildCase(db, w, nameOf);
+    const c = buildCase(db, w, nameOf, o);
     if (c.skip) skipped[c.skip] = (skipped[c.skip] || 0) + 1; else all.push(c);
   }
   const newestFirst = (x, y) => (x.sent.sent_at < y.sent.sent_at ? 1 : x.sent.sent_at > y.sent.sent_at ? -1 : 0);
@@ -184,4 +194,4 @@ function pickCases(db, opts = {}) {
   return { cases: sel, notes, stats };
 }
 
-module.exports = { pickCases, buildCase, anchorFor, stripQuoted, ts, isoOf, DEFAULTS, OWN_RE };
+module.exports = { pickCases, buildCase, anchorFor, firstAnchor, stripQuoted, ts, isoOf, DEFAULTS, OWN_RE };

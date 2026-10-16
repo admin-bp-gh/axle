@@ -310,6 +310,7 @@ async function processThread(anthropic, key, msgs, ctx) {
   const { result, toolLog } = await E.agenticDraft(ctx.drafter || anthropic, email, conv.history, seed, MAILBOX, {
     exemplars: { intent: cls.intent, language: cls.language, mailbox: boxName, excludeItemId: itemId },
     media,
+    extractor: anthropic,
     ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),
   });
 
@@ -343,6 +344,7 @@ async function processThread(anthropic, key, msgs, ctx) {
     `UPDATE work_items SET status = ?, suggest_close = ?, ack_draft = ?, language = ?, confidence = ?, injection_flag = ?,
      brief_md = ?, draft_edit = NULL, updated_at = datetime('now') WHERE id = ?`
   ).run(status, suggestClose, ackDraft, detectedLang, result.confidence, injection, briefMd(seed, toolLog), itemId);
+  db.prepare("UPDATE work_items SET draft_flags = ?, draft_output = ? WHERE id = ?").run(result.flags && result.flags.length ? JSON.stringify(result.flags) : null, result.output === "prose" ? "prose" : null, itemId);
 
   const ver = (db.prepare("SELECT MAX(version) AS v FROM drafts WHERE work_item_id = ?").get(itemId).v || 0) + 1;
   if (result.draft) {

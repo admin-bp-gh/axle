@@ -115,7 +115,45 @@ const toolDefs = [
   },
 ];
 
+// JLR EPC lookups (AI parity Step A). They run inside Workbench (its EPC session and cache) and are offered
+// only when drafts go through the Workbench shared agent (AXLE_AGENT=step), via toolDefsFor(true).
+const epcToolDefs = [
+  {
+    name: "epc_vin_decode",
+    description: "Decode the customer's VIN in JLR's own parts catalogue (EPC): model and catalogue years, engine, transmission, hand of drive, body, wheelbase, plant and the other build features JLR records for that vehicle. These are facts from JLR, not the customer's claim. Call it FIRST whenever the customer gives a VIN (17 characters, SAL... for Land Rover). found=false means EPC does not know the VIN.",
+    input_schema: { type: "object", properties: {
+      vin: { type: "string", description: "the full 17-character VIN" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["vin", "purpose"] },
+  },
+  {
+    name: "epc_part_lookup",
+    description: "Look up a part number in JLR's parts catalogue (EPC): catalogue, section name and number, illustration callout, JLR's description, quantity per vehicle and JLR's NL list price (listPriceEur: reference only, never quote it, our price comes from SAP). With the customer's VIN it says whether the part applies to that vehicle (applicableToVin). Use it for a code part_dossier cannot find in SAP, and to check a part against a VIN. results=[] means EPC does not know the code.",
+    input_schema: { type: "object", properties: {
+      code: { type: "string", description: "the part number, e.g. ERR5205" },
+      vin: { type: "string", description: "optional: the customer's 17-character VIN to check the part against" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["code", "purpose"] },
+  },
+  {
+    name: "epc_supersession",
+    description: "The JLR supersession chain for a part number: the numbers that replaced it, in order, the latest one (latest) and the older numbers it replaces. Use it when a code may be old or replaced, then look the latest number up with part_dossier.",
+    input_schema: { type: "object", properties: {
+      code: { type: "string", description: "the part number" },
+      purpose: { type: "string", description: "one line: why you need this" },
+    }, required: ["code", "purpose"] },
+  },
+];
+const EPC_TOOLS = new Set(epcToolDefs.map((t) => t.name));
+
+const toolDefsFor = (epc) => (epc ? [...toolDefs, ...epcToolDefs] : toolDefs);
+
 async function runTool(name, input, ctx) {
+  if (EPC_TOOLS.has(name)) {
+    if (!ctx.agent || !ctx.agent.runTool) throw new Error("JLR EPC lookups need drafts through the Workbench agent");
+    const { purpose, ...args } = input || {};
+    return ctx.agent.runTool(name, args);
+  }
   if (name === "sap_query") return sapQuery(String(input.sql));
   if (name === "part_dossier") return C.partDossier(String(input.code), { priceList: ctx.priceList });
   if (name === "return_dossier") return C.returnDossier(String(input.order_ref));
@@ -136,5 +174,5 @@ async function runTool(name, input, ctx) {
   throw new Error("unknown tool: " + name);
 }
 
-module.exports = { toolDefs, runTool };
+module.exports = { toolDefs, epcToolDefs, toolDefsFor, runTool, EPC_TOOLS };
 

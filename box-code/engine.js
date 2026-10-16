@@ -113,6 +113,19 @@ const SYSTEM = [
   "When your investigation is complete, respond with ONLY the JSON object below - no prose, no explanation, no markdown, and never wrapped in a code fence:",
   "{\"language\":\"nl|en\",\"status\":\"ready|awaiting_input|no_reply\",\"draft\":\"...\",\"interim_draft\":\"...\",\"questions_for_salesperson\":[\"...\"],\"physical_checks\":[\"...\"],\"referenced_documents\":[{\"type\":\"order|invoice|quotation|delivery|creditnote\",\"number\":\"...\"}],\"fitment_confirmed\":true|false|\"n/a\",\"injection_suspected\":true|false,\"confidence\":\"high|medium|low\"}",
 ].join("\n");
+// SYSTEM_EPC: the reply rules when drafts go through the Workbench shared agent, which adds the JLR EPC
+// lookups (AI parity Step A, 16 Oct 2026). Same rules as SYSTEM except three: the VIN rule (a VIN is
+// decoded in EPC before anyone is asked about engine or gearbox), the VIN exception in the CONFIDENCE GATE
+// (an EPC applicableToVin=true confirms a part for that VIN) and a new rule for a part SAP does not have
+// (look it up in EPC and say it is not stocked but can be ordered, never stay silent about it).
+const VIN_RULE_EPC = "VIN: when the customer gives a VIN (17 characters, SAL... for Land Rover), call epc_vin_decode FIRST. It returns what JLR's own parts catalogue (EPC) records for that vehicle: model, engine, transmission, hand of drive, body and plant. These are facts from JLR, not the customer's claims: never ask the customer, or the salesperson, anything the decode answers, and you may write them as what JLR's catalogue lists for their vehicle. To check a part against the VIN, call epc_part_lookup with the code and the VIN: state that a part fits their vehicle only when it returned applicableToVin=true for that part, or when our own fitment data (U_Tag_Model) clearly matches the decoded vehicle; otherwise offer it as a suggestion to confirm and add one confirmation question. If epc_vin_decode fails or returns found=false, claim nothing from the VIN and add a physical_check asking the salesperson to verify the fitment against JLR EPC on that VIN before sending.";
+const NOT_STOCKED_RULE = "PART NOT IN OUR CATALOGUE: when the customer asks for a part, or JLR's catalogue names one, that part_dossier cannot find in SAP, call epc_part_lookup (and epc_supersession when the number may have been replaced, then part_dossier on the latest number). If EPC knows the code, never leave it out of the reply: name the code with JLR's description and tell the customer it is not a stocked item but can be ordered. Give no price, lead time or availability for it (listPriceEur is JLR's list price, not ours) and add one question for the salesperson to quote price and lead time. If EPC does not know the code either, say plainly that we could not find that part number and ask the customer to check it.";
+const SYSTEM_EPC = SYSTEM
+  .split("\n").map((line) => (line.startsWith("VIN: you CANNOT decode a VIN.") ? VIN_RULE_EPC : line)).join("\n")
+  .replace("VIN-specific and genuine parts ALWAYS get a human check (fitment_confirmed=false).",
+    "VIN-specific and genuine parts ALWAYS get a human check (fitment_confirmed=false), unless epc_part_lookup with the customer's VIN returned applicableToVin=true for that part.")
+  .split("\n").flatMap((line) => (line.startsWith("PART LOOKUP:") ? [line, NOT_STOCKED_RULE] : [line])).join("\n");
+
 // The <business_knowledge> block is NOT part of SYSTEM: agenticDraft appends K.block() per run, so
 // Teach Axle approvals reach the very next draft (reply and compose alike) without a restart.
 
@@ -374,6 +387,8 @@ const TOOL_RESULT_CAP = {
   // would silently drop a part from what we tell an insurer was in the box.
   claim_dossier: 12000,
   shopify_query: 6000, myparcel_search: 6000, myparcel_track: 6000, mailbox_search: 6000,
+  // JLR EPC (Workbench already caps these at 12,000).
+  epc_vin_decode: 12000, epc_part_lookup: 12000, epc_supersession: 12000,
 };
 const capFor = (name) => TOOL_RESULT_CAP[name] || 6000;
 
@@ -521,8 +536,15 @@ function withdrawSlot(result, slot) {
 // supplier" and "Based on your VIN..." survived the first fix. Each slot is now scanned and
 // withdrawn independently, so nothing sendable can carry a claim we cannot stand behind. Better
 // an empty box than a confident wrong sentence.
-function applyClaimGate(result) {
+// With the JLR EPC lookups (AI parity Step A) a VIN can be decoded. Once epc_vin_decode answered for a VIN in
+// this draft (ctx.epcVins), statements about what the VIN shows are verifiable, but a claim that a part fits
+// the VIN still needs EPC to have said so (ctx.epcPartVins: a part lookup on that VIN with applicableToVin
+// true). The sourcing patterns always apply.
+const VIN_FIT_PATTERNS = [VIN_CLAIM_PATTERNS[0], VIN_CLAIM_PATTERNS[5]];
+function applyClaimGate(result, ctx = {}) {
   if (!result) return result;
+  const vinPatterns = ctx.epcPartVins && ctx.epcPartVins.size ? []
+    : ctx.epcVins && ctx.epcVins.size ? VIN_FIT_PATTERNS : VIN_CLAIM_PATTERNS;
   const Q_VIN = "The reply claimed something was checked against the customer's VIN — we cannot verify a VIN, so it was removed. Confirm fitment on JLR EPC, then write or redraft the reply.";
   const Q_SRC = "The reply told the customer how we source the part (drop-ship / direct from a supplier). That is not true, so it was removed — customers are told the lead time only.";
 
@@ -530,7 +552,7 @@ function applyClaimGate(result) {
   for (const slot of ["draft", "interim_draft"]) {
     const text = String(result[slot] || "");
     if (!text.trim()) continue;
-    const vinClaim = matchAny(VIN_CLAIM_PATTERNS, text);
+    const vinClaim = matchAny(vinPatterns, text);
     const sourcing = matchAny(SOURCING_CLAIM_PATTERNS, text);
     if (!vinClaim && !sourcing) continue;
     if (vinClaim) reasons.add(Q_VIN);
@@ -573,10 +595,13 @@ function applyAvailabilityGate(result, facts) {
 // Axle may still recommend from our own U_Tag_Model data (so this does NOT hold the draft);
 // it just guarantees the salesperson is told to verify before sending.
 const VIN_IN_TEXT = /\b(?:SAL|SAJ)[A-HJ-NPR-Z0-9]{14}\b/i;
-function applyVinCheck(result, emailText) {
+// epcPartVins: VINs EPC confirmed a part for in this draft (epc_part_lookup with applicableToVin true, AI
+// parity Step A); the EPC check is then done and not asked of the salesperson again.
+function applyVinCheck(result, emailText, epcPartVins) {
   if (!result) return result;
   const m = String(emailText || "").match(VIN_IN_TEXT);
   if (!m) return result;
+  if (epcPartVins && epcPartVins.has(m[0].toUpperCase())) return result;
   // Nothing drafted at all -> nothing to verify. withdrawn_draft counts: a draft the gates just
   // pulled is precisely the case where the salesperson most needs the EPC check.
   if (!result.draft && !result.interim_draft && !result.withdrawn_draft) return result;
@@ -726,9 +751,9 @@ function applyActionClaimCheck(result, staffInput) {
 // Every post-processing gate, in one place, in the order they must run.
 function applyGates(result, ctx = {}) {
   let r = applyFitmentGate(applyContainment(result, ctx.senderAddr));
-  r = applyClaimGate(r);
+  r = applyClaimGate(r, ctx);
   r = applyAvailabilityGate(r, ctx.facts);
-  r = applyVinCheck(r, ctx.emailText);
+  r = applyVinCheck(r, ctx.emailText, ctx.epcPartVins);
   r = applyActionClaimCheck(r, ctx.staffInput);
   r = applyLanguageGate(r, ctx.language);
   // Last: the gates above may move text between slots, so style is applied to the final wording.
@@ -761,7 +786,10 @@ function applyGates(result, ctx = {}) {
 async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {}) {
   const toolLog = [];
   const agent = Boolean(anthropic && anthropic.isAgentStep);
-  const system = agent ? (opts.system || SYSTEM) : (opts.system || SYSTEM) + "\n\n" + K.block();
+  // Through the Workbench agent the JLR EPC lookups are offered too, with the reply rules that use them
+  // (compose keeps its own prompt and the tools it was written for).
+  const tools = T.toolDefsFor(agent && !opts.system);
+  const system = agent ? (opts.system || SYSTEM_EPC) : (opts.system || SYSTEM) + "\n\n" + K.block();
   const knowledge = agent ? K.block() : null;
   const senderAddr = opts.senderAddr || (email && email.from && email.from.address) || "";
   // The customer's SAP price list, so part_dossier / part_finder price every part on it (tier pricing).
@@ -779,6 +807,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     senderAddr, facts, emailText: gateText,
     language: (opts.exemplars && opts.exemplars.language) || "",
     staffInput: Boolean(seed && (seed.salesperson_feedback || seed.salesperson_answers || seed.handover)),
+    epcVins: new Set(), epcPartVins: new Set(),   // filled from the EPC tool results below
   };
   let firstContent, media = null, textWith = null;
   if (opts.userContent) {
@@ -821,13 +850,13 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     }
   }
   const messages = [{ role: "user", content: firstContent }];
-  const ask = () => anthropic.messages.create(agent ? { system, extra_knowledge: knowledge, tools: T.toolDefs, messages } : {
+  const ask = () => anthropic.messages.create(agent ? { system, extra_knowledge: knowledge, tools, messages } : {
     // 2026-08-12: raised 2000 -> 4096. Requiring an interim on every hold made replies longer
     // (a full reply AND the questions, all escaped into one JSON object), and item 1244, a
     // long Dutch window-frame enquiry, was truncated mid-JSON, so parseResult fell back to
     // "Axle could not parse its own draft output". Output tokens are billed as produced, so the
     // headroom is close to free; truncation costs a whole item.
-    model: MODEL, max_tokens: 4096, system, tools: T.toolDefs, messages,
+    model: MODEL, max_tokens: 4096, system, tools, messages,
   });
   for (let turn = 0; turn <= MAX_TOOL_TURNS; turn++) {
     let msg;
@@ -864,12 +893,18 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
         continue;
       }
       let out, ok = true;
-      try { out = await T.runTool(block.name, block.input, { mailbox, priceList }); }
+      try { out = await T.runTool(block.name, block.input, { mailbox, priceList, agent: agent ? anthropic : null }); }
       catch (e) { ok = false; out = { error: e.message }; }
       if (ok) collectItemFacts(block.name, out, facts);   // full result, before the display cap
+      if (ok && T.EPC_TOOLS.has(block.name) && out && out.error) ok = false;   // a failed lookup comes back as { error }
+      if (ok && block.name === "epc_vin_decode" && out.found && out.vin) gateCtx.epcVins.add(String(out.vin).toUpperCase());
+      if (ok && block.name === "epc_part_lookup" && out.vin && (out.results || []).some((r) => r && r.applicableToVin === true)) {
+        gateCtx.epcPartVins.add(String(out.vin).toUpperCase());
+      }
       toolLog.push({
         tool: block.name, ok, purpose: block.input.purpose || "",
-        input: String(block.input.sql || block.input.query || block.input.term || ""),
+        input: String(block.input.sql || block.input.query || block.input.term
+          || (T.EPC_TOOLS.has(block.name) ? [block.input.code, block.input.vin].filter(Boolean).join(" ") : "")),
         // Short snippet of what came back, so every lookup (incl. discount reads) is reviewable.
         result: ok ? stripInvisible(JSON.stringify(out)).slice(0, 240)
                    : String((out && out.error) || "").slice(0, 200),
@@ -887,7 +922,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
 }
 
 module.exports = {
-  MODEL, CLASSIFY_MODEL, SYSTEM, threadGroup, classify, gatherSeed, replyAudience, parseResult, agenticDraft,
+  MODEL, CLASSIFY_MODEL, SYSTEM, SYSTEM_EPC, threadGroup, classify, gatherSeed, replyAudience, parseResult, agenticDraft,
   // exported for the hardening harness / reuse:
   stripInvisible, hasSmuggle, redactFlagged, applyContainment, urlAllowed,
   normaliseDashes, applyDashStyle,

@@ -119,7 +119,7 @@ test("agenticDraft through the agent: rules as systemPrompt, knowledge apart, ro
   assert.strictEqual(result.status, "ready");
   assert.strictEqual(toolLog.length, 1);
   const [r1, r2] = f.calls.map((c) => c.body);
-  assert.strictEqual(r1.systemPrompt, E.SYSTEM, "the rules alone, no knowledge appended");
+  assert.strictEqual(r1.systemPrompt, E.SYSTEM_EPC, "the rules alone (with the EPC rules), no knowledge appended");
   assert.ok(/^<business_knowledge>/.test(r1.extraKnowledge), "the business knowledge as the cached extra block");
   assert.ok(!("model" in r1) && !("max_tokens" in r1));
   assert.strictEqual(r1.round, 1);

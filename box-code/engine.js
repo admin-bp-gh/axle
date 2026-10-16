@@ -908,7 +908,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       `<seed_context>\n${untag(stripInvisible(JSON.stringify(seed, null, 2)))}\n</seed_context>\n\n` +
       styleBlock +
       (opts.quick || "") +
-      (prose ? "Investigate with the tools as needed, then write the reply and the <internal> block." : "Investigate with the tools as needed, then produce the final JSON.");
+      (prose ? "Investigate with the tools as needed, then write the <reply> and <internal> blocks." : "Investigate with the tools as needed, then produce the final JSON.");
     firstContent = textWith(media.manifest);
     if (media.blocks.length) {
       const last = media.blocks.length - 1;
@@ -981,7 +981,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     }
     const spent = opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups;
     if (turn === MAX_TOOL_TURNS - 1 || spent) {
-      content.push({ type: "text", text: prose ? "Tool budget exhausted. Write the reply and the <internal> block now." : "Tool budget exhausted. Respond now with ONLY the final JSON object." });
+      content.push({ type: "text", text: prose ? "Tool budget exhausted. Write the <reply> and <internal> blocks now." : "Tool budget exhausted. Respond now with ONLY the final JSON object." });
     }
     messages.push({ role: "user", content });
   }

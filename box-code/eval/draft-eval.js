@@ -163,6 +163,9 @@ function meteredClient(real, cfg, meter) {
   const agent = Boolean(real.isAgentStep);
   return {
     isAgentStep: agent,
+    // The EPC tools run through the agent client's runTool (agent-tools.js): without it every EPC lookup in
+    // the step and prose configs failed with "need drafts through the Workbench agent" (fixed 16 Oct 2026).
+    ...(real.runTool ? { runTool: real.runTool } : {}),
     messages: {
       create: async (params) => {
         const p = agent ? params : { ...params, model: cfg.model };
@@ -201,6 +204,13 @@ async function replay(ctx, c, cfgName, rep) {
   const t0 = Date.now();
   const run = { case_id: c.id, config: cfgName, rep, followup: c.followup, model: cfg.model, mailbox: c.mailbox };
   let history = [];
+  // The live mailbox holds what the customer wrote after the reply being replayed: mailbox_search results
+  // from on or after the cut are dropped so the drafter cannot see the future (16 Oct 2026).
+  const AT = require("../agent-tools.js"), realRun = AT.runTool, cut = c.replay_before || c.sent.sent_at;
+  AT.runTool = async (name, input, tctx) => {
+    const out = await realRun(name, input, tctx);
+    return name === "mailbox_search" && Array.isArray(out) ? out.filter((m) => !m || !m.received || P.ts(m.received) < P.ts(cut)) : out;
+  };
   try {
     // Mail from one of our own mailboxes: who the reply is for, exactly as ingest decides it.
     const own = ctx.SG.ownMailCase({ ...c.item, mailbox: c.mailbox, subject: c.subject, sender_email: email.from.address, email_text: email.text });
@@ -239,6 +249,8 @@ async function replay(ctx, c, cfgName, rep) {
   } catch (e) {
     run.ms = Date.now() - t0;
     run.error = String((e && e.message) || e).slice(0, 500);
+  } finally {
+    AT.runTool = realRun;
   }
   run.tokens = { in: meter.in, out: meter.out, cache_read: meter.cacheRead, cache_write: meter.cacheWrite, calls: meter.calls };
   run.stops = meter.stops;

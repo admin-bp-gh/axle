@@ -74,6 +74,21 @@ How to use it:
 3. Type your answers and anything else Axle should know in the one answer box.
 4. Click "Save & redraft" — Axle rewrites the reply with your input in the background.
 
+## Dig deeper on a draft
+Key: none
+
+What it does: Axle writes the reply again, more thoroughly and with a stronger model: it decodes the VIN
+and checks every part it names in JLR EPC, and looks at trusted catalogue sites when SAP and EPC leave
+the fitment open. The new draft replaces the current one, like Redraft. When it changes something, a
+note starting "Dig deeper:" under Notes from Axle says what changed. Axle may suggest it quietly under
+the answer box, for example when the fitment is not confirmed. It never runs by itself.
+
+How to use it:
+1. Open an item with a draft.
+2. (Optional) Type what Axle should look at in the answer box.
+3. Click "Dig deeper" next to Redraft, or press Ctrl+Shift+Enter (Cmd+Shift+Enter on a Mac).
+4. It takes a minute or two; you can work on other emails meanwhile.
+
 ## Editing the reply before it goes out
 Key: none
 

@@ -34,6 +34,9 @@ const STRINGS = {
     not_sent_retry: "Try again",
     not_sent_send_off: "An earlier reply on this email has not been sent yet. Use Try again on the Not sent banner first.",
     investigating_banner: "Axle is drafting this reply. You can work on other emails.",
+    deep: "Dig deeper", deep_hint: "Axle checks the reply again more thoroughly (JLR EPC, our catalogue, trusted catalogue sites) and replaces this draft. Ctrl+Shift+Enter",
+    deep_banner: "Axle is digging deeper: checking JLR EPC, our catalogue and trusted catalogue sites. This takes a minute or two; you can work on other emails.",
+    deep_hint_fitment: "Dig deeper may confirm the fitment.", deep_hint_question: "Dig deeper may answer Axle's question.", deep_hint_low: "Axle is unsure of this draft; Dig deeper may help.",
     customer_email: "Customer email",
     translation_note: "Translated for you: the customer wrote in {lang}.",
     withdrawn_title: "Axle wrote a reply but withdrew it.",
@@ -303,6 +306,9 @@ const STRINGS = {
     not_sent_retry: "Opnieuw proberen",
     not_sent_send_off: "Een eerder antwoord op deze e-mail is nog niet verstuurd. Gebruik eerst Opnieuw proberen in de melding Niet verstuurd.",
     investigating_banner: "Axle schrijft dit antwoord. Je kunt intussen aan andere e-mails werken.",
+    deep: "Dieper zoeken", deep_hint: "Axle controleert het antwoord nog eens grondiger (JLR EPC, onze catalogus, vertrouwde catalogussites) en vervangt dit concept. Ctrl+Shift+Enter",
+    deep_banner: "Axle zoekt dieper: JLR EPC, onze catalogus en vertrouwde catalogussites worden nagekeken. Dit duurt een minuut of twee; je kunt intussen aan andere e-mails werken.",
+    deep_hint_fitment: "Dieper zoeken kan de pasvorm bevestigen.", deep_hint_question: "Dieper zoeken kan de vraag van Axle beantwoorden.", deep_hint_low: "Axle twijfelt over dit concept; dieper zoeken kan helpen.",
     customer_email: "E-mail van klant",
     translation_note: "Voor je vertaald: de klant schreef in het {lang}.",
     withdrawn_title: "Axle had een antwoord geschreven maar heeft het ingetrokken.",
@@ -872,7 +878,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax20";  // 2026-10-15: no preview without a selection, re-translate on the reply (ax19: Create order split + Re-send order)
+const ASSET_V = "ax21";  // 2026-10-17: Dig deeper beside Redraft and its keys (ax20: no preview without a selection, re-translate on the reply; ax19: Create order split + Re-send order)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

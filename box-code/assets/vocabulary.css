@@ -190,6 +190,14 @@
 /* Removable pill: a small clear button at the end (an attachment, a picked value). */
 .wb-pill:has(> .wb-clear) { padding-right: 3px; }
 .wb-pill > .wb-clear { width: 16px; height: 16px; }
+/* The ABC grade pill (OITM.U_ABC), after the quality pill on every Winch and Ratchet line row (AbcPill,
+   modules/winch/LineRow.tsx; Winch 15 Oct 2026, Ratchet 16 Oct 2026). A+ and A the green wash (A+ in the
+   heavier weight), B the blue wash, C grey, D a faint grey outline. */
+.wb-pill.wx-abc--aplus { --tone-bg: var(--ok-bg); --tone-fg: var(--ok-fg); font-weight: 600; }
+.wb-pill.wx-abc--a { --tone-bg: var(--ok-bg); --tone-fg: var(--ok-fg); }
+.wb-pill.wx-abc--b { --tone-bg: var(--info-bg); --tone-fg: var(--info-fg); }
+.wb-pill.wx-abc--c { --tone-bg: var(--neutral-bg); --tone-fg: var(--neutral-fg); }
+.wb-pill.wx-abc--d { --tone-bg: transparent; --tone-fg: var(--ink-2); box-shadow: inset 0 0 0 1px var(--border-2); }
 .wb-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 /* Pill button: a pill you can click. Always a border. */
 .wb-pillbtn { border: 1px solid var(--border-2); background: var(--surface); color: var(--ink); transition: border-color var(--dur) ease-out, background-color var(--dur) ease-out; }

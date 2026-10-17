@@ -241,6 +241,15 @@
 .ax-fb { padding: 5px 10px; }
 .ax-fb > textarea { min-height: 1.5em; }
 .ax-redraft > .wb-btn { flex: none; }
+/* Redraft and Dig deeper (Step D): stacked beside the field; on a phone, a row under it. The hint is quiet text. */
+.ax-rdbtns { flex: none; display: flex; flex-direction: column; gap: var(--s2); }
+.ax-rdbtns > .wb-btn { justify-content: center; }
+.ax-deephint { flex-basis: 100%; }
+@media (max-width: 639.98px) {
+  .ax-redraft:has(.ax-deep) { flex-wrap: wrap; }
+  .ax-redraft:has(.ax-deep) > .ax-fbcol { flex-basis: 100%; }
+  .ax-redraft:has(.ax-deep) > .ax-rdbtns { flex-direction: row; width: 100%; justify-content: flex-end; }
+}
 .ax-prev > div { display: flex; flex-direction: column; gap: 8px; }
 /* Dialog bodies: choices, the language list, earlier Teach flags, What Axle checked */
 .ax-choices { display: flex; flex-direction: column; margin: 0 -8px; }

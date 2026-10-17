@@ -24,6 +24,7 @@ const CONV = require("../conversation.js");       // the whole conversation and 
 const QR = require("../quick-reply.js");          // quick-reply mode and the "Ask the customer" seed
 const SG = require("../send-guard.js");            // isVoicemailItem: a voicemail's card is the caller's; ownMailCase for the drafter
 const CUSTSUM = require("../customer-summary.js"); // the customer's SAP card (cached), for its addresses
+const DEEP = require("../deep.js");                 // Dig deeper: the axle-deep channel, its block and web search
 const { db, audit } = require("../db.js");
 const { t, fmtSize } = require("../views/ui.js");
 
@@ -42,7 +43,8 @@ const MAX_ATTACH_TOTAL = 3 * 1024 * 1024;       // 3 MB total across an item's a
 // Normalised question text for duplicate detection (case/punctuation/whitespace-insensitive).
 const normQuestion = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-function persistResult(itemId, result, toolLog, seed) {
+// channel: the agent channel of a Dig deeper draft ("axle-deep"), kept on its drafts rows; NULL for every other draft.
+function persistResult(itemId, result, toolLog, seed, channel = null) {
   // no_reply NEVER auto-closes (threat-model T13): the item stays OPEN with a suggestion
   // flag and a human confirms via the existing Done control.
   const status = result.status === "ready" ? "ready"
@@ -71,8 +73,8 @@ function persistResult(itemId, result, toolLog, seed) {
   ].join("\n"), itemId);
   db.prepare("UPDATE work_items SET draft_flags = ?, draft_output = ? WHERE id = ?").run(result.flags && result.flags.length ? JSON.stringify(result.flags) : null, result.output === "prose" ? "prose" : null, itemId);
   const ver = (db.prepare("SELECT MAX(version) AS v FROM drafts WHERE work_item_id = ?").get(itemId).v || 0) + 1;
-  if (result.draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body) VALUES (?, ?, 0, ?)").run(itemId, ver, result.draft);
-  if (result.interim_draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body) VALUES (?, ?, 1, ?)").run(itemId, ver, result.interim_draft);
+  if (result.draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body, channel) VALUES (?, ?, 0, ?, ?)").run(itemId, ver, result.draft, channel);
+  if (result.interim_draft) db.prepare("INSERT INTO drafts (work_item_id, version, is_interim, body, channel) VALUES (?, ?, 1, ?, ?)").run(itemId, ver, result.interim_draft, channel);
   // Text the accuracy gates withdrew. Not shown anywhere (the red card was removed 2026-08-12 —
   // it read as breakage next to a good reply); kept purely so "why was this held?" is answerable
   // after the fact. Mirrors ingest.js so the redraft and ingest paths record the same thing.
@@ -112,6 +114,9 @@ function returnLabelSeed(w) {
 }
 
 // opts.askCustomer: the salesperson pressed "Ask the customer" (quick-reply round, 2026-10-10).
+// opts.deep: the salesperson pressed Dig deeper (Step D): the same reply path on the axle-deep channel, prose
+// output, EPC and catalogue web search, with the current draft and its flags as context. Inbound replies only
+// (the route never starts it on a compose item).
 async function runRedraft(itemId, login, opts = {}) {
   try {
     const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(itemId);
@@ -213,20 +218,27 @@ async function runRedraft(itemId, login, opts = {}) {
     if (prev) seed.previous_attempt = prev;
     // "Ask the customer": Axle's open questions become a short reply to the customer; no lookups.
     if (opts.askCustomer && openQs.length) seed.ask_customer = QR.askCustomerSeed(openQs);
+    // Dig deeper: what our checks flagged on the draft it digs into (the draft itself is previous_unsent_draft).
+    if (opts.deep) {
+      let flags = [];
+      try { flags = (JSON.parse(w.draft_flags || "[]") || []).filter((f) => f && f.gate).map((f) => ({ gate: f.gate, fragment: f.fragment || undefined })); } catch (e) { /* unreadable: none */ }
+      seed.previous_draft_flags = flags;
+    }
     const media = await DM.prepare(itemId, w.mailbox, login);   // never throws
     // Quick-reply mode, decided on the newest inbound exactly as ingest decides it.
     let files = 0;
     try { files = (JSON.parse(w.attachments_json || "[]") || []).length; } catch (e) { /* unreadable list: treat as none */ }
-    const quick = !isContactFormItem(w) && !isReturnNotificationItem(w) && !w.caller_info && QR.isQuickTurn({ text: w.email_text || "", files,
+    const quick = !opts.deep && !isContactFormItem(w) && !isReturnNotificationItem(w) && !w.caller_info && QR.isQuickTurn({ text: w.email_text || "", files,
       priorSends: db.prepare("SELECT COUNT(*) AS n FROM sends WHERE work_item_id = ? AND status = 'sent' AND sent_at < ?").get(itemId, String(w.email_received || "").replace("T", " ").slice(0, 19)).n });
-    const { result, toolLog } = await E.agenticDraft(drafter, email, history, seed, MAILBOX_OF[w.mailbox], {
+    const { result, toolLog } = await E.agenticDraft(opts.deep ? DEEP.drafter() : drafter, email, history, seed, MAILBOX_OF[w.mailbox], {
       exemplars: { intent: w.intent, language: w.language, mailbox: w.mailbox, excludeItemId: itemId },
       media,
       extractor: anthropic,
       ...(quick ? { quick: QR.QUICK_BLOCK, maxLookups: QR.MAX_LOOKUPS } : {}),
       ...(seed.ask_customer ? { maxLookups: 0 } : {}),
+      ...(opts.deep ? { deep: DEEP.DEEP_BLOCK, serverTools: [DEEP.WEB_SEARCH], maxTurns: DEEP.MAX_TURNS, output: "prose" } : {}),
     });
-    const { status, ver } = persistResult(itemId, result, toolLog, seed);
+    const { status, ver } = persistResult(itemId, result, toolLog, seed, opts.deep ? DEEP.CHANNEL : null);
     if (quick) audit("system", "quick_reply", itemId, `v=${ver}`);
     if (seed.ask_customer) audit(login, "ask_customer_done", itemId, `v=${ver} questions=${openQs.length}`);
     // Refresh suggested documents from the newest body + the model's referenced_documents hint
@@ -249,10 +261,11 @@ async function runRedraft(itemId, login, opts = {}) {
         db.prepare("UPDATE work_items SET doc_suggestions_json = NULL WHERE id = ?").run(itemId);
       }
     } catch (e) { audit(login, "suggest_error", itemId, String(e.message || e).slice(0, 150)); }
-    audit(login, "redraft_done", itemId, `status=${status} v=${ver} tools=${toolLog.length}`);
+    audit(login, opts.deep ? "deep_done" : "redraft_done", itemId, `status=${status} v=${ver} tools=${toolLog.length}`
+      + (opts.deep ? ` epc=${toolLog.filter((x) => x.tool.startsWith("epc_")).length} web=${toolLog.filter((x) => x.tool === "web_search").length}` : ""));
   } catch (e) {
     db.prepare("UPDATE work_items SET status = 'awaiting_input', updated_at = datetime('now') WHERE id = ?").run(itemId);
-    audit(login, "redraft_failed", itemId, e.message.slice(0, 200));
+    audit(login, opts.deep ? "deep_failed" : "redraft_failed", itemId, e.message.slice(0, 200));
   }
 }
 

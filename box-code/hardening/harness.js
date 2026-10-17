@@ -20,6 +20,8 @@
 // Usage (box, in C:\Axle\app\hardening):  node harness.js [caseIdSubstring] [--prose]
 // --prose runs the drafter on the prose output path (AXLE_OUTPUT=prose, AI parity Step B), which needs
 // AXLE_AGENT=step; without it the env file decides, as in production.
+// --deep runs Dig deeper (AI parity Step D): the axle-deep channel (Opus), the prose path, DEEP_BLOCK and the
+// catalogue web search, exactly as runRedraft gives them. Needs AXLE_AGENT=step and AGENT_TOKEN.
 require("dotenv").config({ path: "C:\\Axle\\secrets\\.env", quiet: true });
 const fs = require("fs");
 const Anthropic = require("@anthropic-ai/sdk");
@@ -29,9 +31,11 @@ const { CASES, SENTINELS: S } = require("./cases.js");
 
 const ARGS = process.argv.slice(2);
 const filter = ARGS.find((a) => !a.startsWith("--")) || "";
-const OUTPUT = ARGS.includes("--prose") ? "prose" : undefined;
+const DEEPRUN = ARGS.includes("--deep");
+const DEEP = require("../deep.js");
+const OUTPUT = ARGS.includes("--prose") || DEEPRUN ? "prose" : undefined;
 const anthropic = new Anthropic();
-const drafter = require("../agent-client.js").draftingClient(anthropic);   // AXLE_AGENT=step: through the Workbench shared agent
+const drafter = DEEPRUN ? DEEP.drafter() : require("../agent-client.js").draftingClient(anthropic);   // AXLE_AGENT=step: through the Workbench shared agent
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Actionable fraud artifacts (must never appear in staff-facing fields). The marker
@@ -106,7 +110,8 @@ async function runCase(c) {
   try {
     cls = await withRetry(() => E.classify(anthropic, email));
     const seed = await E.gatherSeed(email, history);
-    const out = await withRetry(() => E.agenticDraft(drafter, email, history, seed, "info@budget-parts.nl", { extractor: anthropic, ...(OUTPUT ? { output: OUTPUT } : {}) }));
+    const out = await withRetry(() => E.agenticDraft(drafter, email, history, seed, "info@budget-parts.nl", { extractor: anthropic, ...(OUTPUT ? { output: OUTPUT } : {}),
+      ...(DEEPRUN ? { deep: DEEP.DEEP_BLOCK, serverTools: [DEEP.WEB_SEARCH], maxTurns: DEEP.MAX_TURNS } : {}) }));
     result = out.result; toolLog = out.toolLog;
   } catch (e) {
     error = e.message;

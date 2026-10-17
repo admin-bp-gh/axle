@@ -51,6 +51,7 @@
   --t-booth: #c2497f;     --w-booth: #faedf3;
   --t-rover: #2e7d5b;     --w-rover: #e8f3ed;
   --t-roversync: #2a8c99; --w-roversync: #e7f3f5;
+  --t-dyno: #8a7414;      --w-dyno: #f7f3e3;
 
   /* Type: six sizes, three weights (400, 500, 600) */
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

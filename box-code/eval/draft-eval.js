@@ -18,6 +18,11 @@
 //                          no staff input), judged against our first send after it (AI parity Step B)
 //   --not-in-sap [code]    add the synthetic not-in-SAP case: a part EPC knows and SAP does not (the code,
 //                          or the first of NOT_IN_SAP_CANDIDATES that qualifies when checked live)
+//   --config prose,deep    Dig deeper (AI parity Step D): deep runs on the axle-deep channel after prose on the
+//                          same case and rep, with that prose draft, its flags and its blocking questions as
+//                          the redraft would see them. deep needs prose in the same run; it always runs after it.
+//   --prior-from <run dir> deep without re-running prose: the prose runs of that earlier run (same --db) are the
+//                          drafts deep digs into, copied into this run's runs.jsonl as they were (reused: true).
 const fs = require("fs");
 const path = require("path");
 const P = require("./case-picker.js");
@@ -28,12 +33,14 @@ const RUNS_ROOT = "C:\\Admin\\Projects\\Axle\\eval-runs";
 const PROTECTED_DIRS = ["C:\\Axle\\data", "C:\\Admin\\Projects\\Axle\\Backups"];
 
 // USD per million tokens. Check against the current Anthropic price list before quoting costs.
-// Cache reads bill at 0.1x input, cache writes at 1.25x input.
+// Cache reads bill at 0.1x input, cache writes at 1.25x input. Corrected 17 Oct 2026 (Step D): Sonnet 5.5 and
+// Opus 5.5 were priced at 3/15 and 15/75, so every earlier cost column on those models is overstated.
 const PRICES = {
-  "claude-sonnet-5-5": { in: 3, out: 15 },
-  "claude-opus-5-5": { in: 15, out: 75 },
+  "claude-sonnet-5-5": { in: 2, out: 10 },
+  "claude-opus-5-5": { in: 4, out: 20 },
   "claude-haiku-4-5-20251001": { in: 1, out: 5 },
 };
+const WEB_SEARCH_USD = 0.01;   // per web search
 const SONNET = "claude-sonnet-5-5", OPUS = "claude-opus-5-5", HAIKU = "claude-haiku-4-5-20251001";
 const GRADER_MODEL = SONNET;
 
@@ -54,6 +61,8 @@ const CONFIGS = {
   "step":                { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: true, agent: true },
   // AI parity Step B: the step transport plus the prose output (AXLE_OUTPUT=prose) and its Haiku field read.
   "prose":               { model: SONNET, engine: "today", maxTokens: null, effort: null,   quick: true,  thread: true, agent: true, output: "prose" },
+  // AI parity Step D: Dig deeper on the prose draft of the same case (channel axle-deep, Opus, deep.js as runRedraft uses it).
+  "deep":                { model: OPUS,   engine: "today", maxTokens: null, effort: null,   quick: false, thread: true, agent: true, output: "prose", deep: true },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -71,6 +80,7 @@ function parseArgs(argv) {
     else if (k === "--out") { a.out = v; i++; }
     else if (k === "--regrade") { a.regrade = v; i++; }
     else if (k === "--from-first-message") a.fromFirst = true;
+    else if (k === "--prior-from") { a.priorFrom = v; i++; }
     else if (k === "--not-in-sap") { a.notInSap = v && !v.startsWith("--") ? (i++, v.toUpperCase()) : true; }
     else throw new Error(`unknown argument ${k}`);
   }
@@ -194,12 +204,13 @@ function costOf(model, m) {
 
 // ---------------------------------------------------------------------------------------------
 // One replay
-async function replay(ctx, c, cfgName, rep) {
+// prior: for deep, the prose run of the same case and rep (its draft is what Dig deeper digs into).
+async function replay(ctx, c, cfgName, rep, prior) {
   const cfg = CONFIGS[cfgName];
   const E = cfg.engine === "loose" ? ctx.Eloose : ctx.Etoday;
   const email = emailOf(c);
   const meter = newMeter(), xmeter = newMeter();
-  const client = meteredClient(cfg.agent ? ctx.agent : ctx.anthropic, cfg, meter);
+  const client = meteredClient(cfg.deep ? ctx.agentDeep : cfg.agent ? ctx.agent : ctx.anthropic, cfg, meter);
   const mailbox = ctx.mailboxOf(c.mailbox);
   const t0 = Date.now();
   const run = { case_id: c.id, config: cfgName, rep, followup: c.followup, model: cfg.model, mailbox: c.mailbox };
@@ -227,11 +238,22 @@ async function replay(ctx, c, cfgName, rep) {
       const ours = c.thread.filter((t) => t.kind === "out").map((t) => ({ to: t.to, text: t.body, by: t.by, sent_at: t.at }));
       seed.handover = ctx.HO.seedBlock(c.handover, ours);
     }
+    if (cfg.deep) {
+      if (!prior || prior.error) throw new Error("deep: no prose run of this case to dig into");
+      // As conversation.js (redraft mode) and runRedraft give it: our unsent draft, Axle's open questions, the flags.
+      seed.previous_unsent_draft = { note: "Our own most recent draft on this conversation. It was NOT sent: the customer has not seen it. Staff feedback, if any, was given on it.",
+        is_interim: prior.slot === "interim_draft", written_at: "", text: String(prior.draft_text || "").slice(0, 6000) };
+      const openQs = [...((prior.result && prior.result.questions_for_salesperson) || []), ...((prior.result && prior.result.physical_checks) || [])];
+      if (openQs.length) seed.axle_open_questions = { note: "Questions you previously asked our salesperson. salesperson_feedback below is their single reply - it answers these (possibly partially) and may add more. Never re-ask anything it answers.", questions: openQs };
+      seed.previous_draft_flags = (prior.flags || []).filter((f) => f && f.gate).map((f) => ({ gate: f.gate, fragment: f.fragment || undefined }));
+      run.prior_blocking = prior.blocking_open || 0;
+    }
     const quick = cfg.quick && isQuick(ctx.QR, c);
     run.quick = quick;
     const { result, toolLog } = await E.agenticDraft(client, email, history, seed, mailbox, {
       exemplars: { intent: c.intent, language: c.language, mailbox: c.mailbox, excludeItemId: c.id },
       ...(quick ? { quick: ctx.QR.QUICK_BLOCK, maxLookups: ctx.QR.MAX_LOOKUPS } : {}),
+      ...(cfg.deep ? { deep: ctx.DEEP.DEEP_BLOCK, serverTools: [ctx.DEEP.WEB_SEARCH], maxTurns: ctx.DEEP.MAX_TURNS } : {}),
       // Explicit, so AXLE_OUTPUT in the env file never changes a config; the field read is metered apart.
       output: cfg.output || "json",
       extractor: meteredClient(ctx.anthropic, { model: HAIKU }, xmeter),
@@ -246,6 +268,9 @@ async function replay(ctx, c, cfgName, rep) {
     run.blocking_open = (result.questions_for_salesperson || []).length;
     run.toolLog = toolLog;
     run.lookups = toolLog.filter((t) => t.tool !== "style_exemplars").length;
+    run.epc = toolLog.filter((t) => t.tool.startsWith("epc_")).length;
+    run.epc_failed = toolLog.filter((t) => t.tool.startsWith("epc_") && !t.ok).length;
+    run.web = toolLog.filter((t) => t.tool === "web_search").length;
   } catch (e) {
     run.ms = Date.now() - t0;
     run.error = String((e && e.message) || e).slice(0, 500);
@@ -256,6 +281,7 @@ async function replay(ctx, c, cfgName, rep) {
   run.stops = meter.stops;
   if (meter.model) run.model = meter.model;   // the agent's profile may name another model than the config
   run.cost_usd = costOf(run.model, meter);
+  if (run.web && run.cost_usd != null) run.cost_usd += run.web * WEB_SEARCH_USD;
   if (xmeter.calls) {
     run.extract_tokens = { in: xmeter.in, out: xmeter.out };
     run.cost_usd = (run.cost_usd || 0) + costOf(HAIKU, xmeter);
@@ -308,6 +334,7 @@ const GRADER_SYSTEM = [
   "facts: part numbers, prices, stock, lead times and order facts in the draft agree with the reference reply. A claim the reference does not make is neutral unless it contradicts the reference. 2 = no contradiction, 1 = a minor discrepancy, 0 = a material contradiction or a wrong fact the customer would act on.",
   "questions: every question or request the customer made in the newest message (and, for a follow-up, still open in the thread) is answered in the draft or explicitly asked about (the draft's open questions to staff count as asked about). 2 = all, 1 = most, 0 = the main question is missed.",
   "thread_context: only for a follow-up. The draft shows it knows what was said before, and does not re-ask or re-explain what we already told the customer. When followup is no, score 2.",
+  "A note to staff that starts \"Dig deeper:\" is the intended record of what a second, more thorough pass changed in an earlier draft: it is not part of the customer reply, and it is neither thinking aloud nor a question left open.",
   "tone: written in the customer's language, the customer's form of address (Dutch je/u, German du/Sie) mirrored, one greeting and one closing, no markdown styling other than links, and about as concise as the reference.",
   "Reply with ONLY a JSON object. It must start with { and end with }, with no reasoning, prose or code fence around it:",
   '{"facts":0,"questions":0,"thread_context":0,"tone":0,"comment":"one short sentence on the main difference from the reference"}',
@@ -373,6 +400,16 @@ const f1 = (v) => (v == null ? "-" : (Math.round(v * 10) / 10).toString());
 const usd = (v) => (v == null ? "-" : "$" + v.toFixed(4));
 const cell = (s) => String(s == null ? "" : s).replace(/\|/g, "/").replace(/\s+/g, " ");
 
+// Items held by a blocking question; for deep also how many the prose draft held that deep cleared, and how many
+// deep held that prose did not.
+function blockingCell(rs) {
+  const held = rs.filter((r) => r.blocking_open > 0).length;
+  if (!rs.some((r) => r.prior_blocking != null)) return `${held} / - / -`;
+  const cleared = rs.filter((r) => r.prior_blocking > 0 && !r.blocking_open).length;
+  const raised = rs.filter((r) => !r.prior_blocking && r.blocking_open > 0).length;
+  return `${held} / ${cleared} / ${raised}`;
+}
+
 function summarise(runs, cases, meta) {
   const caseOf = new Map(cases.map((c) => [c.id, c]));
   const order = Object.keys(CONFIGS).filter((k) => runs.some((r) => r.config === k));
@@ -404,8 +441,8 @@ function summarise(runs, cases, meta) {
   L.push("");
   L.push("## Comparison");
   L.push("");
-  L.push("| config | n | pass rate | mean total | mean total (follow-ups) | mean thread_context (follow-ups) | p50 ms | p90 ms | mean lookups | mean tokens in/out | cost per item USD | failures |");
-  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|");
+  L.push("| config | n | pass rate | mean total | mean total (follow-ups) | mean thread_context (follow-ups) | p50 ms | p90 ms | mean lookups | EPC (failed) | web | blocking items / cleared / raised | mean tokens in/out | cost per item USD | failures |");
+  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const k of order) {
     const rs = runs.filter((r) => r.config === k);
     const ok = rs.filter((r) => !r.error);
@@ -413,7 +450,7 @@ function summarise(runs, cases, meta) {
     const fu = graded.filter((r) => r.followup);
     const errors = rs.length - ok.length;
     const fails = graded.filter((r) => r.grade.verdict === "fail").length;
-    L.push(`| ${k} | ${rs.length} | ${graded.length ? Math.round((100 * graded.filter((r) => r.grade.verdict === "pass").length) / graded.length) + "%" : "-"} | ${f1(mean(graded.map((r) => r.grade.total)))} | ${f1(mean(fu.map((r) => r.grade.total)))} | ${f1(mean(fu.map((r) => r.grade.thread_context)))} | ${pct(ok.map((r) => r.ms), 50) ?? "-"} | ${pct(ok.map((r) => r.ms), 90) ?? "-"} | ${f1(mean(ok.map((r) => r.lookups || 0)))} | ${f1(mean(ok.map((r) => r.tokens.in)))}/${f1(mean(ok.map((r) => r.tokens.out)))} | ${usd(mean(ok.map((r) => r.cost_usd || 0)))} | ${fails}${errors ? ` (+${errors} errors)` : ""} |`);
+    L.push(`| ${k} | ${rs.length} | ${graded.length ? Math.round((100 * graded.filter((r) => r.grade.verdict === "pass").length) / graded.length) + "%" : "-"} | ${f1(mean(graded.map((r) => r.grade.total)))} | ${f1(mean(fu.map((r) => r.grade.total)))} | ${f1(mean(fu.map((r) => r.grade.thread_context)))} | ${pct(ok.map((r) => r.ms), 50) ?? "-"} | ${pct(ok.map((r) => r.ms), 90) ?? "-"} | ${f1(mean(ok.map((r) => r.lookups || 0)))} | ${f1(mean(ok.map((r) => r.epc || 0)))} (${ok.reduce((a, r) => a + (r.epc_failed || 0), 0)}) | ${f1(mean(ok.map((r) => r.web || 0)))} | ${blockingCell(ok)} | ${f1(mean(ok.map((r) => r.tokens.in)))}/${f1(mean(ok.map((r) => r.tokens.out)))} | ${usd(mean(ok.map((r) => r.cost_usd || 0)))} | ${fails}${errors ? ` (+${errors} errors)` : ""} |`);
   }
   const gradeCost = runs.reduce((a, r) => a + ((r.grade && r.grade.cost_usd) || 0), 0);
   const draftCost = runs.reduce((a, r) => a + (r.cost_usd || 0), 0);
@@ -445,8 +482,10 @@ async function main() {
   const cases = picked.cases;
   fs.writeFileSync(path.join(out, "cases.json"), JSON.stringify({ db: dbPath, picked_at: new Date().toISOString(), stats: picked.stats, notes: picked.notes, cases }, null, 2));
 
-  const configs = args.config || Object.keys(CONFIGS).filter((k) => !CONFIGS[k].agent);   // step only when named
+  const configs = (args.config || Object.keys(CONFIGS).filter((k) => !CONFIGS[k].agent))   // step only when named
+    .sort((a, b) => Object.keys(CONFIGS).indexOf(a) - Object.keys(CONFIGS).indexOf(b));      // prose before deep
   for (const k of configs) if (!CONFIGS[k]) throw new Error(`unknown config ${k} (known: ${Object.keys(CONFIGS).join(", ")})`);
+  if (configs.includes("deep") && !configs.includes("prose") && !args.priorFrom) throw new Error("config deep digs into the prose draft: run --config prose,deep, or --config deep --prior-from <run dir>");
 
   if (args.pick) {
     console.log(`Cases: ${cases.length}, follow-ups: ${cases.filter((c) => c.followup).length}. Written to ${path.join(out, "cases.json")}`);
@@ -486,6 +525,8 @@ async function main() {
   if (configs.some((k) => CONFIGS[k].agent) || args.notInSap) {
     if (!process.env.AGENT_TOKEN) throw new Error(`config step needs AGENT_TOKEN (and AGENT_URL unless Workbench is on ${require("../agent-client.js").DEFAULT_URL}) in ${ENV_FILE}`);
     ctx.agent = require("../agent-client.js").createAgentClient({ baseUrl: process.env.AGENT_URL || undefined, token: process.env.AGENT_TOKEN });
+    ctx.DEEP = require("../deep.js");
+    ctx.agentDeep = ctx.DEEP.drafter(process.env);
   }
   if (args.notInSap) {
     const s = await notInSapCase(ctx, args.notInSap === true ? NOT_IN_SAP_CANDIDATES : [args.notInSap]);
@@ -495,18 +536,31 @@ async function main() {
   }
   const runsFile = path.join(out, "runs.jsonl");
   const runs = [];
+  if (args.priorFrom) {
+    const dir = path.resolve(args.priorFrom);
+    const prior = fs.readFileSync(path.join(dir, "runs.jsonl"), "utf8").split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l))
+      .filter((r) => r.config === "prose" && cases.some((c) => c.id === r.case_id));
+    if (args.notInSap) {   // the synthetic case is re-picked here: reuse the earlier one only when it is the same part
+      const old = JSON.parse(fs.readFileSync(path.join(dir, "cases.json"), "utf8")).cases.find((c) => c.id === "not-in-sap");
+      const now = cases.find((c) => c.id === "not-in-sap");
+      if (!old || !now || old.part !== now.part) for (let i = prior.length - 1; i >= 0; i--) if (prior[i].case_id === "not-in-sap") prior.splice(i, 1);
+    }
+    for (const r of prior) { r.reused = dir; runs.push(r); fs.appendFileSync(runsFile, JSON.stringify(r) + "\n"); }
+    log(`--prior-from: ${prior.length} prose run(s) reused from ${dir}`);
+  }
   const total = cases.length * configs.length * args.repeat;
   let n = 0;
   for (const c of cases) {
     for (const k of configs) {
       for (let rep = 1; rep <= args.repeat; rep++) {
         n++;
-        const run = await replay(ctx, c, k, rep);
+        const prior = CONFIGS[k].deep ? runs.find((r) => r.case_id === c.id && r.config === "prose" && r.rep === rep) : undefined;
+        const run = await replay(ctx, c, k, rep, prior);
         run.grade = await grade(ctx.anthropic, c, run);
         runs.push(run);
         fs.appendFileSync(runsFile, JSON.stringify(run) + "\n");
         const g = run.grade;
-        log(`[${n}/${total}] ${k} case ${c.id}${args.repeat > 1 ? ` rep ${rep}` : ""}: ${run.error ? "ERROR " + run.error.slice(0, 120) : `${run.ms} ms, ${run.lookups} lookups, ${g && g.total != null ? `${g.verdict} ${g.total}/8` : "ungraded"}`}`);
+        log(`[${n}/${total}] ${k} case ${c.id}${args.repeat > 1 ? ` rep ${rep}` : ""}: ${run.error ? "ERROR " + run.error.slice(0, 120) : `${run.ms} ms, ${run.lookups} lookups (EPC ${run.epc}, failed ${run.epc_failed}, web ${run.web}), ${g && g.total != null ? `${g.verdict} ${g.total}/8` : "ungraded"}`}`);
       }
     }
   }
@@ -546,4 +600,4 @@ if (require.main === module) {
 }
 
 module.exports = { CONFIGS, PRICES, NOT_IN_SAP_CANDIDATES, notInSapCase, parseArgs, checkDbCopy, writeLooseEngine, emailOf, threadHistory, threadText, conversationOf, isQuick,
-  meteredClient, costOf, grade, graderInput, verdictOf, firstJson, summarise, replay, GRADER_SYSTEM };
+  meteredClient, costOf, blockingCell, grade, graderInput, verdictOf, firstJson, summarise, replay, GRADER_SYSTEM };

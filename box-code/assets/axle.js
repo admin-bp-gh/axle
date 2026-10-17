@@ -508,7 +508,7 @@
   D.addEventListener("keydown", (e) => {
     const form = e.target.form || (e.target.isContentEditable ? e.target.closest("form") : null);
     if (e.key !== "Enter" || e.isComposing || !form) return;
-    if (e.ctrlKey || e.metaKey) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
       const b = sendBtnOf(form);
       if (b) { e.preventDefault(); b.click(); }
     } else if (e.target.matches("input:not([type=submit], [type=button], [type=checkbox], [type=radio], [type=file], [type=image], [type=reset])") && (e.target.form.getAttribute("method") || "").toLowerCase() === "post") {
@@ -1626,9 +1626,18 @@
     }
   });
   // Ctrl+Enter in the redraft note redrafts (it is that field's own action); everywhere else in the
-  // work form it sends.
+  // work form it sends. Ctrl+Shift+Enter anywhere in the work form digs deeper (Step D), when offered.
   D.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.target.name !== "feedback" || e.target.form?.id !== "workform") return;
+    if (e.key !== "Enter" || e.isComposing || !(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
+    const form = e.target.form || (e.target.isContentEditable ? e.target.closest("form") : null);
+    const b = form?.id === "workform" && $('button[data-deep]', form);
+    if (!b || b.disabled) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    b.click();
+  }, true);
+  D.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.target.name !== "feedback" || e.target.form?.id !== "workform") return;
     e.preventDefault();
     e.stopImmediatePropagation();
     $('button[name="action"][value="redraft"]', e.target.form)?.click();

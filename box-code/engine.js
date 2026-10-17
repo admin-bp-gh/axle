@@ -832,6 +832,11 @@ function applyGates(result, ctx = {}) {
 //                      applies on the agent path in reply mode only (compose keeps its JSON prompt).
 //   opts.extractor   - the Anthropic SDK client for the prose path's Haiku field read; a new SDK
 //                      client when absent. Never the agent client.
+//   opts.deep        - Dig deeper (deep.js, Step D): our own trusted DEEP_BLOCK, placed after the seed
+//                      context like opts.quick.
+//   opts.serverTools - Anthropic server tools (web_search) added on the agent path. A long server-tool
+//                      turn stops with pause_turn and is sent back to resume. Each search is logged.
+//   opts.maxTurns    - the tool-turn cap, MAX_TOOL_TURNS when absent.
 // anthropic is the SDK client, or agent-client.js's client (isAgentStep) when drafts go through the
 // Workbench shared agent: then the business knowledge travels apart so Workbench caches it, and the
 // channel profile decides model and max_tokens.
@@ -840,7 +845,8 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
   const agent = Boolean(anthropic && anthropic.isAgentStep);
   // Through the Workbench agent the JLR EPC lookups are offered too, with the reply rules that use them
   // (compose keeps its own prompt and the tools it was written for).
-  const tools = T.toolDefsFor(agent && !opts.system);
+  const tools = [...T.toolDefsFor(agent && !opts.system), ...(agent && opts.serverTools ? opts.serverTools : [])];
+  const maxTurns = opts.maxTurns || MAX_TOOL_TURNS;
   const prose = agent && !opts.system && (opts.output ? opts.output === "prose" : PO.enabled());
   const system = prose ? SYSTEM_PROSE : agent ? (opts.system || SYSTEM_EPC) : (opts.system || SYSTEM) + "\n\n" + K.block();
   const knowledge = agent ? K.block() : null;
@@ -909,6 +915,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       `<seed_context>\n${untag(stripInvisible(JSON.stringify(seed, null, 2)))}\n</seed_context>\n\n` +
       styleBlock +
       (opts.quick || "") +
+      (opts.deep || "") +
       (prose ? "Investigate with the tools as needed, then write the <reply> and <internal> blocks." : "Investigate with the tools as needed, then produce the final JSON.");
     firstContent = textWith(media.manifest);
     if (media.blocks.length) {
@@ -926,7 +933,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     // headroom is close to free; truncation costs a whole item.
     model: MODEL, max_tokens: 4096, system, tools, messages,
   });
-  for (let turn = 0; turn <= MAX_TOOL_TURNS; turn++) {
+  for (let turn = 0; turn <= maxTurns; turn++) {
     let msg;
     try { msg = await ask(); }
     catch (e) {
@@ -938,6 +945,11 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       media = null;
       msg = await ask();
     }
+    for (const b of msg.content || []) {
+      if (b.type === "server_tool_use") toolLog.push({ tool: b.name, ok: true, purpose: "", input: String((b.input && b.input.query) || ""), result: "" });
+    }
+    // The server is still running a web search: send the turn back so the model resumes it.
+    if (msg.stop_reason === "pause_turn") { messages.push({ role: "assistant", content: msg.content }); continue; }
     // A truncated response can never parse: say so plainly rather than blaming the model's output.
     if (msg.stop_reason === "max_tokens") {
       console.warn(`[engine] response hit max_tokens — the JSON will be incomplete (item draft will fall back)`);
@@ -981,7 +993,7 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       content.push({ type: "tool_result", tool_use_id: block.id, content: (prose ? PO.untag : String)(stripInvisible(capToolResult(out, capFor(block.name)))) });
     }
     const spent = opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups;
-    if (turn === MAX_TOOL_TURNS - 1 || spent) {
+    if (turn === maxTurns - 1 || spent) {
       content.push({ type: "text", text: prose ? "Tool budget exhausted. Write the <reply> and <internal> blocks now." : "Tool budget exhausted. Respond now with ONLY the final JSON object." });
     }
     messages.push({ role: "user", content });

@@ -418,6 +418,9 @@ ensureColumn("work_items", "cc_json", "TEXT");
 ensureColumn("work_items", "draft_flags", "TEXT");
 // 'prose' when the current draft came from the prose path: only then does Send wait on blocking questions.
 ensureColumn("work_items", "draft_output", "TEXT");
+// Dig deeper (AI parity Step D, 17 Oct 2026): the agent channel of the draft, "axle-deep" on a Dig deeper draft,
+// NULL on every other one. Also in sql\axle-drafts-channel.sql for Brad to run at the gate.
+ensureColumn("drafts", "channel", "TEXT");
 // Whole-conversation drafting (15 Oct 2026, conversation.js). messages.conversation_id: the Outlook
 // conversationId of the message, so a new inbound whose conversationId matches a stored message
 // attaches to that item even when the subject changed or the customer wrote from a second address.

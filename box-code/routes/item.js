@@ -37,6 +37,7 @@ const CC = require("../cc-list.js");               // the reply's Cc (list, sugg
 const DM = require("../draft-media.js");           // the customer files the latest draft could not be shown
 const ED = require("../assets/axle-editor.js");    // the reply editor's model: its first view is rendered here
 const RL = require("../return-label.js");          // "+ Return label": a MyParcel return label on the reply (gated)
+const DEEP = require("../deep.js");                // Dig deeper (Step D): the switch, the hint, the soft budget
 const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
 const VS = require("../voicemail-sheet.js");       // a voicemail's call back sheet: count, open issues, supplier (Change A2)
 const SV = require("../send-verify.js");           // Not sent: a reply Exchange left in Drafts, and its Try again
@@ -441,6 +442,11 @@ app.get("/item/:id", async (req, res) => {
   // The gate flags of the current draft (prose path): the yellow strip above the reply.
   let gateFlags = [];
   try { gateFlags = editable ? (JSON.parse(w.draft_flags || "[]") || []).filter((f) => f && f.gate) : []; } catch (e) { /* unreadable: none */ }
+  // Dig deeper (Step D): inbound replies with a draft or questions, never compose or voicemail; a quiet hint
+  // names why it may help. While a run is busy, the newest start says whether it is a Dig deeper.
+  const canDeep = DEEP.enabled() && !isCompose && !isVoicemail && !w.injection_flag;
+  const deepHint = canDeep && editable ? DEEP.hintFor(w, open, gateFlags) : null;
+  const deepRun = busy && db.prepare("SELECT action FROM audit_log WHERE work_item_id = ? AND action IN ('redraft_started', 'deep_started', 'ask_customer') ORDER BY id DESC LIMIT 1").get(w.id)?.action === "deep_started";
   // The editable reply: the human's saved edit if any, else the AI full draft, else the holding reply.
   const replyText = w.draft_edit != null ? w.draft_edit : (full ? full.body : (interim ? interim.body : ""));
   const atts = db.prepare("SELECT id, name, content_type, size FROM draft_attachments WHERE work_item_id = ? ORDER BY id").all(w.id);
@@ -780,7 +786,7 @@ app.get("/item/:id", async (req, res) => {
   // Drafting: the To line greyed, an info banner and a skeleton in the shape of the reply.
   const SK = ["24%", "92%", "86%", "64%", "", "40%", "90%", "78%", "56%"].map((x) => x ? `<span class="wb-skel" style="width:${x}"></span>` : '<span style="height:6px"></span>').join("");
   const draftingCard = busy ? `<section class="wb-card ax-reply" aria-label="${L("reply")}"><div class="ax-to"><span class="wb-label">${L("to_label")}</span><button type="button" class="wb-pillbtn" disabled>${esc(sendTo || t(lang, "recip_confirm_btn"))}${icon("chevron-down")}</button></div>
-    <div class="ax-wait">${banner("info", L("investigating_banner"))}<div class="wb-skel-rows" role="status" aria-label="${L("investigating_banner")}">${SK}</div></div></section>` : "";
+    <div class="ax-wait">${banner("info", L(deepRun ? "deep_banner" : "investigating_banner"))}<div class="wb-skel-rows" role="status" aria-label="${L(deepRun ? "deep_banner" : "investigating_banner")}">${SK}</div></div></section>` : "";
 
   // Closed: the reply as sent, read-only, with one line naming who it went to and when (office time).
   const shownText = (sentRow && sentRow.body) || replyText;
@@ -792,7 +798,7 @@ app.get("/item/:id", async (req, res) => {
 
   // The redraft line: one field (the existing feedback field, so /work and /send keep it) and
   // Redraft, which posts /work action=redraft in place; the drafting state then shows.
-  const redraft = editable ? `<div class="ax-redraft"><div class="ax-fbcol"><div class="wb-input wb-input--area ax-fb"><textarea name="feedback" rows="1" placeholder="${L(needsAnswers ? "answer_ph" : "feedback_ph")}" aria-label="${L("feedback_ph")}">${esc(w.feedback || "")}</textarea></div><div class="ax-rulerow"><label class="wb-hint ax-rulechk"><input type="checkbox" class="wb-check" name="suggest_rule" value="1">${L("suggest_rule")}</label>${teachBtn}</div></div><button type="submit" class="wb-btn" name="action" value="redraft" data-inline title="${L("redraft_hint")}">${L("redraft")}</button></div>`
+  const redraft = editable ? `<div class="ax-redraft"><div class="ax-fbcol"><div class="wb-input wb-input--area ax-fb"><textarea name="feedback" rows="1" placeholder="${L(needsAnswers ? "answer_ph" : "feedback_ph")}" aria-label="${L("feedback_ph")}">${esc(w.feedback || "")}</textarea></div><div class="ax-rulerow"><label class="wb-hint ax-rulechk"><input type="checkbox" class="wb-check" name="suggest_rule" value="1">${L("suggest_rule")}</label>${teachBtn}${deepHint ? `<span class="wb-hint ax-deephint">${L("deep_hint_" + deepHint)}</span>` : ""}</div></div><div class="ax-rdbtns"><button type="submit" class="wb-btn" name="action" value="redraft" data-inline title="${L("redraft_hint")}">${L("redraft")}</button>${canDeep ? `<button type="submit" class="wb-btn wb-btn--ghost ax-deep" name="action" value="deep" data-inline data-deep title="${L("deep_hint")}" aria-keyshortcuts="Control+Shift+Enter Meta+Shift+Enter">${icon("search")}<span>${L("deep")}</span></button>` : ""}</div></div>`
     : busy ? `<div class="ax-redraft"><div class="wb-input"><input disabled value="${esc(w.feedback || "")}" placeholder="${L("feedback_ph")}" aria-label="${L("feedback_ph")}"></div><button type="button" class="wb-btn" disabled>${L("redraft")}</button></div>` : "";
   // The previous round's draft, folded and read-only (plain text, never a field, so it cannot post).
   const prevDraft = supersededRow ? `<details class="wb-disclosure ax-prev"><summary>${L("prev_draft_summary")}${icon("chevron-right")}</summary><div><p class="wb-hint">${L("prev_draft_hint")}</p><div class="ax-msg">${replyParas(supersededRow.body)}</div></div></details>` : "";
@@ -988,6 +994,16 @@ app.post("/item/:id/work", (req, res) => {
     db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
     audit(req.user.tailscale_login, "ask_customer", w.id, null);
     setImmediate(() => runRedraft(w.id, req.user.tailscale_login, { askCustomer: true }));
+  }
+
+  if (req.body.action === "deep" && w.status !== "investigating" && DEEP.enabled() && w.origin !== "compose" && !SG.isVoicemailItem(w) && !w.injection_flag) {
+    // Dig deeper (Step D): the feedback goes along as staff input exactly as on Redraft, but is not a Teach
+    // candidate (it asks for more care, it does not state a rule). Soft budget: an audit row, never a stop.
+    const login = req.user.tailscale_login;
+    db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
+    audit(login, "deep_started", w.id, null);
+    DEEP.checkBudget(db, audit, login);
+    setImmediate(() => runRedraft(w.id, login, { deep: true }));
   }
 
   if (req.body.action === "redraft" && w.status !== "investigating") {

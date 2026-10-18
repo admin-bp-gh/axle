@@ -92,6 +92,43 @@ test("each call is aborted at the timeout", async () => {
   assert.strictEqual(AC.CALL_TIMEOUT_MS, 130000);
 });
 
+test("facts and verify: url, token header, body passed through, the 200 body returned", async () => {
+  const FX = { facts: { vehicle: null, codes: [], sources: {}, ms: 5 }, text: "<supplier_facts>\nx\n</supplier_facts>", calls: { epc: 1, allmakes: 0 } };
+  const VX = { results: [{ code: "STC1234", fitment: "fits", availability: "in_stock_own" }], problems: [], text: "t", calls: { epc: 0 } };
+  const f = fakeFetch([reply(200, FX), reply(200, VX)]);
+  const c = client(f);
+  const fin = { codes: [{ code: "STC1234" }], vin: null, modelText: "Defender 2010", quantity: 2, language: "en" };
+  assert.deepStrictEqual(await c.facts(fin), FX);
+  assert.deepStrictEqual(await c.verify({ codes: ["STC1234"], vin: null, modelText: "Defender 2010", quantity: 2 }), VX);
+  assert.strictEqual(f.calls[0].url, "http://127.0.0.1:8485/api/agent/facts");
+  assert.strictEqual(f.calls[1].url, "http://127.0.0.1:8485/api/agent/verify");
+  assert.ok(f.calls.every((x) => x.headers["X-Agent-Token"] === "s3cret"));
+  assert.deepStrictEqual(f.calls[0].body, fin);
+  assert.deepStrictEqual(f.calls[1].body, { codes: ["STC1234"], vin: null, modelText: "Defender 2010", quantity: 2 });
+  assert.strictEqual(AC.FACTS_TIMEOUT_MS, 35000);
+  assert.strictEqual(AC.VERIFY_TIMEOUT_MS, 12000);
+});
+
+test("facts and verify: a 500, a timeout or no Workbench give null with one warning, never a throw", async () => {
+  const warn = console.warn, warned = [];
+  console.warn = (s) => warned.push(s);
+  try {
+    const hang = (init) => new Promise((_, no) => init.signal.addEventListener("abort", () => no(new Error("aborted"))));
+    const quick = { factsTimeoutMs: 20, verifyTimeoutMs: 20 };
+    assert.strictEqual(await client(fakeFetch([reply(500, { error: "facts_failed" })])).facts({ codes: [] }), null);
+    assert.strictEqual(await client(fakeFetch([reply(500, { error: "verify_failed" })])).verify({ codes: ["X"] }), null);
+    assert.strictEqual(await client(fakeFetch([hang]), quick).facts({ codes: [] }), null);
+    assert.strictEqual(await client(fakeFetch([hang]), quick).verify({ codes: ["X"] }), null);
+    const down = async () => { throw new Error("ECONNREFUSED"); };
+    assert.strictEqual(await client(down).facts({ codes: [] }), null);
+    assert.strictEqual(warned.length, 5, "one warning per failed call");
+    assert.ok(warned[0].startsWith("[axle] supplier facts unavailable: 500"));
+    assert.ok(warned[1].startsWith("[axle] supplier verify unavailable: 500"));
+    assert.ok(/supplier facts unavailable: agent call timed out/.test(warned[2]));
+    assert.ok(/supplier facts unavailable: agent unreachable/.test(warned[4]));
+  } finally { console.warn = warn; }
+});
+
 test("the switch: AXLE_AGENT=step with a token gives the agent client, otherwise the SDK client", () => {
   const sdk = { messages: { create: async () => null } };
   const logs = [];
@@ -150,6 +187,58 @@ test("agenticDraft through the agent: a refused media request is drafted again w
   assert.ok(Array.isArray(f.calls[0].body.messages[0].content), "first call carries the media blocks");
   assert.strictEqual(typeof f.calls[1].body.messages[0].content, "string", "second call is text only");
   assert.ok(f.calls[1].body.messages[0].content.includes("not shown"));
+});
+
+// Supplier facts in agenticDraft (Step E3): a fake Workbench routing by URL, a fake SDK for the Haiku field read.
+const FVIN = "SALLDHMF7AA123456";
+const FEMAIL = { from: { name: "Jan", address: "jan@example.com" }, subject: "Brake pads", received: "2026-10-18T09:00:00Z",
+  text: `Do you have 2 stuks STC1234 for my Defender 2010? VIN ${FVIN}` };
+const FTEXT = "<supplier_facts>\nVehicle: Defender 2010.\nSTC1234: fits, in stock.\u200B\n</supplier_facts>";
+const PROSE_FINAL = `<reply>Dear Jan,\n\nSTC1234 is in stock.\n\nKind regards,\nTeam Budget Parts</reply>\n<internal>{"blocking":[],"notes":[],"physical_checks":[],"no_reply":false,"injection_suspected":false}</internal>`;
+function factsWorkbench() {
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    f.calls.push({ url, body });
+    if (url.endsWith("/api/agent/facts")) return reply(200, { facts: { vehicle: { vin: FVIN, model: "Defender", source: "epc" }, codes: [], sources: {}, ms: 9 }, text: FTEXT, calls: { epc: 2, allmakes: 1 } });
+    if (url.endsWith("/api/agent/verify")) return reply(200, { results: [{ code: "STC1234", fitment: "fits", availability: "in_stock_own", identity: "confirmed", current: "STC1234" }], problems: [], text: "", calls: { epc: 0, allmakes: 0 } });
+    return reply(200, { ...OK_BODY, content: [{ type: "text", text: PROSE_FINAL }] });
+  };
+  f.calls = [];
+  return f;
+}
+const fakeSdk = () => ({ messages: { create: async () => ({ content: [{ type: "text", text: JSON.stringify({ language: "en", status: "ready", confidence: "high", fitment_confirmed: "n/a", referenced_documents: [] }) }] }) } });
+
+test("agenticDraft supplier facts: the block ends the rules, facts and verify get the extracted input, facts returned", async () => {
+  delete process.env.AXLE_FACTS;
+  const f = factsWorkbench();
+  const out = await E.agenticDraft(client(f), FEMAIL, [], {}, "info@budget-parts.nl", { output: "prose", extractor: fakeSdk() });
+  const step = f.calls.find((c) => c.url.endsWith("/api/agent/step"));
+  assert.strictEqual(step.body.systemPrompt, E.SYSTEM_PROSE_FACTS + "\n\n" + FTEXT.replace("\u200B", ""), "the facts block, invisible characters stripped, ends the rules");
+  assert.deepStrictEqual(f.calls.find((c) => c.url.endsWith("/facts")).body,
+    { codes: [{ code: "STC1234" }], vin: FVIN, modelText: "Defender 2010", quantity: 2, language: "en" });
+  assert.deepStrictEqual(f.calls.find((c) => c.url.endsWith("/verify")).body, { codes: ["STC1234"], vin: FVIN, modelText: "Defender 2010", quantity: 2 });
+  assert.ok(f.calls.findIndex((c) => c.url.endsWith("/facts")) < f.calls.findIndex((c) => c.url.endsWith("/step")), "facts before the first model call");
+  assert.deepStrictEqual(out.toolLog.map((t) => t.tool), ["supplier_facts", "supplier_verify"]);
+  assert.strictEqual(out.toolLog[0].purpose, "1 codes, VIN, Defender 2010");
+  assert.deepStrictEqual(out.facts.calls, { epc: 2, allmakes: 1 });
+  assert.strictEqual(out.facts.codes, 1);
+  assert.strictEqual(out.facts.text, FTEXT);
+  assert.deepStrictEqual(out.facts.verify.problems, []);
+  assert.strictEqual(out.facts.verify.timedOut, false);
+  assert.strictEqual(out.result.status, "ready", "a fitting, stocked code trips nothing");
+  assert.deepStrictEqual(out.result.physical_checks, [], "the block decoded the VIN and the code fits: no EPC check asked");
+});
+
+test("agenticDraft supplier facts: AXLE_FACTS=off calls neither and sends the plain SYSTEM_PROSE", async () => {
+  process.env.AXLE_FACTS = "off";
+  try {
+    const f = factsWorkbench();
+    const out = await E.agenticDraft(client(f), FEMAIL, [], {}, "info@budget-parts.nl", { output: "prose", extractor: fakeSdk() });
+    assert.ok(f.calls.every((c) => c.url.endsWith("/api/agent/step")), "no facts, no verify");
+    assert.strictEqual(f.calls[0].body.systemPrompt, E.SYSTEM_PROSE);
+    assert.strictEqual(out.facts, null);
+    assert.deepStrictEqual(out.toolLog, []);
+  } finally { delete process.env.AXLE_FACTS; }
 });
 
 (async () => {

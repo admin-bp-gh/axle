@@ -5,6 +5,7 @@
 const assert = require("assert");
 process.env.AXLE_DB = ":memory:";
 delete process.env.AXLE_OUTPUT;
+process.env.AXLE_FACTS = "off";   // the supplier facts path (Step E3) has its own tests in agent-client.test.js
 const AC = require("./agent-client.js");
 const E = require("./engine.js");
 const DEEP = require("./deep.js");

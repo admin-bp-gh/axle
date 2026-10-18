@@ -18,6 +18,11 @@
 // POST /api/agent/tool with the same token, cut at 30 s; a refused or failed call throws, a failed lookup
 // comes back as its { error } result.
 //
+// facts(input) and verify(input) (AI parity Step E3) call POST /api/agent/facts (the <supplier_facts> block
+// for the codes, VIN and model Axle found before drafting, cut at 35 s) and POST /api/agent/verify (the codes
+// a draft names, checked, cut at 12 s). Both are optional extras: a non-200, a timeout or an unreachable
+// Workbench gives null after one warning, never a throw, and the draft goes ahead without them.
+//
 // draftingClient(sdk) is the one switch: AXLE_AGENT=step with AGENT_TOKEN set gives the agent client,
 // anything else gives back the SDK client unchanged. Haiku calls (classify, translate) never use it.
 
@@ -25,6 +30,8 @@ const DEFAULT_URL = "http://127.0.0.1:8485";   // Workbench's WORKBENCH_BIND:WOR
 const CHANNEL = "axle-draft";
 const CALL_TIMEOUT_MS = 130000;
 const TOOL_TIMEOUT_MS = 30000;
+const FACTS_TIMEOUT_MS = 35000;   // Workbench cuts the facts gather at 30 s
+const VERIFY_TIMEOUT_MS = 12000;  // and verify at 10 s with a vehicle
 const BUSY_WAIT_MS = 2000;
 
 const roundOf = (messages) => 1 + (messages || []).filter((m) => m && m.role === "assistant").length;
@@ -37,10 +44,12 @@ function stepError(message, status, code) {
 }
 
 function createAgentClient({ baseUrl = DEFAULT_URL, token, channel = CHANNEL, fetchImpl = globalThis.fetch,
-  timeoutMs = CALL_TIMEOUT_MS, busyWaitMs = BUSY_WAIT_MS } = {}) {
+  timeoutMs = CALL_TIMEOUT_MS, busyWaitMs = BUSY_WAIT_MS, factsTimeoutMs = FACTS_TIMEOUT_MS, verifyTimeoutMs = VERIFY_TIMEOUT_MS } = {}) {
   const base = String(baseUrl).replace(/\/+$/, "");
   const url = base + "/api/agent/step";
   const toolUrl = base + "/api/agent/tool";
+  const factsUrl = base + "/api/agent/facts";
+  const verifyUrl = base + "/api/agent/verify";
 
   async function post(body, target = url, limitMs = timeoutMs) {
     const ctrl = new AbortController();
@@ -105,7 +114,21 @@ function createAgentClient({ baseUrl = DEFAULT_URL, token, channel = CHANNEL, fe
     return r.data.result;
   }
 
-  return { isAgentStep: true, channel, url, messages: { create }, runTool };
+  // The parsed body on 200; null with one warning on anything else.
+  async function optional(what, target, limitMs, input) {
+    try {
+      const r = await post(JSON.stringify(input), target, limitMs);
+      if (r.status === 200) return r.data;
+      console.warn(`[axle] supplier ${what} unavailable: ${r.status} ${r.data.error || r.text.slice(0, 120)}`);
+    } catch (e) {
+      console.warn(`[axle] supplier ${what} unavailable: ${e.message}`);
+    }
+    return null;
+  }
+  const facts = (input) => optional("facts", factsUrl, factsTimeoutMs, input);
+  const verify = (input) => optional("verify", verifyUrl, verifyTimeoutMs, input);
+
+  return { isAgentStep: true, channel, url, messages: { create }, runTool, facts, verify };
 }
 
 let announced = false;
@@ -123,4 +146,4 @@ function draftingClient(sdk, env = process.env, log = console.log) {
   return client;
 }
 
-module.exports = { createAgentClient, draftingClient, roundOf, DEFAULT_URL, CHANNEL, CALL_TIMEOUT_MS, TOOL_TIMEOUT_MS };
+module.exports = { createAgentClient, draftingClient, roundOf, DEFAULT_URL, CHANNEL, CALL_TIMEOUT_MS, TOOL_TIMEOUT_MS, FACTS_TIMEOUT_MS, VERIFY_TIMEOUT_MS };

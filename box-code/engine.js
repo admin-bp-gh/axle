@@ -119,7 +119,7 @@ const SYSTEM = [
 // decoded in EPC before anyone is asked about engine or gearbox), the VIN exception in the CONFIDENCE GATE
 // (an EPC applicableToVin=true confirms a part for that VIN) and a new rule for a part SAP does not have
 // (look it up in EPC and say it is not stocked but can be ordered, never stay silent about it).
-const VIN_RULE_EPC = "VIN: when the customer gives a VIN (17 characters, SAL... for Land Rover), call epc_vin_decode FIRST. It returns what JLR's own parts catalogue (EPC) records for that vehicle: model, engine, transmission, hand of drive, body and plant. These are facts from JLR, not the customer's claims: never ask the customer, or the salesperson, anything the decode answers, and you may write them as what JLR's catalogue lists for their vehicle. To check a part against the VIN, call epc_part_lookup with the code and the VIN: state that a part fits their vehicle only when it returned applicableToVin=true for that part, or when our own fitment data (U_Tag_Model) clearly matches the decoded vehicle; otherwise offer it as a suggestion to confirm and add one confirmation question. If epc_vin_decode fails or returns found=false, claim nothing from the VIN and add a physical_check asking the salesperson to verify the fitment against JLR EPC on that VIN before sending.";
+const VIN_RULE_EPC = "VIN: when the customer gives a VIN (17 characters, SAL... for Land Rover), call epc_vin_decode FIRST. It returns what JLR's own parts catalogue (EPC) records for that vehicle: model, engine, transmission, hand of drive, body and plant. These are facts from JLR, not the customer's claims: never ask the customer, or the salesperson, anything the decode answers, and you may write them as what the manufacturer's records list for their vehicle. To check a part against the VIN, call epc_part_lookup with the code and the VIN: state that a part fits their vehicle only when it returned applicableToVin=true for that part, or when our own fitment data (U_Tag_Model) clearly matches the decoded vehicle; otherwise offer it as a suggestion to confirm and add one confirmation question. If epc_vin_decode fails or returns found=false, claim nothing from the VIN and add a physical_check asking the salesperson to verify the fitment against JLR EPC on that VIN before sending.";
 const NOT_STOCKED_RULE = "PART NOT IN OUR CATALOGUE: when the customer asks for a part, or JLR's catalogue names one, that part_dossier cannot find in SAP, call epc_part_lookup (and epc_supersession when the number may have been replaced, then part_dossier on the latest number). If EPC knows the code, never leave it out of the reply: name the code with JLR's description and tell the customer it is not a stocked item but can be ordered. Give no price, lead time or availability for it (listPriceEur is JLR's list price, not ours) and add one question for the salesperson to quote price and lead time. If EPC does not know the code either, say plainly that we could not find that part number and ask the customer to check it.";
 const SYSTEM_EPC = SYSTEM
   .split("\n").map((line) => (line.startsWith("VIN: you CANNOT decode a VIN.") ? VIN_RULE_EPC : line)).join("\n")
@@ -129,6 +129,26 @@ const SYSTEM_EPC = SYSTEM
 // SYSTEM_PROSE: SYSTEM_EPC with the JSON output contract swapped for prose plus an <internal> block
 // (AXLE_OUTPUT=prose, AI parity Step B). Every reply rule is the same text.
 const SYSTEM_PROSE = PO.proseSystem(SYSTEM_EPC);
+// SYSTEM_EPC_FACTS: SYSTEM_EPC for a run that carries the <supplier_facts> block (AI parity Step E3). One rule
+// added after PART LOOKUP, and the confidence gate and VIN rule told the block can settle what EPC settles.
+// Each change must match exactly once, so a reworded rule stops the module loading instead of drifting.
+const SUPPLIER_FACTS_RULE = "SUPPLIER FACTS: <supplier_facts> in the system prompt is trusted reference prepared by Workbench before you started. For the codes it lists, its fitment verdict outranks part_dossier and part_finder fitment and its availability verdict outranks availability.state: in stock; orderable (not in stock, with the lead time the block gives, nothing else about how or where); not available (say so plainly); being confirmed (say we are confirming availability and add one blocking question). 'conditional' fitment: give the answer conditional on that fact and ask the customer for the VIN in the reply, unless the block already shows a decoded VIN. 'replaced by': tell the customer plainly the old number has been replaced by the new one. Never ask for a VIN the block already settles. Never name a supplier, wholesaler, distributor or catalogue, and never say how or from where we source a part.";
+function replaceOnce(s, find, repl) {
+  const n = s.split(find).length - 1;
+  if (n !== 1) throw new Error(`engine: SYSTEM_EPC_FACTS: "${find.slice(0, 60)}" matched ${n} times in SYSTEM_EPC (expected 1)`);
+  return s.replace(find, () => repl);
+}
+const SYSTEM_EPC_FACTS = (() => {
+  const lines = SYSTEM_EPC.split("\n");
+  const at = lines.filter((l) => l.startsWith("PART LOOKUP:"));
+  if (at.length !== 1) throw new Error(`engine: SYSTEM_EPC_FACTS: ${at.length} PART LOOKUP lines in SYSTEM_EPC (expected 1)`);
+  let s = lines.flatMap((l) => (l.startsWith("PART LOOKUP:") ? [l, SUPPLIER_FACTS_RULE] : [l])).join("\n");
+  s = replaceOnce(s, "unless epc_part_lookup with the customer's VIN returned applicableToVin=true for that part.",
+    "unless epc_part_lookup with the customer's VIN returned applicableToVin=true for that part, or unless <supplier_facts> says confirmed for that code and vehicle.");
+  return replaceOnce(s, "call epc_vin_decode FIRST.",
+    "the <supplier_facts> block already decodes a VIN found in the email; call epc_vin_decode only for a VIN that is not in it.");
+})();
+const SYSTEM_PROSE_FACTS = PO.proseSystem(SYSTEM_EPC_FACTS);
 
 // The <business_knowledge> block is NOT part of SYSTEM: agenticDraft appends K.block() per run, so
 // Teach Axle approvals reach the very next draft (reply and compose alike) without a restart.
@@ -616,7 +636,9 @@ const Q_SRC_FLAG = "The reply tells the customer how we source the part (highlig
 // stock-order item — usually NLA) means nothing about availability is knowable yet.
 // Per slot, like the claim gate: a 'check_first' part named in sendable text means nothing about
 // its availability is knowable, so that text is withdrawn rather than left to be sent.
-function applyAvailabilityGate(result, facts, flagMode) {
+// verify (Step E3): a code Workbench checked has its own availability verdict (applySupplierGate), so its
+// check_first does not trip here.
+function applyAvailabilityGate(result, facts, flagMode, verify) {
   if (!result || !facts || !facts.items || !facts.items.size) return result;
   const questions = new Set();
   for (const slot of ["draft", "interim_draft"]) {
@@ -625,7 +647,8 @@ function applyAvailabilityGate(result, facts, flagMode) {
     const upper = text.toUpperCase();
     let hit = null;
     for (const [code, f] of facts.items) {
-      if (f && f.state === "check_first" && upper.includes(String(code).toUpperCase())) { hit = f.label || code; break; }
+      if (f && f.state === "check_first" && upper.includes(String(code).toUpperCase())
+        && !(verify && verify.byCode.has(String(code).toUpperCase()))) { hit = f.label || code; break; }
     }
     if (!hit) continue;
     questions.add(`Check availability with the supplier for ${hit} before replying — it is out of stock and not a stock-order item, so no lead time can be promised (these are often NLA).`);
@@ -641,12 +664,18 @@ function applyAvailabilityGate(result, facts, flagMode) {
 // it just guarantees the salesperson is told to verify before sending.
 const VIN_IN_TEXT = /\b(?:SAL|SAJ)[A-HJ-NPR-Z0-9]{14}\b/i;
 // epcPartVins: VINs EPC confirmed a part for in this draft (epc_part_lookup with applicableToVin true, AI
-// parity Step A); the EPC check is then done and not asked of the salesperson again.
-function applyVinCheck(result, emailText, epcPartVins) {
+// parity Step A); the EPC check is then done and not asked of the salesperson again. verify (Step E3): the
+// same when the <supplier_facts> block decoded this VIN in EPC and every checked code the reply names fits it.
+function applyVinCheck(result, emailText, epcPartVins, verify) {
   if (!result) return result;
   const m = String(emailText || "").match(VIN_IN_TEXT);
   if (!m) return result;
   if (epcPartVins && epcPartVins.has(m[0].toUpperCase())) return result;
+  if (verify && verify.vehicle && verify.vehicle.source === "epc" && String(verify.vehicle.vin || "").toUpperCase() === m[0].toUpperCase()) {
+    const reply = `${result.draft || ""}\n${result.interim_draft || ""}`.toUpperCase();
+    const named = [...verify.byCode].filter(([code]) => reply.includes(code));
+    if (named.length && named.every(([, r]) => r.fitment === "fits")) return result;
+  }
   // Nothing drafted at all -> nothing to verify. withdrawn_draft counts: a draft the gates just
   // pulled is precisely the case where the salesperson most needs the EPC check.
   if (!result.draft && !result.interim_draft && !result.withdrawn_draft) return result;
@@ -678,6 +707,98 @@ function collectItemFacts(toolName, out, facts) {
     if (Array.isArray(out.items)) out.items.forEach(add);            // part_dossier
     if (Array.isArray(out.candidates)) out.candidates.forEach(add);  // part_finder
   } catch { /* facts are best-effort; never break a run */ }
+}
+
+// ---------- Supplier facts (AI parity Step E3) ----------
+// On the prose path Workbench prepares a <supplier_facts> block (POST /api/agent/facts) for the codes, VIN and
+// model found in the email before the first model call, and checks the codes the reply names (POST
+// /api/agent/verify) before the gates run. Codes follow Workbench's extractCodes (suppliers/codes.ts) exactly,
+// so both sides agree on what a code is: emails, links and #S orders dropped, 5 to 14 characters, a purely
+// numeric token only at exactly 6 digits, otherwise a letter and two digits and never an engine name (300TDI).
+// Three shapes are never part codes either: a Shopify order name written without its hash (S12345), a Dutch
+// postcode (2801AB) and a single letter before eight or more digits, which is a PO or reference number
+// (I214556349).
+const NOT_A_CODE = [/^S\d{5}$/, /^\d{4}[A-Z]{2}$/, /^[A-Z]\d{8,}$/];
+function extractCodes(text) {
+  const out = [], seen = new Set();
+  const cleaned = String(text || "").replace(/\S+@\S+/g, " ").replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/#S\d+/gi, " ");
+  for (const raw of cleaned.split(/[^A-Za-z0-9-]+/)) {
+    const t = raw.replace(/^-+|-+$/g, "").toUpperCase();
+    if (t.length < 5 || t.length > 14 || seen.has(t)) continue;
+    const digits = (t.match(/\d/g) || []).length, letters = (t.match(/[A-Z]/g) || []).length;
+    if (/^\d+$/.test(t) ? t.length !== 6 : letters < 1 || digits < 2 || /^\d{3}TDI$/.test(t)) continue;
+    if (NOT_A_CODE.some((re) => re.test(t))) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+const FAMILY_RE = /\b(range\s*rover(?:\s*(?:sport|evoque|velar|classic))?|discovery(?:\s*sport)?(?:\s*[1-5])?|disco(?:very)?\s*[1-5]|freelander(?:\s*[12])?|defender|series\s*(?:1|2a?|3|i{1,3}a?))\b/i;
+const YEAR_RE = /\b(19[89]\d|20[0-2]\d)\b/g;
+// The first model family named, as typed, with a year written within 40 characters after it (else before it).
+function modelTextOf(text) {
+  const s = String(text || "");
+  const m = FAMILY_RE.exec(s);
+  if (!m) return null;
+  const end = m.index + m[0].length;
+  const after = [...s.slice(end, end + 40).matchAll(YEAR_RE)][0];
+  const before = [...s.slice(Math.max(0, m.index - 40), m.index).matchAll(YEAR_RE)].pop();
+  const year = after || before;
+  return m[1].replace(/\s+/g, " ") + (year ? " " + year[1] : "");
+}
+const QTY_RES = [/\b(\d{1,3})\s*(?:x|st\.?|stuks?|pcs|pieces|units?)\b/i, /\bx\s*(\d{1,3})\b/i, /\b(?:qty|aantal)\s*:?\s*(\d{1,3})/i];
+// What /api/agent/facts is asked about: the codes in the email, the thread and the seed's part lookups, the
+// first VIN, the model (the email body, then the thread, then the subject) and the quantity the customer
+// asks for (1 when none is written).
+function extractFactsInput(email, history, seed) {
+  const emailText = `${(email && email.subject) || ""}\n${(email && email.text) || ""}`;
+  const historyText = (history || []).map((m) => (m && m.text) || "").join("\n");
+  const seedCodes = [...((seed && seed.partNumbers) || []), ...(seed && Array.isArray(seed.sapStock) ? seed.sapStock.map((r) => r && r.ItemCode) : [])];
+  const codes = extractCodes([emailText, historyText, ...seedCodes.filter(Boolean)].join("\n")).slice(0, 30).map((code) => ({ code }));
+  const vin = (`${emailText}\n${historyText}`.match(VIN_IN_TEXT) || [null])[0];
+  const modelText = modelTextOf(email && email.text) || modelTextOf(historyText) || modelTextOf(email && email.subject);
+  const q = QTY_RES.map((re) => re.exec((email && email.text) || "")).find(Boolean);
+  return { codes, vin: vin ? vin.toUpperCase() : null, modelText, quantity: (q && Number(q[1])) || 1 };
+}
+
+// Gate 2b (flag mode only): the codes the reply names, against Workbench's check of them. For a known vehicle
+// a no_fit or conditional verdict flags fitment, and so does an unknown one when the code is in our range
+// (inRange: we stock the asked code or its replacement). A code that cannot be ordered flags availability, and
+// so does an unknown availability when the code is in our range and our own stock does not cover the
+// quantity. A code outside our range with unknown verdicts trips nothing: the PART NOT IN OUR CATALOGUE rule
+// already has the reply say it is not stocked and ask the salesperson to quote it.
+const FITS = new Set(["fits", "fits_model"]);
+const VERDICT_WORD = { conditional: "it depends on the VIN or build", no_fit: "the catalogue says it does not fit" };
+// Our own stock covers the quantity, by the pre-fetched facts (verify carries no stock figures).
+function ownCovers(verify, code) {
+  const c = (verify.codes || []).find((x) => [x.asked, x.current].some((k) => String(k || "").toUpperCase() === code));
+  const a = c && c.availability;
+  return Boolean(a && a.own && a.own.gou + a.own.dra >= a.qty);
+}
+function applySupplierGate(result, ctx = {}) {
+  if (!result || !ctx.flagMode || !ctx.verify) return result;
+  const v = ctx.verify;
+  const questions = new Set();
+  for (const slot of ["draft", "interim_draft"]) {
+    const upper = String(result[slot] || "").toUpperCase();
+    if (!upper.trim()) continue;
+    for (const [code, r] of v.byCode) {
+      if (!upper.includes(code)) continue;
+      if (v.vehicleKnown && (r.fitment === "no_fit" || r.fitment === "conditional" || (r.fitment === "unknown" && r.inRange))) {
+        addFlag(result, "fitment", code, "The catalogue check did not confirm " + code + " for this vehicle.");
+        questions.add("Confirm " + code + " fits the customer's vehicle before sending: the catalogue check did not confirm it (" + (VERDICT_WORD[r.fitment] || "fitment unknown") + ").");
+      }
+      if (r.availability === "not_available") {
+        addFlag(result, "availability", code, code + " is out of stock and cannot be ordered.");
+        questions.add(code + " is not available: it is out of stock and cannot be ordered. Take it out of the reply or offer an alternative.");
+      } else if (r.availability === "unknown" && r.inRange && !ownCovers(v, code)) {
+        addFlag(result, "availability", code, "Availability of " + code + " could not be confirmed.");
+        questions.add("Check availability of " + code + " before sending: it is not in stock and could not be confirmed as orderable.");
+      }
+    }
+  }
+  for (const q of questions) holdInPlace(result, q);
+  return result;
 }
 
 // ---------- House style: no em dashes in customer-facing text ----------
@@ -800,8 +921,9 @@ function applyGates(result, ctx = {}) {
   // of withdrawing. Containment (injection) and the language gate keep their hard behaviour.
   let r = applyFitmentGate(applyContainment(result, ctx.senderAddr), ctx.flagMode);
   r = applyClaimGate(r, ctx);
-  r = applyAvailabilityGate(r, ctx.facts, ctx.flagMode);
-  r = applyVinCheck(r, ctx.emailText, ctx.epcPartVins);
+  r = applyAvailabilityGate(r, ctx.facts, ctx.flagMode, ctx.verify);
+  r = applySupplierGate(r, ctx);
+  r = applyVinCheck(r, ctx.emailText, ctx.epcPartVins, ctx.verify);
   r = applyActionClaimCheck(r, ctx.staffInput, ctx.flagMode);
   r = applyLanguageGate(r, ctx.language);
   // Last: the gates above may move text between slots, so style is applied to the final wording.
@@ -837,9 +959,14 @@ function applyGates(result, ctx = {}) {
 //   opts.serverTools - Anthropic server tools (web_search) added on the agent path. A long server-tool
 //                      turn stops with pause_turn and is sent back to resume. Each search is logged.
 //   opts.maxTurns    - the tool-turn cap, MAX_TOOL_TURNS when absent.
+// Supplier facts (Step E3): on the prose path in reply mode, when the client has facts() (the agent client)
+// and AXLE_FACTS is not "off", the <supplier_facts> block joins the system prompt and the reply's codes are
+// verified before the gates. The return value then carries facts (timings, calls, the block, verify).
 // anthropic is the SDK client, or agent-client.js's client (isAgentStep) when drafts go through the
 // Workbench shared agent: then the business knowledge travels apart so Workbench caches it, and the
 // channel profile decides model and max_tokens.
+// Calls that count against opts.maxLookups: not the exemplar pick nor the supplier facts and verify.
+const isLookup = (x) => x.tool !== "style_exemplars" && !x.tool.startsWith("supplier_");
 async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {}) {
   const toolLog = [];
   const agent = Boolean(anthropic && anthropic.isAgentStep);
@@ -848,7 +975,9 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
   const tools = [...T.toolDefsFor(agent && !opts.system), ...(agent && opts.serverTools ? opts.serverTools : [])];
   const maxTurns = opts.maxTurns || MAX_TOOL_TURNS;
   const prose = agent && !opts.system && (opts.output ? opts.output === "prose" : PO.enabled());
-  const system = prose ? SYSTEM_PROSE : agent ? (opts.system || SYSTEM_EPC) : (opts.system || SYSTEM) + "\n\n" + K.block();
+  const factsOn = prose && !opts.userContent && typeof anthropic.facts === "function" && process.env.AXLE_FACTS !== "off";
+  let system = factsOn ? SYSTEM_PROSE_FACTS : prose ? SYSTEM_PROSE : agent ? (opts.system || SYSTEM_EPC) : (opts.system || SYSTEM) + "\n\n" + K.block();
+  let fin = null, fx = null, factsInfo = null;
   const knowledge = agent ? K.block() : null;
   const senderAddr = opts.senderAddr || (email && email.from && email.from.address) || "";
   // The customer's SAP price list, so part_dossier / part_finder price every part on it (tier pricing).
@@ -875,11 +1004,28 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     const split = PO.splitProse(text);
     const fields = await PO.extractFields(opts.extractor || new (require("@anthropic-ai/sdk"))(),
       { reply: split.reply, toolLog, strip: stripInvisible, parse: balancedObjects });
+    const result = PO.buildProseResult(split, fields, gateCtx.language);
+    // The codes the reply names, checked by Workbench before the gates read them (Step E3).
+    const named = factsOn ? extractCodes(result.draft || result.interim_draft || "") : [];
+    if (named.length) {
+      const t0 = Date.now();
+      const v = await anthropic.verify({ codes: named, vin: fin.vin, modelText: fin.modelText, quantity: fin.quantity });
+      const ms = Date.now() - t0;
+      if (v) gateCtx.verify = { byCode: new Map(v.results.map((r) => [r.code.toUpperCase(), r])), problems: v.problems,
+        vehicleKnown: Boolean(fin.vin || fin.modelText), quantity: fin.quantity,
+        vehicle: fx && fx.facts && fx.facts.vehicle, codes: fx && fx.facts && fx.facts.codes };
+      factsInfo.verify = v ? { ms, problems: v.problems, calls: v.calls, timedOut: false } : { ms, problems: [], calls: null, timedOut: true };
+      toolLog.push({ tool: "supplier_verify", ok: Boolean(v), purpose: factsPurpose(named.length, fin),
+        input: named.join(", ").slice(0, 200), result: v ? `${ms} ms, calls ${JSON.stringify(v.calls)}` : "unavailable" });
+    }
     // The field read only sees the reply and a trimmed log, so a "confirmed" fitment must be backed by a
-    // lookup that can confirm one (EPC applicableToVin for a VIN, or our own part data); otherwise it fails closed.
-    if (fields.fitment_confirmed === true && !gateCtx.epcPartVins.size
-      && !toolLog.some((t) => t.ok && (t.tool === "part_dossier" || t.tool === "part_finder"))) fields.fitment_confirmed = false;
-    return applyGates(PO.buildProseResult(split, fields, gateCtx.language), gateCtx);
+    // lookup that can confirm one (EPC applicableToVin for a VIN, our own part data, or Workbench's check of
+    // every code the reply names for a known vehicle); otherwise it fails closed.
+    const vf = gateCtx.verify;
+    const verifiedFit = Boolean(vf && vf.vehicleKnown && named.length && named.every((c) => vf.byCode.has(c) && FITS.has(vf.byCode.get(c).fitment)));
+    if (result.fitment_confirmed === true && !gateCtx.epcPartVins.size && !verifiedFit
+      && !toolLog.some((t) => t.ok && (t.tool === "part_dossier" || t.tool === "part_finder"))) result.fitment_confirmed = false;
+    return applyGates(result, gateCtx);
   };
   let firstContent, media = null, textWith = null;
   if (opts.userContent) {
@@ -924,6 +1070,21 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
         ...media.blocks.map((b, i) => (i === last ? { ...b, cache_control: { type: "ephemeral" } } : b))];
     }
   }
+  // The <supplier_facts> block (Step E3): asked for once, before the first model call, and added to the rules.
+  if (factsOn) {
+    fin = extractFactsInput(email, history, seed);
+    factsInfo = { ms: null, calls: null, codes: fin.codes.length, vin: Boolean(fin.vin), modelText: fin.modelText, text: null, verify: null };
+    if (fin.codes.length || fin.vin || fin.modelText) {
+      const t0 = Date.now();
+      fx = await anthropic.facts({ codes: fin.codes, vin: fin.vin, modelText: fin.modelText, quantity: fin.quantity,
+        language: opts.exemplars && opts.exemplars.language === "nl" ? "nl" : "en" });
+      const ms = Date.now() - t0;
+      if (fx && typeof fx.text === "string" && fx.text.trim()) system += "\n\n" + stripInvisible(fx.text);
+      Object.assign(factsInfo, { ms, calls: fx && fx.calls, text: fx && fx.text });
+      toolLog.push({ tool: "supplier_facts", ok: Boolean(fx), purpose: factsPurpose(fin.codes.length, fin),
+        input: fin.codes.map((c) => c.code).join(", ").slice(0, 200), result: fx ? `${ms} ms, calls ${JSON.stringify(fx.calls)}` : "unavailable" });
+    }
+  }
   const messages = [{ role: "user", content: firstContent }];
   const ask = () => anthropic.messages.create(agent ? { system, extra_knowledge: knowledge, tools, messages } : {
     // 2026-08-12: raised 2000 -> 4096. Requiring an interim on every hold made replies longer
@@ -963,12 +1124,12 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
     }
     if (msg.stop_reason !== "tool_use" || !uses.length) {
       const text = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-      return { result: await finish(text), toolLog };
+      return { result: await finish(text), toolLog, facts: factsInfo };
     }
     messages.push({ role: "assistant", content: msg.content });
     const content = [];
     for (const block of uses) {
-      if (opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups) {
+      if (opts.maxLookups != null && toolLog.filter(isLookup).length >= opts.maxLookups) {
         content.push({ type: "tool_result", tool_use_id: block.id, is_error: true, content: "Lookup budget used up. Answer now with what you have." });
         continue;
       }
@@ -992,14 +1153,16 @@ async function agenticDraft(anthropic, email, history, seed, mailbox, opts = {})
       // D1: tool results are untrusted too (poisoned SAP/Shopify fields) - sanitise.
       content.push({ type: "tool_result", tool_use_id: block.id, content: (prose ? PO.untag : String)(stripInvisible(capToolResult(out, capFor(block.name)))) });
     }
-    const spent = opts.maxLookups != null && toolLog.filter((x) => x.tool !== "style_exemplars").length >= opts.maxLookups;
+    const spent = opts.maxLookups != null && toolLog.filter(isLookup).length >= opts.maxLookups;
     if (turn === maxTurns - 1 || spent) {
       content.push({ type: "text", text: prose ? "Tool budget exhausted. Write the <reply> and <internal> blocks now." : "Tool budget exhausted. Respond now with ONLY the final JSON object." });
     }
     messages.push({ role: "user", content });
   }
-  return { result: await finish(""), toolLog };
+  return { result: await finish(""), toolLog, facts: factsInfo };
 }
+// The purpose line of a supplier_facts / supplier_verify log row.
+const factsPurpose = (n, fin) => `${n} codes` + (fin.vin ? ", VIN" : "") + (fin.modelText ? ", " + fin.modelText : "");
 
 module.exports = {
   MODEL, CLASSIFY_MODEL, SYSTEM, SYSTEM_EPC, SYSTEM_PROSE, threadGroup, classify, gatherSeed, replyAudience, parseResult, agenticDraft,
@@ -1015,4 +1178,6 @@ module.exports = {
   applyLanguageGate, applyActionClaimCheck, textLanguage, ACTION_CLAIM_PATTERNS,
   // AI parity Step B (prose path):
   balancedObjects, addFlag, holdInPlace,
+  // AI parity Step E3 (supplier facts):
+  SUPPLIER_FACTS_RULE, SYSTEM_EPC_FACTS, SYSTEM_PROSE_FACTS, extractFactsInput, extractCodes, applySupplierGate,
 };

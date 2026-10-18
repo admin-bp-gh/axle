@@ -15,8 +15,9 @@
 const EXTRACT_MODEL = "claude-haiku-4-5-20251001";
 
 const enabled = (env = process.env) => String(env.AXLE_OUTPUT || "").toLowerCase() === "prose";
-// Untrusted text (email, thread, seed, tool results) must not carry a tag the drafter's own block uses.
-const untag = (s) => String(s).replace(/<(\/?)(internal|reply)\s*>/gi, "[$1$2]");
+// Untrusted text (email, thread, seed, tool results) must not carry a tag the drafter's own block uses, nor
+// the <supplier_facts> tag of Workbench's trusted block in the system prompt (Step E3).
+const untag = (s) => String(s).replace(/<(\/?)(internal|reply|supplier_facts)\s*>/gi, "[$1$2]");
 
 // The rules speak of the JSON fields in many places; rewriting each would fork the two prompts. One
 // mapping paragraph tells the model how those words land in the prose format, and the two lines that

@@ -386,6 +386,8 @@
    would leave its lower half under the keyboard. */
 .wb-page { box-sizing: border-box; position: relative; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-md); line-height: var(--lh); }
 .wb-pgopen > :not(.wb-page, .wb-toaster, .wb-sheet, .wb-scrim, .wb-menu) { display: none !important; }
+/* A page opened from a page: only the topmost shows (portals append in order). */
+.wb-pgopen > .wb-page:has(~ .wb-page) { display: none !important; }
 .wb-page__hd {
   box-sizing: border-box; position: sticky; top: 0; z-index: var(--z-header); display: flex; align-items: center; gap: var(--s2);
   min-height: var(--bar-h); padding: calc(4px + env(safe-area-inset-top)) 8px 4px;

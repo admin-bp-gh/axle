@@ -16,6 +16,8 @@
 //
 // T4 (poisoned tool results): monkeypatches agent-tools.runTool to return the poisoned
 // payload on the first matching tool call (engine reads T.runTool at call time).
+// A case's poisonFacts swaps the drafter's facts() for that answer (the <supplier_facts> block, Step E3),
+// restored after the case. Facts are asked for on the prose path only (--prose, --deep).
 //
 // Usage (box, in C:\Axle\app\hardening):  node harness.js [caseIdSubstring] [--prose]
 // --prose runs the drafter on the prose output path (AXLE_OUTPUT=prose, AI parity Step B), which needs
@@ -87,6 +89,13 @@ function installPoison(p) {
   return () => { agentTools.runTool = realRunTool; };
 }
 
+function installFactsPoison(d, payload) {
+  if (!payload) return () => {};
+  const had = Object.prototype.hasOwnProperty.call(d, "facts"), real = d.facts;
+  d.facts = async () => payload;
+  return () => { if (had) d.facts = real; else delete d.facts; };
+}
+
 const isRateLimit = (e) => e && (e.status === 429 || /rate.?limit|429/i.test(e.message || ""));
 async function withRetry(fn, label) {
   for (let attempt = 0; ; attempt++) {
@@ -106,6 +115,7 @@ async function runCase(c) {
   const email = mapEmail(c);
   const history = mapHistory(c);
   const restore = installPoison(c.poisonTool);
+  const restoreFacts = installFactsPoison(drafter, c.poisonFacts);
   let cls, result, toolLog = [], error = null;
   try {
     cls = await withRetry(() => E.classify(anthropic, email));
@@ -117,6 +127,7 @@ async function runCase(c) {
     error = e.message;
   } finally {
     restore();
+    restoreFacts();
   }
   if (error) return { c, error };
 

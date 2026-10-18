@@ -176,5 +176,101 @@ const clean = applyGates({
 }, { senderAddr: "someone@example.com", facts, emailText: "where is my order?" });
 ok(clean.status === "ready" && clean.confidence === "high", "a clean draft passes every gate untouched");
 
+// ---------------------------------------------------------------- Supplier facts (AI parity Step E3)
+const E3 = require("./engine.js");
+const FVIN = "SALLDHMF7AA123456";
+
+// extractFactsInput: Workbench's code rules, the VIN, the model and the quantity.
+let fi = E3.extractFactsInput(
+  { subject: "Parts STC1234", text: `I need 2 stuks LR017952, 123456 and 12345 for my Defender from 2010 (300TDI). Order #S12345, mail jan.LR012345@example.nl, see https://www.roverparts.eu/products/ERR5205 or www.example.com/ANR1234. VIN ${FVIN}` },
+  [{ text: "earlier: NTC1234 and -STC500-" }], { partNumbers: ["ESR4238"], sapStock: [{ ItemCode: "FTC5201" }] });
+ok(JSON.stringify(fi.codes.map((c) => c.code)) === JSON.stringify(["STC1234", "LR017952", "123456", "NTC1234", "STC500", "ESR4238", "FTC5201"]),
+  "codes: first appearance, a 6-digit numeric kept, 12345, 300TDI, the email, the links and #S12345 dropped, dashes trimmed, seed codes last: " + JSON.stringify(fi.codes));
+ok(fi.vin === FVIN, "the VIN");
+ok(fi.modelText === "Defender 2010", "family plus a year within 40 characters: " + fi.modelText);
+ok(fi.quantity === 2, "'2 stuks' is a quantity of 2");
+fi = E3.extractFactsInput({ subject: "", text: "Front pads x3 for my Range Rover Sport please" }, [], {});
+ok(fi.modelText === "Range Rover Sport" && fi.quantity === 3 && fi.vin === null && !fi.codes.length, "Range Rover Sport without a year, x3, no VIN: " + JSON.stringify(fi));
+fi = E3.extractFactsInput({ subject: "Hello", text: "Do you ship to Belgium?" }, [], { sapStock: { error: "down" } });
+ok(fi.quantity === 1 && fi.modelText === null && fi.vin === null && !fi.codes.length, "nothing found: quantity 1, the rest empty");
+ok(E3.extractFactsInput({ subject: "", text: "Freelander 2 front discs" }, [{ text: "a 2008 Discovery 3" }], {}).modelText === "Freelander 2", "the email before the thread");
+const shapes = E3.extractCodes("Order S12345 to 2801AB, PO I214556349; parts LR089625, 1A621960 and STC4380");
+ok(JSON.stringify(shapes) === JSON.stringify(["LR089625", "1A621960", "STC4380"]), "an order name without its hash, a Dutch postcode and a letter before 8+ digits dropped, real codes kept: " + JSON.stringify(shapes));
+
+// applySupplierGate: flag mode only, one question per distinct problem.
+const held = (draft) => ({ status: "ready", draft, interim_draft: "", questions_for_salesperson: [], physical_checks: [], confidence: "high", flags: [] });
+const vctx = (results, extra = {}) => ({ flagMode: true, verify: { byCode: new Map(results.map((x) => [x.code, x])), problems: [], vehicleKnown: true, quantity: 1, vehicle: null, codes: [], ...extra } });
+const vres = (code, fitment, availability, inRange = true) => ({ code, fitment, availability, inRange });
+r = E3.applySupplierGate(held("STC1234 fits your Defender and is in stock."), vctx([vres("STC1234", "fits", "in_stock_own")]));
+ok(r.status === "ready" && !r.flags.length && !r.questions_for_salesperson.length, "fits and in stock: nothing trips");
+r = E3.applySupplierGate(held("STC1234 is orderable."), vctx([vres("STC1234", "fits_model", "orderable")]));
+ok(r.status === "ready" && !r.flags.length, "fits_model and orderable: nothing trips");
+r = E3.applySupplierGate(held("STC1234 fits your Defender."), vctx([vres("STC1234", "no_fit", "in_stock_own")]));
+ok(r.status === "awaiting_input" && r.interim_draft.includes("STC1234") && r.draft === "", "no_fit with a vehicle: held in place");
+ok(r.flags.length === 1 && r.flags[0].gate === "fitment" && r.flags[0].fragment === "STC1234", "no_fit: one fitment flag on the code");
+ok(r.questions_for_salesperson.length === 1 && /the catalogue says it does not fit/.test(r.questions_for_salesperson[0]), "no_fit: the blocking question names the verdict");
+r = E3.applySupplierGate(held("STC1234 should suit it."), vctx([vres("STC1234", "conditional", "in_stock_own")]));
+ok(/it depends on the VIN or build/.test(r.questions_for_salesperson[0]), "conditional: its own wording");
+r = E3.applySupplierGate(held("STC1234 is in stock."), vctx([vres("STC1234", "unknown", "in_stock_own")], { vehicleKnown: false }));
+ok(r.status === "ready" && !r.flags.length, "unknown fitment without a vehicle: nothing trips on fitment");
+r = E3.applySupplierGate(held("STC1234 is in stock."), vctx([vres("STC1234", "unknown", "in_stock_own")]));
+ok(/fitment unknown/.test(r.questions_for_salesperson[0]), "unknown fitment with a vehicle, in our range: fitment unknown");
+r = E3.applySupplierGate(held("STC1234 is in stock."), vctx([vres("STC1234", "unknown", "in_stock_own", false)]));
+ok(r.status === "ready" && !r.flags.length, "unknown fitment with a vehicle, not in our range: nothing trips");
+r = E3.applySupplierGate(held("STC1234 fits your Defender."), vctx([vres("STC1234", "no_fit", "in_stock_own", false)]));
+ok(r.flags.length === 1 && r.flags[0].gate === "fitment", "no_fit outside our range still trips fitment");
+r = E3.applySupplierGate(held("STC1234 can be ordered."), vctx([vres("STC1234", "fits", "not_available")]));
+ok(r.flags.length === 1 && r.flags[0].gate === "availability" && /cannot be ordered/.test(r.questions_for_salesperson[0]), "not_available trips availability");
+r = E3.applySupplierGate(held("STC1234 can be ordered."), vctx([vres("STC1234", "fits", "not_available", false)]));
+ok(r.flags.length === 1 && r.flags[0].gate === "availability", "not_available outside our range still trips availability");
+r = E3.applySupplierGate(held("STC1234 is available."), vctx([vres("STC1234", "fits", "unknown", false)]));
+ok(r.status === "ready" && !r.flags.length, "unknown availability outside our range: nothing trips");
+const below = [{ asked: "STC1234", current: "STC1234", availability: { verdict: "unknown", qty: 2, own: { gou: 1, dra: 0 } } }];
+r = E3.applySupplierGate(held("STC1234 is available."), vctx([vres("STC1234", "fits", "unknown")], { codes: below }));
+ok(r.flags.length === 1 && r.flags[0].gate === "availability" && /could not be confirmed as orderable/.test(r.questions_for_salesperson[0]), "unknown with own stock below the quantity trips availability");
+const covers = [{ asked: "LR000001", current: "STC1234", availability: { verdict: "unknown", qty: 2, own: { gou: 1, dra: 1 } } }];
+r = E3.applySupplierGate(held("STC1234 is available."), vctx([vres("STC1234", "fits", "unknown")], { codes: covers }));
+ok(r.status === "ready" && !r.flags.length, "unknown with own stock covering the quantity (found by its current code): nothing trips");
+r = E3.applySupplierGate(held("STC1234 is available."), vctx([vres("STC1234", "fits", "unknown")]));
+ok(r.flags.length === 1, "unknown with no stock figure anywhere counts as below");
+r = held("STC1234 and again STC1234.");
+r.interim_draft = "STC1234 interim";
+E3.applySupplierGate(r, vctx([vres("STC1234", "no_fit", "not_available")]));
+E3.applySupplierGate(r, vctx([vres("STC1234", "no_fit", "not_available")]));
+ok(r.questions_for_salesperson.length === 2 && r.flags.length === 2, "one question and one flag per problem, however often the code is named or the gate runs");
+r = E3.applySupplierGate(held("STC1234 fits."), { ...vctx([vres("STC1234", "no_fit", "not_available")]), flagMode: false });
+ok(r.status === "ready" && !r.flags.length, "json mode: the gate does nothing");
+r = E3.applySupplierGate(held("NTC9999 fits."), vctx([vres("STC1234", "no_fit", "not_available")]));
+ok(r.status === "ready", "a checked code the reply does not name trips nothing");
+
+// applyAvailabilityGate: a check_first code that Workbench checked is left to applySupplierGate.
+const cf = { items: new Map([["STC1234", { state: "check_first", label: "STC1234" }]]) };
+r = applyAvailabilityGate(held("STC1234 is available."), cf, true, vctx([vres("STC1234", "fits", "orderable")]).verify);
+ok(r.status === "ready" && !r.flags.length, "a verified code skips the check_first trip");
+r = applyAvailabilityGate(held("STC1234 is available."), cf, true);
+ok(r.flags.length === 1 && r.flags[0].gate === "availability", "without verify the check_first trip stands");
+
+// applyVinCheck: skipped when the block decoded this VIN in EPC and every checked code named fits.
+const decoded = (fitment, source = "epc") => ({ ...vctx([vres("STC1234", fitment, "in_stock_own")]).verify, vehicle: { vin: FVIN, source } });
+r = applyVinCheck(held("STC1234 fits your Defender."), `VIN ${FVIN}`, new Set(), decoded("fits"));
+ok(!r.physical_checks.length, "decoded VIN, the named code fits: no EPC check asked");
+r = applyVinCheck(held("STC1234 fits your Defender."), `VIN ${FVIN}`, new Set(), decoded("fits_model"));
+ok(r.physical_checks.length === 1, "fits_model is not a VIN-level fit: the EPC check stays");
+r = applyVinCheck(held("STC1234 fits your Defender."), `VIN ${FVIN}`, new Set(), decoded("fits", "text"));
+ok(r.physical_checks.length === 1, "a VIN EPC did not decode: the EPC check stays");
+r = applyVinCheck(held("Thanks for the VIN."), `VIN ${FVIN}`, new Set(), decoded("fits"));
+ok(r.physical_checks.length === 1, "no checked code named: the EPC check stays");
+
+// Drift: SYSTEM_PROSE_FACTS is SYSTEM_PROSE with the SUPPLIER FACTS line after PART LOOKUP and two phrases replaced.
+const pl = E3.SYSTEM_PROSE_FACTS.split("\n");
+const at = pl.findIndex((l) => l.startsWith("PART LOOKUP:"));
+ok(at >= 0 && pl[at + 1] === E3.SUPPLIER_FACTS_RULE, "the SUPPLIER FACTS line follows PART LOOKUP");
+ok(E3.SYSTEM_PROSE_FACTS.includes("or unless <supplier_facts> says confirmed for that code and vehicle."), "the confidence gate accepts the block");
+ok(E3.SYSTEM_PROSE_FACTS.includes("the <supplier_facts> block already decodes a VIN found in the email; call epc_vin_decode only for a VIN that is not in it."), "the VIN rule defers to the block");
+ok(!E3.SYSTEM_PROSE_FACTS.includes("call epc_vin_decode FIRST.") && E3.SYSTEM_PROSE.includes("call epc_vin_decode FIRST."), "replaced in the facts prompt only");
+ok(pl.length === E3.SYSTEM_PROSE.split("\n").length + 1, "one line added, nothing else");
+ok(!/[\u2012-\u2015]/.test(E3.SUPPLIER_FACTS_RULE), "no dashes in the new rule");
+ok([E3.SYSTEM_PROSE, E3.SYSTEM_PROSE_FACTS].every((p) => p.includes("the manufacturer's records list") && !p.includes("what JLR's catalogue lists")), "the VIN rule names no catalogue to the customer");
+
 console.log(`\n${pass}/${pass + fail} asserts passed` + (fail ? `  (${fail} FAILED)` : "  ✓"));
 process.exit(fail ? 1 : 0);

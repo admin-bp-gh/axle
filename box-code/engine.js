@@ -546,8 +546,8 @@ function holdDraft(result, question) {
 
 // Flag mode (AXLE_OUTPUT=prose, AI parity Step B, 16 Oct 2026): a gate that would withdraw text keeps it,
 // records { gate, fragment, reason } for the yellow strip on the item page, and holds the reply as the
-// interim (the sendable holding reply) with its question. Send then waits for an answer or an owner's
-// logged override (send-guard.blockingSend), so nothing flagged goes out silently.
+// interim (the sendable holding reply) with its question. Send stays live with a warning beside it while the
+// question is open, and the send's audit row records open_blocking, so nothing flagged goes out unrecorded.
 function addFlag(result, gate, fragment, reason) {
   const flags = result.flags || (result.flags = []);
   const frag = String(fragment || "").slice(0, 200);

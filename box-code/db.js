@@ -416,7 +416,7 @@ ensureColumn("work_items", "cc_json", "TEXT");
 // The prose path's gate flags for the current draft, JSON [{ gate, fragment, reason }] (AI parity Step B,
 // 16 Oct 2026): shown as the yellow strip above the reply. Replaced on every draft; NULL when none.
 ensureColumn("work_items", "draft_flags", "TEXT");
-// 'prose' when the current draft came from the prose path: only then does Send wait on blocking questions.
+// 'prose' when the current draft came from the prose path: only then does Send warn on open blocking questions.
 ensureColumn("work_items", "draft_output", "TEXT");
 // Dig deeper (AI parity Step D, 17 Oct 2026): the agent channel of the draft, "axle-deep" on a Dig deeper draft,
 // NULL on every other one. Also in sql\axle-drafts-channel.sql for Brad to run at the gate.

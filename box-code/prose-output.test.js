@@ -1,6 +1,6 @@
 // prose-output.test.js - Axle 2b (AI parity Step B): the reply as prose plus an <internal> block, the Haiku
-// field read, the gates flagging instead of withdrawing on that path, and Send waiting on blocking
-// questions. No network: a fake fetch for the agent, a fake SDK for the extractor.
+// field read, the gates flagging instead of withdrawing on that path, and the open blocking question
+// count Send warns on (never a hold since 19 Oct 2026). No network: a fake fetch for the agent, a fake SDK for the extractor.
 // Run: node prose-output.test.js
 const assert = require("assert");
 process.env.AXLE_DB = ":memory:";   // agenticDraft reads the Teach entries: never the live database
@@ -245,12 +245,8 @@ test("agenticDraft prose: an injection in internal contains the draft; the extra
   assert.strictEqual(r2.result.status, "awaiting_input"); assert.ok(r2.result.questions_for_salesperson.includes(PO.Q_EXTRACT));
 });
 
-test("blockingSend: prose only; open blocking questions refuse; an owner's reason overrides", () => {
-  assert.deepStrictEqual(SG.blockingSend({ prose: false, openBlocking: 3 }), { ok: true });
-  assert.deepStrictEqual(SG.blockingSend({ prose: true, openBlocking: 0 }), { ok: true });
-  assert.strictEqual(SG.blockingSend({ prose: true, openBlocking: 1, isOwner: false, reason: "because" }).ok, false);
-  assert.strictEqual(SG.blockingSend({ prose: true, openBlocking: 1, isOwner: true, reason: "   " }).ok, false);
-  assert.deepStrictEqual(SG.blockingSend({ prose: true, openBlocking: 2, isOwner: true, reason: " Price agreed\nby phone " }), { ok: true, override: "Price agreed by phone" });
+test("send-guard: open blocking questions are no send guard any more", () => {
+  assert.strictEqual(SG.blockingSend, undefined);
 });
 
 test("openBlockingCount: unanswered blocking questions only", () => {

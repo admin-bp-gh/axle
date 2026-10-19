@@ -17,7 +17,6 @@
 require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 const express = require("express");
 const SG = require("./send-guard.js");
-const PO = require("./prose-output.js");             // AXLE_OUTPUT=prose: Send waits on blocking questions (Step B)
 const SEND = require("./send.js");
 const RESOLVE = require("./resolve-customer.js");   // Compose: deterministic read-only customer resolver
 const RSET = require("./recipient-set.js");         // the single definition of an item's known addresses
@@ -524,15 +523,8 @@ async function sendWorkItem(req, res, w) {
   }
 
   saveWorkInputs(w, req.body, login);                 // persist the edited reply + any answers/feedback
-  // Blocking questions still open (AI parity Step B, AXLE_OUTPUT=prose): answer first, or an owner's override.
+  // Open blocking questions never hold Send (19 Oct 2026): the item page warns, the audit row records the count.
   const openBlocking = SG.openBlockingCount(db, w.id);
-  const gate = SG.blockingSend({ prose: PO.enabled() && w.draft_output === "prose", openBlocking, isOwner: req.user.role === "admin", reason: req.body.override_reason });
-  if (!gate.ok) {
-    audit(login, "send_blocked_questions", w.id, `${openBlocking} open blocking question(s)`);
-    if (inline(req)) return res.status(409).json(inlineNo("refused", t(lang, "answer_first_refused")));
-    return res.redirect(BASE.url("/item/" + w.id));
-  }
-  if (gate.override) audit(login, "send_override_blocking", w.id, `${openBlocking} open: ${gate.override}`);
   const body = String(req.body.reply != null ? req.body.reply : (w.draft_edit || ""));
 
   // The AI draft this reply was edited from (latest AI full, else AI holding) - for lineage.
@@ -610,7 +602,7 @@ async function sendWorkItem(req, res, w) {
     // No override on a customer email a colleague forwarded: the To is the forwarded customer (send-guard.replyDefault).
     const toSource = !w.recipient ? ((SG.ownMailCase(w) || {}).customer ? "forwarded" : "sender") : (w.recipient_source || "onfile");
     audit(login, "email_sent", w.id,
-      `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} cc=${payload.cc.join(",") || "-"} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded} sha=${payload.sha256.slice(0, 12)}`);
+      `kind=${isComposeItem ? "compose_new" : isCF ? "contactform_new" : isRN ? "return_new" : "reply"} to=${payload.to} cc=${payload.cc.join(",") || "-"} to_source=${toSource} edited=${edited} ai_draft=${aiSrc ? aiSrc.id : "-"} atts=${attMeta.length}${inlineSet.size ? ` inline=${inlineSet.size}` : ""} threaded=${r.threaded}${openBlocking ? ` open_blocking=${openBlocking}` : ""} sha=${payload.sha256.slice(0, 12)}`);
     if (!isComposeItem) await markReadSafe(login, w);
     // F6 (mobile fix 1): the phone adds ret=list at submit time and lands on the Open list
     res.redirect(req.body.ret === "list" ? BASE.url("/") : BASE.url("/item/" + w.id));

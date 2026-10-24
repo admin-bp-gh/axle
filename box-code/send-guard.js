@@ -34,6 +34,7 @@
 //   * one send per approved draft is enforced by the caller via the sends table (UNIQUE).
 const crypto = require("crypto");
 const R = require("./rules.js");             // our three mailbox addresses (rules.js reads env lazily, no IO)
+const { signatureHtml } = require("./signature.js"); // the house signature block under every send
 const FMT = require("./reply-format.js");   // the formatting markers (**bold**, *italic*, __underline__, "- " lists)
 const FO = require("./forwarded-origin.js");  // who wrote the email a colleague forwarded (ownMailCase)
 
@@ -381,7 +382,7 @@ function assembleSend(workItem, body, stagedAtts = []) {
     cc, bcc: [],                          // the item's Cc, re-screened (itemCc); never any BCC
     subject: replySubject(customer ? String(workItem.subject || "").replace(FWD_PREFIX_RE, "") : workItem.subject),
     text,                                              // verbatim plain text (our reply, tokens included)
-    html: inline.html + quotedHistory(workItem, customer),   // our reply (tokens -> cid imgs) + quoted thread
+    html: inline.html + signatureHtml(workItem.mailbox) + quotedHistory(workItem, customer), // our reply (tokens -> cid imgs) + signature + quoted thread
     inlineIds: inline.inlineIds,                       // staged-attachment ids to send as inline cids
     sha256: sha256(text),                              // integrity tie over OUR reply only
   };
@@ -422,7 +423,7 @@ function assembleNewOutboundSend(workItem, body, subject, stagedAtts = []) {
     cc, bcc: [],              // the item's Cc, re-screened (itemCc); never any BCC
     subject: subj,            // fresh, human-approved subject (NOT "Re:")
     text,                     // verbatim plain text (our reply, tokens included)
-    html: inline.html,        // our reply only (tokens -> cid imgs); NO quoted history
+    html: inline.html + signatureHtml(workItem.mailbox), // our reply (tokens -> cid imgs) + signature; NO quoted history
     inlineIds: inline.inlineIds,
     sha256: sha256(text),     // integrity tie over our reply
   };

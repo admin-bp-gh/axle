@@ -483,3 +483,22 @@
 .wb-codebtn { padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-underline-offset: 3px; }
 .wb-codebtn:hover { text-decoration: underline dotted; }
 .wb-codebtn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 2px; }
+
+/* ---------- Find item (19 Oct 2026) ----------
+   The shell's Find item pill (components/ItemFind.tsx): a subtle bordered pill beside the app's title,
+   a compact popover under it on desktop, a sheet on a phone. LocHit: the location an item search
+   matched, "Bak-100 · Gouda", small and muted on every item result list. */
+.wb-find { color: var(--ink-2); }
+.wb-find__pop { width: min(440px, calc(100vw - 16px)); padding: 6px; }
+.wb-find__body { display: flex; flex-direction: column; gap: 8px; }
+.wb-find__body > .wb-hint { margin: 4px 6px; }
+.wb-find__list { display: flex; flex-direction: column; }
+.wb-find__row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-cell); background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.wb-find__row[aria-selected="true"] { background: var(--surface-2); }
+.wb-find__codes { display: flex; gap: 8px; font-size: var(--fs-base); }
+.wb-find__name { font-size: var(--fs-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-find__stock { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-xs); color: var(--ink-2); }
+.wb-find__stock b { color: var(--ink); font-weight: 600; }
+.wb-lochit { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--ink-2); }
+@media (pointer: coarse) { .wb-find__row { min-height: var(--tap); } }
+.wb-find__row[aria-disabled="true"] { cursor: default; }

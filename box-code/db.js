@@ -390,6 +390,20 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- Shopify account actions from the email's customer card (shopify-account.js, 2026-10-25): one row
+-- per attempt, refused or not. The 10-minute cooldown reads the last ok row per customer and action.
+CREATE TABLE IF NOT EXISTS shopify_account_actions (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts                  TEXT NOT NULL DEFAULT (datetime('now')),
+  work_item_id        INTEGER,
+  shopify_customer_id TEXT,
+  action              TEXT NOT NULL,                 -- send_invite | create_and_invite | activation_url | password_reset
+  user                TEXT NOT NULL,
+  result              TEXT NOT NULL,                 -- ok | refused | failed
+  error               TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_shopact_cust ON shopify_account_actions(shopify_customer_id, action, ts);
 `);
 ensureColumn("work_items", "cust_card", "TEXT");
 ensureColumn("work_items", "cust_name", "TEXT");

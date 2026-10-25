@@ -37,6 +37,7 @@ const CC = require("../cc-list.js");               // the reply's Cc (list, sugg
 const DM = require("../draft-media.js");           // the customer files the latest draft could not be shown
 const ED = require("../assets/axle-editor.js");    // the reply editor's model: its first view is rendered here
 const RL = require("../return-label.js");          // "+ Return label": a MyParcel return label on the reply (gated)
+const SA = require("../shopify-account.js");       // Shopify account card: state, invite, activation link, password reset
 const DEEP = require("../deep.js");                // Dig deeper (Step D): the switch, the hint, the soft budget
 const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
 const VS = require("../voicemail-sheet.js");       // a voicemail's call back sheet: count, open issues, supplier (Change A2)
@@ -590,7 +591,11 @@ app.get("/item/:id", async (req, res) => {
   const sender = w.sender_name || w.sender_email || "";
   const backLink = `<a class="wb-link ax-back" href="${BASE.path}/" data-back>${icon("back")}${L("inbox")}</a>`;
   const ptop = `<header class="wb-page__hd ax-ptop"><a class="wb-btn wb-btn--ghost wb-btn--icon" href="${BASE.path}/" data-back aria-label="${L("inbox")}" title="${L("inbox")}">${icon("back")}</a><h1 class="wb-page__t">${esc(sender)}</h1>${statusPill()}</header>`;
-  const head = `<div class="ax-head"><h1 class="ax-title">${esc(w.subject || t(lang, "no_subject"))}</h1><div class="ax-pills">${pills}</div>${custHtml}</div>`;
+  // The Shopify account card loads after the page (Shopify latency never holds the email up); only
+  // where there is an address to look up and an action could follow.
+  const saSlot = !closed && !w.injection_flag && !isVoicemail && saEmail(w)
+    ? `<div class="ax-sa" hx-get="${U("/shopify-account")}" hx-trigger="load" hx-swap="outerHTML"><p class="ax-cust">${L("sa_loading")}</p></div>` : "";
+  const head = `<div class="ax-head"><h1 class="ax-title">${esc(w.subject || t(lang, "no_subject"))}</h1><div class="ax-pills">${pills}</div>${custHtml}${saSlot}</div>`;
   const banner = (tone, html) => `<div class="wb-banner" data-tone="${tone}"${tone === "bad" ? ' role="alert"' : ""}>${icon(tone === "info" ? "info" : "alert")}<div class="wb-banner__body">${html}</div></div>`;
   // The scam/injection warning carries its own way out (2026-10-11): anyone can clear it with a
   // short note of what they checked (POST /clear-flag, audited, then a fresh draft), or close the
@@ -1197,6 +1202,69 @@ app.post("/item/:id/return-label", async (req, res) => {
     setImmediate(() => runRedraft(w.id, login));
   }
   res.redirect(BASE.url("/item/" + w.id));
+});
+
+// --- Shopify account card (shopify-account.js, 2026-10-25) --------------------------------------
+// The customer's classic-account state behind the item's address and the actions that state allows.
+// GET renders the card (loaded after the page); POST runs one action and answers JSON with the
+// outcome and the redrawn card. The rules (state, cooldown, audit row) live in shopify-account.js.
+function saEmail(w) {
+  return (RSET.activeRecipient(w, itemKind(w)) || w.sender_email || "").trim().toLowerCase();
+}
+function saCard(w, lang, data, opts = {}) {
+  const L = (k, v) => esc(t(lang, k, v));
+  const U = (p) => `${BASE.path}/item/${w.id}${p}`;
+  const email = saEmail(w);
+  let body;
+  if (!data) body = `<p class="ax-cust">${L("sa_error")}</p>`;
+  else if (data.found === 0) body = `<p class="ax-cust">${L("sa_none", { email })}</p>`;
+  else if (data.found > 1) body = `<p class="ax-cust">${L("sa_several", { n: data.found, email })}</p>`;
+  else {
+    const c = data.customer;
+    const tone = { ENABLED: "ok", INVITED: "info", DECLINED: "warn", DISABLED: "neutral" }[c.state] || "neutral";
+    const parts = [c.name, c.email, c.company ? `${t(lang, "sa_company")}: ${c.company}` : "",
+      c.lastOrder ? t(lang, "sa_last_order", { name: c.lastOrder.name, date: fmtDateTime(c.lastOrder.date, lang) }) : "",
+      c.tags.length ? c.tags.join(", ") : ""].filter(Boolean);
+    body = `<p class="ax-cust">${pill(t(lang, "sa_state_" + c.state), tone)} ${parts.map(esc).join(" · ")}</p>`;
+  }
+  const btn = (a) => `<form method="post" action="${U("/shopify-account/" + a)}" data-sa-form><button type="submit" class="wb-btn wb-btn--sm">${L("sa_" + a)}</button></form>`;
+  const actions = data && data.actions.length ? `<div class="ax-sa__act">${data.actions.map(btn).join("")}</div>` : "";
+  const msg = opts.message ? `<p class="ax-sa__msg wb-hint" data-tone="${opts.tone || "info"}" role="status">${esc(opts.message)}</p>` : `<p class="ax-sa__msg wb-hint" data-sa-msg hidden></p>`;
+  const recent = SA.recent(w.id, 5);
+  const recentHtml = recent.length ? `<p class="ax-cust ax-sa__recent">${L("sa_recent")}: ${recent.map((r) => esc(`${t(lang, "sa_" + r.action)} · ${r.user} · ${fmtDateTime(r.ts.replace(" ", "T") + "Z", lang)} · ${t(lang, "sa_r_" + r.result)}`)).join("<br>")}</p>` : "";
+  return `<section class="wb-card ax-info ax-sa" aria-label="${L("sa_title")}"><div class="wb-card__bd"><span class="wb-label">${L("sa_title")}</span>${body}${actions}${msg}${recentHtml}</div></section>`;
+}
+app.get("/item/:id/shopify-account", async (req, res) => {
+  const lang = req.user.lang;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send("");
+  let data = null;
+  try { data = await SA.lookup(saEmail(w)); }
+  catch (e) { audit("system", "shopify_account_error", w.id, String(e.message || e).slice(0, 150)); }
+  res.send(saCard(w, lang, data));
+});
+app.post("/item/:id/shopify-account/:action", async (req, res) => {
+  const lang = req.user.lang;
+  const login = req.user.tailscale_login;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w || !SA.ACTIONS.includes(req.params.action)) return res.status(404).json({ ok: false, message: t(lang, "not_found") });
+  if (w.injection_flag || ["done", "archived"].includes(w.status)) return res.status(400).json({ ok: false, message: t(lang, "send_disabled_inj") });
+  const action = req.params.action;
+  const email = saEmail(w);
+  let r;
+  try { r = await SA.run({ action, email, name: w.sender_name || "", workItemId: w.id, user: login }); }
+  catch (e) { r = { ok: false, reason: "failed", message: String(e.message || e) }; }
+  const message = r.ok ? t(lang, "sa_ok_" + action)
+    : r.reason === "cooldown" ? t(lang, "sa_cooldown", { minutes: r.minutes })
+    : r.reason === "not_allowed" ? t(lang, "sa_not_allowed")
+    : r.reason === "no_customer" ? t(lang, "sa_no_customer")
+    : r.reason === "several" ? t(lang, "sa_several", { n: "2+", email })
+    : r.reason === "user_errors" ? t(lang, "sa_failed", { message: r.message })
+    : t(lang, "sa_error") + (r.message ? " " + r.message : "");
+  audit(login, "shopify_account_" + action, w.id, `${r.ok ? "ok" : r.reason} ${email}${r.customerId ? " " + r.customerId : ""}${r.message ? " " + r.message.slice(0, 120) : ""}`);
+  let data = null;
+  try { data = await SA.lookup(email); } catch (e) { data = null; }
+  res.json({ ok: r.ok, message, url: r.url || null, card: saCard(w, lang, data, { message, tone: r.ok ? "ok" : "bad" }) });
 });
 
 // On-demand: translate the salesperson's CURRENT (possibly edited) reply into their own

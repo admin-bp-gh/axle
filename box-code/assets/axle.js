@@ -1683,6 +1683,26 @@
     if (menuLy?.el.contains(b)) menuLy.close();
     confirmFirst(b);
   }, true);
+  // The Shopify account card (data-sa-form): one click, no confirm. The route answers JSON with the
+  // outcome and the redrawn card; an activation link goes into the reply at the caret and nowhere
+  // else. The card is swapped, so the reply text is never touched by the swap.
+  D.addEventListener("submit", (e) => {
+    const f = e.target;
+    if (e.defaultPrevented || !f.hasAttribute("data-sa-form")) return;
+    e.preventDefault();
+    const card = f.closest(".ax-sa"), b = $("button", f);
+    $$("button", card).forEach((x) => { x.disabled = true; });
+    busyBtn(b, true);
+    fetch(f.getAttribute("action"), { method: "POST", credentials: "same-origin", headers: { "X-Axle-Inline": "1", "HX-Request": "true" } })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok && j.url) replyEd()?.insert(j.url);
+        if (j.card) W.htmx.swap(card, j.card, { swapStyle: "outerHTML" });
+        else { const m = $("[data-sa-msg]", card); if (m) { m.textContent = j.message || t("load_error"); m.hidden = false; m.dataset.tone = "bad"; } }
+      })
+      .catch(() => { const m = $("[data-sa-msg]", card); if (m) { m.textContent = t("post_failed"); m.hidden = false; m.dataset.tone = "bad"; } })
+      .finally(() => { busyBtn(b, false); $$("button", card).forEach((x) => { x.disabled = false; }); });
+  });
   D.addEventListener("submit", (e) => {
     const f = e.target, b = e.submitter;
     if (e.defaultPrevented || !(f.hasAttribute("data-inline") || b?.hasAttribute("data-inline"))) return;

@@ -1303,16 +1303,44 @@ async function shopifyToken() {
   return shopifyTokenCache.token;
 }
 
-async function shopifyGraphql(query) {
+async function shopifyGraphql(query, variables) {
   const token = await shopifyToken();
   const r = await fetch(`https://${process.env.SHOPIFY_SHOP}.myshopify.com/admin/api/2025-07/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(variables ? { query, variables } : { query }),
   });
   const data = await r.json();
   if (!data.data) throw new Error(JSON.stringify(data.errors));
   return data.data;
+}
+
+// Shopify account actions (Axle side panel card, 2026-10-25): the customer record behind an email
+// address, as the card needs it. All matches are returned; the caller decides what one, none or
+// several means. Needs read_customers; the mutations in shopify-account.js need write_customers.
+async function shopifyCustomerLookup(email) {
+  const clean = String(email).replace(/[\s"\\]/g, "");
+  const data = await shopifyGraphql(`query ($q: String!) { customers(first: 5, query: $q) { edges { node {
+    id displayName email state tags
+    companyContactProfiles { company { name } }
+    lastOrder { name createdAt }
+  } } } }`, { q: `email:${clean}` });
+  return data.customers.edges.map((e) => e.node);
+}
+
+// Password reset goes through the Storefront API (the Admin API has no reset mutation): a
+// Storefront token with unauthenticated_write_customers, SHOPIFY_STOREFRONT_TOKEN.
+async function storefrontCustomerRecover(email) {
+  const token = process.env.SHOPIFY_STOREFRONT_TOKEN;
+  if (!token) throw new Error("SHOPIFY_STOREFRONT_TOKEN not configured");
+  const r = await fetch(`https://${process.env.SHOPIFY_SHOP}.myshopify.com/api/2025-07/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Storefront-Access-Token": token },
+    body: JSON.stringify({ query: `mutation ($email: String!) { customerRecover(email: $email) { customerUserErrors { code field message } } }`, variables: { email } }),
+  });
+  const data = await r.json();
+  if (!data.data) throw new Error(JSON.stringify(data.errors));
+  return data.data.customerRecover.customerUserErrors || [];
 }
 
 async function shopifyCustomerContext(email) {
@@ -2030,7 +2058,7 @@ module.exports = {
   mpAccounts, mpHeaders,
   partDossier, customerCode, assembleDossier, availabilityOf,
   partFinder, vinDecode, modelToColumn, rankCandidates, categoryFromTokens, tokenize, shopifyHandles,
-  shopifyCustomerContext, shopifyOrderByName,
+  shopifyCustomerContext, shopifyOrderByName, shopifyCustomerLookup, storefrontCustomerRecover,
   myparcelSearch, myparcelTrack, extractEntities, shopifyGraphql,
   extractPhoneNumbers, extractCallerNumbers, normalisePhone, samePhone, findCustomersByPhone, findCustomerByPhone,
   callerCardFacts, decideCallerCard, formatCallerInfo, lookupCaller, contactPersons, callerPeople, emailerPeople, supplierSheet,

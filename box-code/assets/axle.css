@@ -528,3 +528,10 @@
 .ax-gflags mark { background: color-mix(in srgb, var(--warn-fg) 16%, transparent); color: inherit; border-radius: 3px; padding: 0 3px; }
 ::highlight(ax-flag) { background-color: color-mix(in srgb, var(--warn-fg) 22%, transparent); }
 .ax-openq { align-self: center; white-space: nowrap; color: var(--warn-fg); }
+
+/* Shopify account card (shopify-account.js, 2026-10-25) */
+.ax-sa__act { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.ax-sa__act form { display: contents; }
+.ax-sa__msg[data-tone="ok"] { color: var(--ok-fg); }
+.ax-sa__msg[data-tone="bad"] { color: var(--bad-fg); }
+.ax-sa__recent { opacity: .8; }

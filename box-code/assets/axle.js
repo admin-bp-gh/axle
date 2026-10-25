@@ -1662,6 +1662,7 @@
       .then((r) => r.json())
       .then((j) => {
         if (!j.ok) return banner(host, { tone: "bad", message: j.message, unchanged: true });
+        clearBanner(host);
         if (j.url) replyEd()?.insert(j.url);
         toast(j.message);
       })

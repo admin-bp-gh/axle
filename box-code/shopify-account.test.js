@@ -15,7 +15,7 @@ function deps(rows, admin = {}, recoverErrs = []) {
   const calls = [];
   return { calls, d: {
     lookup: async () => rows,
-    admin: async (q, v) => { calls.push({ q, v }); return admin; },
+    admin: async (q, v) => { if (/^\{ shop \{/.test(q.trim())) return { shop: { name: "Budget Parts", contactEmail: "info@budget-parts.nl" } }; calls.push({ q, v }); return admin; },
     recover: async (email) => { calls.push({ recover: email }); return recoverErrs; },
     now: () => clock,
   } };
@@ -73,7 +73,7 @@ const base = { email: "jan@example.com", name: "Jan Jansen", workItemId: 7, user
     const r = await SA.run({ ...base, action: "send_invite" }, d);
     assert.deepStrictEqual(r, { ok: true, action: "send_invite", customerId: "gid://shopify/Customer/1", url: null });
     assert.strictEqual(calls.length, 1);
-    assert.deepStrictEqual(calls[0].v, { id: "gid://shopify/Customer/1" });
+    assert.deepStrictEqual(calls[0].v, { id: "gid://shopify/Customer/1", email: { from: "Budget Parts <info@budget-parts.nl>" } });
     assert.match(calls[0].q, /customerSendAccountInviteEmail/);
     const all = rows();
     assert.strictEqual(all.length, 1);
@@ -108,8 +108,8 @@ const base = { email: "jan@example.com", name: "Jan Jansen", workItemId: 7, user
   await test("create and invite: customerCreate then the invite, name split", async () => {
     let n = 0;
     const d = { lookup: async () => [], recover: async () => [], now: () => clock,
-      admin: async (q, v) => { n++; if (/customerCreate/.test(q)) { assert.deepStrictEqual(v.input, { email: "jan@example.com", firstName: "Jan", lastName: "Jansen" }); return { customerCreate: { customer: { id: "gid://shopify/Customer/9" }, userErrors: [] } }; }
-        assert.deepStrictEqual(v, { id: "gid://shopify/Customer/9" }); return { customerSendAccountInviteEmail: { userErrors: [] } }; } };
+      admin: async (q, v) => { if (/^\{ shop \{/.test(q.trim())) return { shop: { name: "Budget Parts", contactEmail: "info@budget-parts.nl" } }; n++; if (/customerCreate/.test(q)) { assert.deepStrictEqual(v.input, { email: "jan@example.com", firstName: "Jan", lastName: "Jansen" }); return { customerCreate: { customer: { id: "gid://shopify/Customer/9" }, userErrors: [] } }; }
+        assert.deepStrictEqual(v, { id: "gid://shopify/Customer/9", email: { from: "Budget Parts <info@budget-parts.nl>" } }); return { customerSendAccountInviteEmail: { userErrors: [] } }; } };
     const r = await SA.run({ ...base, action: "create_and_invite" }, d);
     assert.strictEqual(n, 2);
     assert.deepStrictEqual(r, { ok: true, action: "create_and_invite", customerId: "gid://shopify/Customer/9", url: null });

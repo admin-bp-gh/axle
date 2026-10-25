@@ -91,7 +91,11 @@ async function run({ action, email, name, workItemId, user }, deps = defaultDeps
       customerId = d.customerCreate.customer.id;
     }
     if (action === "send_invite" || action === "create_and_invite") {
-      const d = await deps.admin(`mutation ($id: ID!) { customerSendAccountInviteEmail(customerId: $id) { userErrors { field message } } }`, { id: customerId });
+      // Without a named sender the invite arrives as a bare address ("info"); the shop's own name and
+      // contact address give it the same "Budget Parts" sender as Shopify's other notifications.
+      const shop = (await deps.admin(`{ shop { name contactEmail } }`)).shop;
+      const from = `${shop.name} <${shop.contactEmail}>`;
+      const d = await deps.admin(`mutation ($id: ID!, $email: EmailInput) { customerSendAccountInviteEmail(customerId: $id, email: $email) { userErrors { field message } } }`, { id: customerId, email: { from } });
       if (d.customerSendAccountInviteEmail.userErrors.length) throw { userErrors: d.customerSendAccountInviteEmail.userErrors };
     }
     if (action === "activation_url") {

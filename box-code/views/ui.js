@@ -892,7 +892,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax21";  // 2026-10-17: Dig deeper beside Redraft and its keys (ax20: no preview without a selection, re-translate on the reply; ax19: Create order split + Re-send order)
+const ASSET_V = "ax22";  // 2026-10-25: Shopify account menu in the dock (ax21: Dig deeper beside Redraft and its keys (ax20: no preview without a selection, re-translate on the reply; ax19: Create order split + Re-send order)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

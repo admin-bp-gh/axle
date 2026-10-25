@@ -154,7 +154,15 @@
     const title = src.dataset.title || trigger.getAttribute("aria-label") || "";
     const [list] = nodes(`<div role="menu" aria-label="${esc(title)}" tabindex="-1"></div>`);
     list.append(src.content.cloneNode(true));
-    const rows = () => $$(".wb-menu__item:not(:disabled)", list);
+    // A menu the server fills on open (data-src on the template): Shopify account. The placeholder
+    // row shows until the rows arrive; a failure leaves a short note instead.
+    if (src.dataset.src) {
+      fetch(src.dataset.src, { headers: { "X-Axle-Inline": "1", "HX-Request": "true" }, credentials: "same-origin" })
+        .then((r) => r.ok ? r.text() : Promise.reject(new Error(r.status)))
+        .then((html) => { if (list.isConnected) list.replaceChildren(...nodes(html)); })
+        .catch(() => { if (list.isConnected) list.replaceChildren(...nodes(`<span class="wb-menu__label">${esc(t("load_error"))}</span>`)); });
+    }
+    const rows = () => $$(".wb-menu__item:not(:disabled):not([aria-disabled])", list);
     list.addEventListener("keydown", (e) => {
       const r = rows(), i = r.indexOf(D.activeElement);
       const go = (n) => { e.preventDefault(); r[(n + r.length) % r.length]?.focus(); };
@@ -1644,6 +1652,21 @@
   }, true);
   W.addEventListener("resize", () => { foldCheck(); dockFold(); });
 
+  // A Shopify account action (a row of the Shopify account menu, shopify-account.js): one click, no
+  // confirm. The route answers JSON; success is a toast, a refusal or failure a banner on the email.
+  // An activation link goes into the reply at the caret and nowhere else.
+  function shopifyAccount(row) {
+    const host = emailEl() || D.getElementById("workpane");
+    fetch(row.dataset.saUrl, { method: "POST", credentials: "same-origin", headers: { "X-Axle-Inline": "1", "HX-Request": "true" } })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) return banner(host, { tone: "bad", message: j.message, unchanged: true });
+        if (j.url) replyEd()?.insert(j.url);
+        toast(j.message);
+      })
+      .catch(() => banner(host, { tone: "bad", message: t("post_failed"), unchanged: true }));
+  }
+
   /* ---------- Wiring: one click listener, in order ---------- */
   D.addEventListener("click", (e) => {
     const tg = e.target;
@@ -1656,6 +1679,8 @@
     if (close) { const ly = layerOf(close); if (ly && !ly.busy) ly.close(); return; }
     const sub = tg.closest("[data-submit]");
     if (sub) { submitRow(sub); return; }
+    const sa = tg.closest("[data-sa-act]");
+    if (sa) { shopifyAccount(sa); return; }
     if (emailClick(tg)) return;
     const m = tg.closest("[data-menu]");
     if (m) { if (menuLy?.trigger === m) menuLy.close(); else openMenu(m); return; }
@@ -1683,26 +1708,6 @@
     if (menuLy?.el.contains(b)) menuLy.close();
     confirmFirst(b);
   }, true);
-  // The Shopify account card (data-sa-form): one click, no confirm. The route answers JSON with the
-  // outcome and the redrawn card; an activation link goes into the reply at the caret and nowhere
-  // else. The card is swapped, so the reply text is never touched by the swap.
-  D.addEventListener("submit", (e) => {
-    const f = e.target;
-    if (e.defaultPrevented || !f.hasAttribute("data-sa-form")) return;
-    e.preventDefault();
-    const card = f.closest(".ax-sa"), b = $("button", f);
-    $$("button", card).forEach((x) => { x.disabled = true; });
-    busyBtn(b, true);
-    fetch(f.getAttribute("action"), { method: "POST", credentials: "same-origin", headers: { "X-Axle-Inline": "1", "HX-Request": "true" } })
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.ok && j.url) replyEd()?.insert(j.url);
-        if (j.card) W.htmx.swap(card, j.card, { swapStyle: "outerHTML" });
-        else { const m = $("[data-sa-msg]", card); if (m) { m.textContent = j.message || t("load_error"); m.hidden = false; m.dataset.tone = "bad"; } }
-      })
-      .catch(() => { const m = $("[data-sa-msg]", card); if (m) { m.textContent = t("post_failed"); m.hidden = false; m.dataset.tone = "bad"; } })
-      .finally(() => { busyBtn(b, false); $$("button", card).forEach((x) => { x.disabled = false; }); });
-  });
   D.addEventListener("submit", (e) => {
     const f = e.target, b = e.submitter;
     if (e.defaultPrevented || !(f.hasAttribute("data-inline") || b?.hasAttribute("data-inline"))) return;

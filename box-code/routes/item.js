@@ -591,11 +591,7 @@ app.get("/item/:id", async (req, res) => {
   const sender = w.sender_name || w.sender_email || "";
   const backLink = `<a class="wb-link ax-back" href="${BASE.path}/" data-back>${icon("back")}${L("inbox")}</a>`;
   const ptop = `<header class="wb-page__hd ax-ptop"><a class="wb-btn wb-btn--ghost wb-btn--icon" href="${BASE.path}/" data-back aria-label="${L("inbox")}" title="${L("inbox")}">${icon("back")}</a><h1 class="wb-page__t">${esc(sender)}</h1>${statusPill()}</header>`;
-  // The Shopify account card loads after the page (Shopify latency never holds the email up); only
-  // where there is an address to look up and an action could follow.
-  const saSlot = !closed && !w.injection_flag && !isVoicemail && saEmail(w)
-    ? `<div class="ax-sa" hx-get="${U("/shopify-account")}" hx-trigger="load" hx-swap="outerHTML"><p class="ax-cust">${L("sa_loading")}</p></div>` : "";
-  const head = `<div class="ax-head"><h1 class="ax-title">${esc(w.subject || t(lang, "no_subject"))}</h1><div class="ax-pills">${pills}</div>${custHtml}${saSlot}</div>`;
+  const head = `<div class="ax-head"><h1 class="ax-title">${esc(w.subject || t(lang, "no_subject"))}</h1><div class="ax-pills">${pills}</div>${custHtml}</div>`;
   const banner = (tone, html) => `<div class="wb-banner" data-tone="${tone}"${tone === "bad" ? ' role="alert"' : ""}>${icon(tone === "info" ? "info" : "alert")}<div class="wb-banner__body">${html}</div></div>`;
   // The scam/injection warning carries its own way out (2026-10-11): anyone can clear it with a
   // short note of what they checked (POST /clear-flag, audited, then a fresh draft), or close the
@@ -831,6 +827,12 @@ app.get("/item/:id", async (req, res) => {
     : `<span class="ax-split" data-fold="2"><a class="wb-btn" href="${newHref}" target="_top" title="${L("new_order_ratchet_tip")}">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>${resendHref
       ? `<button type="button" class="wb-btn wb-btn--icon" data-menu="order" aria-haspopup="menu" aria-expanded="false" aria-label="${L("order_menu")}" title="${L("order_menu")}">${icon("chevron-down")}</button>` : ""}</span>`;
   const resendRow = resendHref ? `<a class="wb-menu__item" role="menuitem" href="${resendHref}" target="_top" title="${L("resend_guarantee_tip")}"><span>${L("resend_guarantee")}</span></a>` : "";
+  // Shopify account (2026-10-25): a dock menu beside Create order whose rows the server fills on open
+  // (GET /shopify-account: state, then only the actions that state allows). shopify-account.js.
+  const canSa = editable && !isCompose && !isVoicemail && !w.injection_flag && !!saEmail(w);
+  const saBtn = canSa ? `<button type="button" class="wb-btn" data-menu="shopify" aria-haspopup="menu" aria-expanded="false" data-fold="3">${icon("user")}<span>${L("sa_title")}</span>${icon("chevron-down")}</button>` : "";
+  const saRow = canSa ? `<button type="button" class="wb-menu__item" role="menuitem" data-menu="shopify"><span>${L("sa_title")}</span></button>` : "";
+  const saMenu = canSa ? `<template id="m-shopify" data-title="${L("sa_title")}" data-align="end" data-src="${U("/shopify-account")}"><span class="wb-menu__label">${L("sa_loading")}</span></template>` : "";
   const moreBtn = (icn) => !(icn ? pmoreRows : checkedRow || foldRows) ? "" : icn ? `<button type="button" class="wb-btn wb-btn--icon" data-menu="pmore" aria-haspopup="menu" aria-expanded="false" aria-label="${L("more")}" title="${L("more")}"${busy ? " disabled" : ""}>${icon("dots")}</button>`
     : `<button type="button" class="wb-btn wb-btn--ghost" data-menu="more" aria-haspopup="menu" aria-expanded="false"${busy ? " disabled" : ""}${checkedRow ? "" : " hidden"}>${icon("dots")}<span>${L("more")}</span></button>`;
   const reopen = `<button type="submit" form="ax-f-status" name="to" value="reopen" class="wb-btn">${icon("refresh")}<span>${L("reopen")}</span></button>`;
@@ -845,8 +847,8 @@ app.get("/item/:id", async (req, res) => {
   // fold into it when the dock is too narrow (data-fold: Block sender first, then Create order;
   // axle.js dockFold shows their rows and More); on the phone also Create order and Block sender.
   const sepRow = (attr) => `<div class="wb-menu__sep" role="separator"${attr || ""}></div>`;
-  const pmoreRows = `${ratchetRow}${resendRow}${blockRow}${checkedRow && (ratchetRow || resendRow || blockRow) ? sepRow() : ""}${checkedRow}`;
-  const foldRows = busy ? "" : ratchetRow.replace("<a ", '<a data-fold-row="2" hidden ') + resendRow.replace("<a ", '<a data-fold-row="2" hidden ') + blockRow.replace("<button ", '<button data-fold-row="1" hidden ');
+  const pmoreRows = `${ratchetRow}${resendRow}${saRow}${blockRow}${checkedRow && (ratchetRow || resendRow || saRow || blockRow) ? sepRow() : ""}${checkedRow}`;
+  const foldRows = busy ? "" : ratchetRow.replace("<a ", '<a data-fold-row="2" hidden ') + resendRow.replace("<a ", '<a data-fold-row="2" hidden ') + saRow.replace("<button ", '<button data-fold-row="3" hidden ') + blockRow.replace("<button ", '<button data-fold-row="1" hidden ');
   let dock, bar;
   if (closed) {
     dock = `<div class="wb-dock"><div class="wb-dock__group">${reopen}</div></div>`;
@@ -855,14 +857,14 @@ app.get("/item/:id", async (req, res) => {
     dock = `<div class="wb-dock"><div class="wb-dock__group">${phoneBtn()}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${ratchet}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${phoneBtn(true)}${moreBtn(true)}</div>`;
   } else {
-    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${blockBtn}${moreBtn()}</div></div>`;
+    dock = `<div class="wb-dock"><div class="wb-dock__group">${sendBtn(false)}${markDone()}</div><div class="wb-dock__group wb-dock__group--end">${editable ? saveMark : ""}${ratchet}${saBtn}${blockBtn}${moreBtn()}</div></div>`;
     bar = `<div class="wb-bar ax-bar">${markDone(true)}${sendBtn(true)}${moreBtn(true)}</div>`;
   }
 
   // --- Menus, overlays and the small forms the buttons post through (outside the work form:
   // forms never nest). Each posts in place (data-inline) with exactly the old fields.
   const templates = [
-    !closed && !busy ? `<template id="m-more" data-title="${L("more")}" data-align="end">${foldRows}${foldRows && checkedRow ? sepRow(" data-fold-sep hidden") : ""}${checkedRow}</template><template id="m-pmore" data-title="${L("more")}" data-align="end">${pmoreRows}</template>${resendHref ? `<template id="m-order" data-title="${L("new_order_ratchet")}" data-align="end">${ratchetRow}${resendRow}</template>` : ""}` : "",
+    !closed && !busy ? `<template id="m-more" data-title="${L("more")}" data-align="end">${foldRows}${foldRows && checkedRow ? sepRow(" data-fold-sep hidden") : ""}${checkedRow}</template><template id="m-pmore" data-title="${L("more")}" data-align="end">${pmoreRows}</template>${resendHref ? `<template id="m-order" data-title="${L("new_order_ratchet")}" data-align="end">${ratchetRow}${resendRow}</template>` : ""}${saMenu}` : "",
     langMenu,
     ownerEditable ? `<template id="m-owner" data-title="${L("owner_fix")}" data-align="start">${ownerOpts.map(ownerRow).join("")}</template>${ownerOpts.map(ownerDialog).join("")}` : "",
     toMenu,
@@ -1206,33 +1208,31 @@ app.post("/item/:id/return-label", async (req, res) => {
 
 // --- Shopify account card (shopify-account.js, 2026-10-25) --------------------------------------
 // The customer's classic-account state behind the item's address and the actions that state allows.
-// GET renders the card (loaded after the page); POST runs one action and answers JSON with the
-// outcome and the redrawn card. The rules (state, cooldown, audit row) live in shopify-account.js.
+// GET renders the menu rows (fetched when the menu opens); POST runs one action and answers JSON
+// with the outcome. The rules (state, cooldown, audit row) live in shopify-account.js.
 function saEmail(w) {
   return (RSET.activeRecipient(w, itemKind(w)) || w.sender_email || "").trim().toLowerCase();
 }
-function saCard(w, lang, data, opts = {}) {
+function saRows(w, lang, data) {
   const L = (k, v) => esc(t(lang, k, v));
   const U = (p) => `${BASE.path}/item/${w.id}${p}`;
   const email = saEmail(w);
-  let body;
-  if (!data) body = `<p class="ax-cust">${L("sa_error")}</p>`;
-  else if (data.found === 0) body = `<p class="ax-cust">${L("sa_none", { email })}</p>`;
-  else if (data.found > 1) body = `<p class="ax-cust">${L("sa_several", { n: data.found, email })}</p>`;
+  const info = (html) => `<div class="wb-menu__item ax-sa__info" aria-disabled="true">${html}</div>`;
+  let head;
+  if (!data) head = info(`<span>${L("sa_error")}</span>`);
+  else if (data.found === 0) head = info(`<span>${L("sa_none", { email })}</span>`);
+  else if (data.found > 1) head = info(`<span>${L("sa_several", { n: data.found, email })}</span>`);
   else {
     const c = data.customer;
     const tone = { ENABLED: "ok", INVITED: "info", DECLINED: "warn", DISABLED: "neutral" }[c.state] || "neutral";
-    const parts = [c.name, c.email, c.company ? `${t(lang, "sa_company")}: ${c.company}` : "",
-      c.lastOrder ? t(lang, "sa_last_order", { name: c.lastOrder.name, date: fmtDateTime(c.lastOrder.date, lang) }) : "",
-      c.tags.length ? c.tags.join(", ") : ""].filter(Boolean);
-    body = `<p class="ax-cust">${pill(t(lang, "sa_state_" + c.state), tone)} ${parts.map(esc).join(" · ")}</p>`;
+    const sub = [c.email, c.company ? `${t(lang, "sa_company")}: ${c.company}` : "", c.lastOrder ? t(lang, "sa_last_order", { name: c.lastOrder.name, date: fmtDateTime(c.lastOrder.date, lang) }) : "", c.tags.join(", ")].filter(Boolean);
+    head = info(`${pill(t(lang, "sa_state_" + c.state), tone)}<span>${esc(c.name || c.email)}<small>${sub.map(esc).join(" · ")}</small></span>`);
   }
-  const btn = (a) => `<form method="post" action="${U("/shopify-account/" + a)}" data-sa-form><button type="submit" class="wb-btn wb-btn--sm">${L("sa_" + a)}</button></form>`;
-  const actions = data && data.actions.length ? `<div class="ax-sa__act">${data.actions.map(btn).join("")}</div>` : "";
-  const msg = opts.message ? `<p class="ax-sa__msg wb-hint" data-tone="${opts.tone || "info"}" role="status">${esc(opts.message)}</p>` : `<p class="ax-sa__msg wb-hint" data-sa-msg hidden></p>`;
-  const recent = SA.recent(w.id, 5);
-  const recentHtml = recent.length ? `<p class="ax-cust ax-sa__recent">${L("sa_recent")}: ${recent.map((r) => esc(`${t(lang, "sa_" + r.action)} · ${r.user} · ${fmtDateTime(r.ts.replace(" ", "T") + "Z", lang)} · ${t(lang, "sa_r_" + r.result)}`)).join("<br>")}</p>` : "";
-  return `<section class="wb-card ax-info ax-sa" aria-label="${L("sa_title")}"><div class="wb-card__bd"><span class="wb-label">${L("sa_title")}</span>${body}${actions}${msg}${recentHtml}</div></section>`;
+  const act = (a) => `<button type="button" class="wb-menu__item" role="menuitem" data-sa-act="${a}" data-sa-url="${U("/shopify-account/" + a)}"><span>${L("sa_" + a)}</span></button>`;
+  const actions = data && data.actions.length ? `<div class="wb-menu__sep" role="separator"></div>${data.actions.map(act).join("")}` : "";
+  const last = SA.recent(w.id, 1)[0];
+  const recent = last ? `<div class="wb-menu__sep" role="separator"></div><span class="wb-menu__label">${L("sa_recent")}: ${esc(`${t(lang, "sa_" + last.action)} · ${last.user} · ${fmtDateTime(last.ts.replace(" ", "T") + "Z", lang)} · ${t(lang, "sa_r_" + last.result)}`)}</span>` : "";
+  return head + actions + recent;
 }
 app.get("/item/:id/shopify-account", async (req, res) => {
   const lang = req.user.lang;
@@ -1241,7 +1241,7 @@ app.get("/item/:id/shopify-account", async (req, res) => {
   let data = null;
   try { data = await SA.lookup(saEmail(w)); }
   catch (e) { audit("system", "shopify_account_error", w.id, String(e.message || e).slice(0, 150)); }
-  res.send(saCard(w, lang, data));
+  res.send(saRows(w, lang, data));
 });
 app.post("/item/:id/shopify-account/:action", async (req, res) => {
   const lang = req.user.lang;
@@ -1262,9 +1262,7 @@ app.post("/item/:id/shopify-account/:action", async (req, res) => {
     : r.reason === "user_errors" ? t(lang, "sa_failed", { message: r.message })
     : t(lang, "sa_error") + (r.message ? " " + r.message : "");
   audit(login, "shopify_account_" + action, w.id, `${r.ok ? "ok" : r.reason} ${email}${r.customerId ? " " + r.customerId : ""}${r.message ? " " + r.message.slice(0, 120) : ""}`);
-  let data = null;
-  try { data = await SA.lookup(email); } catch (e) { data = null; }
-  res.json({ ok: r.ok, message, url: r.url || null, card: saCard(w, lang, data, { message, tone: r.ok ? "ok" : "bad" }) });
+  res.json({ ok: r.ok, message, url: r.url || null });
 });
 
 // On-demand: translate the salesperson's CURRENT (possibly edited) reply into their own

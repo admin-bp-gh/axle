@@ -33,7 +33,10 @@ function defaultDeps() {
 
 // The card's data: { found: 0|1|n, customer|null, customers (on several), actions }.
 async function lookup(email, deps = defaultDeps()) {
-  const rows = email ? await deps.lookup(email) : [];
+  // Shopify's customer search tokenises the address (brad@x.com also matches brad-archive@x.com),
+  // so only exact matches count.
+  const want = String(email || "").trim().toLowerCase();
+  const rows = want ? (await deps.lookup(want)).filter((c) => String(c.email || "").toLowerCase() === want) : [];
   const shape = (c) => ({
     id: c.id, name: c.displayName || "", email: c.email || "", state: c.state, tags: c.tags || [],
     company: c.companyContactProfiles?.[0]?.company?.name || null,

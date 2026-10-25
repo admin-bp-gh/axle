@@ -42,6 +42,8 @@ const base = { email: "jan@example.com", name: "Jan Jansen", workItemId: 7, user
     const none = await SA.lookup("x@example.com", deps([]).d);
     assert.strictEqual(none.found, 0);
     assert.deepStrictEqual(none.actions, ["create_and_invite"]);
+    const near = await SA.lookup("jan@example.com", deps([cust("ENABLED", { email: "jan-archive@example.com" })]).d);
+    assert.strictEqual(near.found, 0);   // Shopify's search also returns near matches; only the exact address counts
     const two = await SA.lookup("jan@example.com", deps([cust("INVITED"), cust("ENABLED", { id: "gid://shopify/Customer/2" })]).d);
     assert.strictEqual(two.found, 2);
     assert.deepStrictEqual(two.actions, []);

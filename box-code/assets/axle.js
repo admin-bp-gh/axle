@@ -159,7 +159,7 @@
     if (src.dataset.src) {
       fetch(src.dataset.src, { headers: { "X-Axle-Inline": "1", "HX-Request": "true" }, credentials: "same-origin" })
         .then((r) => r.ok ? r.text() : Promise.reject(new Error(r.status)))
-        .then((html) => { if (list.isConnected) list.replaceChildren(...nodes(html)); })
+        .then((html) => { if (list.isConnected) { list.replaceChildren(...nodes(html)); W.dispatchEvent(new Event("resize")); rows()[0]?.focus({ preventScroll: true }); } })
         .catch(() => { if (list.isConnected) list.replaceChildren(...nodes(`<span class="wb-menu__label">${esc(t("load_error"))}</span>`)); });
     }
     const rows = () => $$(".wb-menu__item:not(:disabled):not([aria-disabled])", list);
@@ -1657,6 +1657,7 @@
   // An activation link goes into the reply at the caret and nowhere else.
   function shopifyAccount(row) {
     const host = emailEl() || D.getElementById("workpane");
+    toast(row.dataset.saBusy || "\u2026");
     fetch(row.dataset.saUrl, { method: "POST", credentials: "same-origin", headers: { "X-Axle-Inline": "1", "HX-Request": "true" } })
       .then((r) => r.json())
       .then((j) => {

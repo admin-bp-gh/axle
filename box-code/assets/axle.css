@@ -529,6 +529,11 @@
 ::highlight(ax-flag) { background-color: color-mix(in srgb, var(--warn-fg) 22%, transparent); }
 .ax-openq { align-self: center; white-space: nowrap; color: var(--warn-fg); }
 
-/* Shopify account menu (shopify-account.js, 2026-10-25): the state row is information, not an action */
-.ax-sa__info { cursor: default; }
-.ax-sa__info:hover { background: none; }
+/* Shopify account menu (shopify-account.js, 2026-10-25): a header block (who, state, last order) over
+   the action rows; the rows carry a one-line explanation each. */
+.ax-sa__head { display: flex; flex-direction: column; gap: 2px; padding: 8px 8px 6px; max-width: 320px; }
+.ax-sa__name { display: flex; align-items: center; gap: 8px; font-size: var(--fs-base); }
+.ax-sa__note { font-size: var(--fs-xs); color: var(--ink-2); overflow-wrap: anywhere; }
+.wb-menu__item[data-sa-act] { max-width: 320px; }
+.wb-menu__item[data-sa-act] small { white-space: normal; }
+.ax-sa__last { text-transform: none; letter-spacing: 0; }

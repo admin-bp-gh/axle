@@ -249,7 +249,10 @@ const STRINGS = {
     return_label_dry: "Dry run: a return label would be created ({what}). Nothing was created.",
     return_label_failed: "MyParcel could not create the return label. Nothing was attached.",
     // Shopify account card (shopify-account.js, 2026-10-25)
-    sa_title: "Shopify account", sa_loading: "Checking Shopify…", sa_none: "No Shopify customer for {email}.",
+    sa_title: "Shopify account", sa_loading: "Checking Shopify…", sa_none: "No Shopify customer for {email}.", sa_none_short: "No Shopify customer with this address", sa_no_orders: "No orders yet",
+    sa_send_invite_tip: "Shopify emails an invitation to activate the account", sa_create_and_invite_tip: "Creates the customer in Shopify, then emails the invitation",
+    sa_activation_url_tip: "Puts the link in your reply, nothing is emailed", sa_password_reset_tip: "Shopify emails a link to set a new password",
+    sa_busy_send_invite: "Sending invite…", sa_busy_create_and_invite: "Creating and inviting…", sa_busy_activation_url: "Fetching link…", sa_busy_password_reset: "Sending reset…",
     sa_several: "{n} Shopify customers share {email}. Sort this out in the Shopify admin first.",
     sa_error: "Shopify could not be reached.", sa_last_order: "Last order {name} on {date}", sa_company: "Company",
     sa_state_DISABLED: "No account", sa_state_INVITED: "Invited", sa_state_ENABLED: "Active", sa_state_DECLINED: "Declined",
@@ -525,7 +528,10 @@ const STRINGS = {
     return_label_dry: "Proefrun: er zou een retourlabel worden gemaakt ({what}). Er is niets gemaakt.",
     return_label_failed: "MyParcel kon het retourlabel niet maken. Er is niets bijgevoegd.",
     // Shopify account card (shopify-account.js, 2026-10-25)
-    sa_title: "Shopify-account", sa_loading: "Shopify wordt gecontroleerd…", sa_none: "Geen Shopify-klant voor {email}.",
+    sa_title: "Shopify-account", sa_loading: "Shopify wordt gecontroleerd…", sa_none: "Geen Shopify-klant voor {email}.", sa_none_short: "Geen Shopify-klant met dit adres", sa_no_orders: "Nog geen orders",
+    sa_send_invite_tip: "Shopify mailt een uitnodiging om het account te activeren", sa_create_and_invite_tip: "Maakt de klant aan in Shopify en mailt daarna de uitnodiging",
+    sa_activation_url_tip: "Zet de link in je antwoord, er wordt niets gemaild", sa_password_reset_tip: "Shopify mailt een link om een nieuw wachtwoord in te stellen",
+    sa_busy_send_invite: "Uitnodiging versturen…", sa_busy_create_and_invite: "Aanmaken en uitnodigen…", sa_busy_activation_url: "Link ophalen…", sa_busy_password_reset: "Reset versturen…",
     sa_several: "{n} Shopify-klanten delen {email}. Los dit eerst op in de Shopify-admin.",
     sa_error: "Shopify is niet bereikbaar.", sa_last_order: "Laatste order {name} op {date}", sa_company: "Bedrijf",
     sa_state_DISABLED: "Geen account", sa_state_INVITED: "Uitgenodigd", sa_state_ENABLED: "Actief", sa_state_DECLINED: "Afgewezen",
@@ -892,7 +898,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax22";  // 2026-10-25: Shopify account menu in the dock (ax21: Dig deeper beside Redraft and its keys (ax20: no preview without a selection, re-translate on the reply; ax19: Create order split + Re-send order)
+const ASSET_V = "ax23";  // 2026-10-25: Shopify account menu in the dock (ax21: Dig deeper beside Redraft and its keys (ax20: no preview without a selection, re-translate on the reply; ax19: Create order split + Re-send order)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

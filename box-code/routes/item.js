@@ -1217,21 +1217,22 @@ function saRows(w, lang, data) {
   const L = (k, v) => esc(t(lang, k, v));
   const U = (p) => `${BASE.path}/item/${w.id}${p}`;
   const email = saEmail(w);
-  const info = (html) => `<div class="wb-menu__item ax-sa__info" aria-disabled="true">${html}</div>`;
+  const note = (text) => `<div class="ax-sa__head"><span class="ax-sa__note">${text}</span></div>`;
   let head;
-  if (!data) head = info(`<span>${L("sa_error")}</span>`);
-  else if (data.found === 0) head = info(`<span>${L("sa_none", { email })}</span>`);
-  else if (data.found > 1) head = info(`<span>${L("sa_several", { n: data.found, email })}</span>`);
+  if (!data) head = note(L("sa_error"));
+  else if (data.found === 0) head = `<div class="ax-sa__head"><b>${esc(email)}</b><span class="ax-sa__note">${L("sa_none_short")}</span></div>`;
+  else if (data.found > 1) head = note(L("sa_several", { n: data.found, email }));
   else {
     const c = data.customer;
     const tone = { ENABLED: "ok", INVITED: "info", DECLINED: "warn", DISABLED: "neutral" }[c.state] || "neutral";
-    const sub = [c.email, c.company ? `${t(lang, "sa_company")}: ${c.company}` : "", c.lastOrder ? t(lang, "sa_last_order", { name: c.lastOrder.name, date: fmtDateTime(c.lastOrder.date, lang) }) : "", c.tags.join(", ")].filter(Boolean);
-    head = info(`${pill(t(lang, "sa_state_" + c.state), tone)}<span>${esc(c.name || c.email)}<small>${sub.map(esc).join(" · ")}</small></span>`);
+    const meta = [c.company || "", c.lastOrder ? t(lang, "sa_last_order", { name: c.lastOrder.name, date: fmtDateTime(c.lastOrder.date, lang) }) : t(lang, "sa_no_orders"), c.tags.join(", ")].filter(Boolean);
+    head = `<div class="ax-sa__head"><div class="ax-sa__name"><b>${esc(c.name || c.email)}</b>${pill(t(lang, "sa_state_" + c.state), tone)}</div><span class="ax-sa__note">${esc(c.email)}</span><span class="ax-sa__note">${meta.map(esc).join(" · ")}</span></div>`;
   }
-  const act = (a) => `<button type="button" class="wb-menu__item" role="menuitem" data-sa-act="${a}" data-sa-url="${U("/shopify-account/" + a)}"><span>${L("sa_" + a)}</span></button>`;
+  const ICON = { send_invite: "mail", create_and_invite: "plus", activation_url: "clip", password_reset: "lock" };
+  const act = (a) => `<button type="button" class="wb-menu__item" role="menuitem" data-sa-act="${a}" data-sa-url="${U("/shopify-account/" + a)}" data-sa-busy="${L("sa_busy_" + a)}">${icon(ICON[a])}<span>${L("sa_" + a)}<small>${L("sa_" + a + "_tip")}</small></span></button>`;
   const actions = data && data.actions.length ? `<div class="wb-menu__sep" role="separator"></div>${data.actions.map(act).join("")}` : "";
   const last = SA.recent(w.id, 1)[0];
-  const recent = last ? `<div class="wb-menu__sep" role="separator"></div><span class="wb-menu__label">${L("sa_recent")}: ${esc(`${t(lang, "sa_" + last.action)} · ${last.user} · ${fmtDateTime(last.ts.replace(" ", "T") + "Z", lang)} · ${t(lang, "sa_r_" + last.result)}`)}</span>` : "";
+  const recent = last ? `<div class="wb-menu__sep" role="separator"></div><span class="wb-menu__label ax-sa__last">${L("sa_recent")}: ${esc(`${t(lang, "sa_" + last.action)} · ${last.user} · ${fmtDateTime(last.ts.replace(" ", "T") + "Z", lang)} · ${t(lang, "sa_r_" + last.result)}`)}</span>` : "";
   return head + actions + recent;
 }
 app.get("/item/:id/shopify-account", async (req, res) => {

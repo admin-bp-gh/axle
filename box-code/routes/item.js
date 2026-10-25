@@ -38,6 +38,8 @@ const DM = require("../draft-media.js");           // the customer files the lat
 const ED = require("../assets/axle-editor.js");    // the reply editor's model: its first view is rendered here
 const RL = require("../return-label.js");          // "+ Return label": a MyParcel return label on the reply (gated)
 const SA = require("../shopify-account.js");       // Shopify account card: state, invite, activation link, password reset
+const COMMS = require("../comms-client.js");      // customer comms wave 3: Notify when back in stock
+const { extractCodes } = require("../engine.js");
 const DEEP = require("../deep.js");                // Dig deeper (Step D): the switch, the hint, the soft budget
 const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
 const VS = require("../voicemail-sheet.js");       // a voicemail's call back sheet: count, open issues, supplier (Change A2)
@@ -1233,8 +1235,29 @@ function saRows(w, lang, data) {
   const actions = data && data.actions.length ? `<div class="wb-menu__sep" role="separator"></div>${data.actions.map(act).join("")}` : "";
   const last = SA.recent(w.id, 1)[0];
   const recent = last ? `<div class="wb-menu__sep" role="separator"></div><span class="wb-menu__label ax-sa__last">${L("sa_recent")}: ${esc(`${t(lang, "sa_" + last.action)} · ${last.user} · ${fmtDateTime(last.ts.replace(" ", "T") + "Z", lang)} · ${t(lang, "sa_r_" + last.result)}`)}</span>` : "";
-  return head + actions + recent;
+  return head + actions + recent + nmRows(w, lang);
 }
+// Notify when back in stock (customer comms wave 3): one row per part code the latest AI draft names (the
+// items the thread resolved), each recording this customer's interest in Workbench with source 'axle'.
+function nmCodes(w) {
+  const d = db.prepare("SELECT body FROM drafts WHERE work_item_id = ? AND is_interim = 0 AND source = 'ai' ORDER BY version DESC, id DESC LIMIT 1").get(w.id);
+  return d ? extractCodes(d.body).slice(0, 5) : [];
+}
+function nmRows(w, lang) {
+  const codes = nmCodes(w);
+  if (!codes.length) return "";
+  const L = (k, v) => esc(t(lang, k, v));
+  const row = (c) => `<button type="button" class="wb-menu__item" role="menuitem" data-nm-sku="${esc(c)}" data-nm-url="${BASE.path}/item/${w.id}/notify-stock" data-nm-busy="${L("nm_busy")}">${icon("mail")}<span>${esc(c)}<small>${L("nm_tip")}</small></span></button>`;
+  return `<div class="wb-menu__sep" role="separator"></div><span class="wb-menu__label">${L("nm_title")}</span>${codes.map(row).join("")}`;
+}
+app.post("/item/:id/notify-stock", async (req, res) => {
+  const lang = req.user.lang;
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).json({ ok: false, message: t(lang, "not_found") });
+  if (w.injection_flag) return res.status(400).json({ ok: false, message: t(lang, "send_disabled_inj") });
+  const r = await COMMS.notifyStock({ sku: req.body.sku, email: saEmail(w), lang: w.language, workItemId: w.id, user: req.user.tailscale_login });
+  res.json({ ok: r.result !== "failed", message: t(lang, "nm_" + r.result, { sku: String(req.body.sku || "").slice(0, 50) }) });
+});
 app.get("/item/:id/shopify-account", async (req, res) => {
   const lang = req.user.lang;
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);

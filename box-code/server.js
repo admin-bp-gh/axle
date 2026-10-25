@@ -28,6 +28,7 @@ const { db, audit } = require("./db.js");
 const SEARCH = require("./search.js");              // the search index: filled at start-up, kept current at each write
 const MS = require("./message-store.js");           // stored messages and attachments: the one-time background backfill
 const BASE = require("./base-path.js");             // AXLE_BASE_PATH: "" or the URL prefix, e.g. "/axle"
+const COMMS = require("./comms-client.js");          // customer comms wave 3: GET /api/replies, Notify when back in stock
 const { esc, t, page, langOK, workPanes } = require("./views/ui.js");
 const { MAILBOX_OF, MAX_ATTACH_BYTES, MAX_ATTACH_TOTAL, runRedraft, markReadSafe,
         isContactFormItem, isReturnNotificationItem, itemKind, customerEmails, saveWorkInputs, defaultMailbox } = require("./routes/shared.js");
@@ -85,6 +86,17 @@ const app = express();
 // Limit raised so an attachment (browser-encoded to base64 in a hidden field) fits in a
 // normal form post — no multipart/dependency needed. Per-file cap is enforced separately.
 app.use(express.urlencoded({ extended: false, limit: "16mb" }));
+
+// Customer comms wave 3 (2026-10-25): Workbench's nightly outcomes pass asks for the first inbound message per
+// address after `since`. A loopback route with no tailnet identity, so it sits before the identity check and is
+// guarded like Workbench's /api/agent: loopback, no Serve header, X-Agent-Token (comms-client.js guard).
+app.get("/api/replies", (req, res) => {
+  if (!COMMS.guard(req)) return res.status(403).json({ error: "forbidden" });
+  const replies = COMMS.replies(req.query.since, req.query.emails);
+  if (!replies) return res.status(400).json({ error: "bad_since" });
+  audit("workbench", "comms_replies", null, `since ${String(req.query.since).slice(0, 25)}: ${replies.length} replies`);
+  res.json({ replies });
+});
 
 // Identity from Tailscale Serve headers. No header = request didn't come through Serve.
 app.use((req, res, next) => {

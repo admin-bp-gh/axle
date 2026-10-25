@@ -38,6 +38,7 @@ const OBLOCK = require("./outlook-block.js");    // Axle -> Outlook: file blocke
 const ACK = require("./acknowledgement.js");     // no_reply courtesy line: when to keep it, and what may be in it
 const US = require("./unread-sweep.js");         // which unread mail the watermark missed may be added to a run
 const MS = require("./message-store.js");        // every message of the thread and its attachments, files on disk
+const COMMS = require("./comms-client.js");    // customer comms wave 3: the Unsubscribe <token> mail
 const SEARCH = require("./search.js");           // the search index row of each item touched
 const DM = require("./draft-media.js");          // the customer's images and PDFs shown to the drafter
 const HO = require("./handover.js");
@@ -129,6 +130,11 @@ async function processThread(anthropic, key, msgs, ctx) {
     return { skip: "blocked" };
   }
 
+  // Customer comms wave 3: an "Unsubscribe <token>" mail (the footer's mailto fallback) Workbench accepts is
+  // handled here and marked read; one it refuses, or any failure, carries on as an ordinary mail for a human.
+  if (rulesets.unsubscribeToken(email.subject) && await COMMS.handleUnsubscribeMail(email, { mailbox: MAILBOX, markRead: SEND.markRead })) {
+    return { skip: "comms_unsubscribe" };
+  }
   const rule = rulesets.matchRule(email, ruleset.rules);
   if (!rule || rule.action === "archive" || rule.action === "junk") return { skip: "noise" };
 

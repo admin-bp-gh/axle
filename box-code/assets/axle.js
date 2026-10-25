@@ -1669,6 +1669,18 @@
       .catch(() => banner(host, { tone: "bad", message: t("post_failed"), unchanged: true }));
   }
 
+  // Notify when back in stock (customer comms wave 3): a row of the Shopify account menu per part code the
+  // draft names. One click records the customer's interest in Workbench; the answer is a toast or a banner.
+  function notifyStock(row) {
+    const host = emailEl() || D.getElementById("workpane");
+    toast(row.dataset.nmBusy || "\u2026");
+    fetch(row.dataset.nmUrl, { method: "POST", credentials: "same-origin", body: new URLSearchParams({ sku: row.dataset.nmSku }),
+      headers: { "X-Axle-Inline": "1", "HX-Request": "true" } })
+      .then((r) => r.json())
+      .then((j) => { if (!j.ok) return banner(host, { tone: "bad", message: j.message, unchanged: true }); clearBanner(host); toast(j.message); })
+      .catch(() => banner(host, { tone: "bad", message: t("post_failed"), unchanged: true }));
+  }
+
   /* ---------- Wiring: one click listener, in order ---------- */
   D.addEventListener("click", (e) => {
     const tg = e.target;
@@ -1683,6 +1695,8 @@
     if (sub) { submitRow(sub); return; }
     const sa = tg.closest("[data-sa-act]");
     if (sa) { shopifyAccount(sa); return; }
+    const nm = tg.closest("[data-nm-sku]");
+    if (nm) { notifyStock(nm); return; }
     if (emailClick(tg)) return;
     const m = tg.closest("[data-menu]");
     if (m) { if (menuLy?.trigger === m) menuLy.close(); else openMenu(m); return; }

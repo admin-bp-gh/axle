@@ -178,3 +178,13 @@ function matchRule(email, rules) {
 }
 module.exports.matchRule = matchRule;
 
+
+// Customer comms wave 3 (2026-10-25): the mailto fallback of the unsubscribe footer sends a mail whose subject
+// is "Unsubscribe <token>" (base64url HMAC of the address). The token, or null for any other subject. The token
+// is checked by Workbench against the SENDER's address (comms-client.handleUnsubscribeMail), never trusted here.
+const UNSUB_RE = /^unsubscribe\s+([A-Za-z0-9_-]{20,})\s*$/i;
+function unsubscribeToken(subject) {
+  const m = UNSUB_RE.exec(String(subject || "").trim());
+  return m ? m[1] : null;
+}
+module.exports.unsubscribeToken = unsubscribeToken;

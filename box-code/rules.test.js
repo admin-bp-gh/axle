@@ -151,3 +151,18 @@ test("drachten routes everything to Drachten", () => {
   assert.strictEqual(route("nobody@nowhere.example", "Vraag", "drachten").owner, "Drachten");
   assert.strictEqual(route("benjamin@cartek.be", "Klacht factuur #427858", "drachten").owner, "Drachten");
 });
+
+// --- customer comms wave 3: the "Unsubscribe <token>" mailto fallback ---------------------
+test("an Unsubscribe mail with a base64url token yields the token", () => {
+  const tok = "q3Xv_9-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789a";
+  assert.strictEqual(rulesets.unsubscribeToken("Unsubscribe " + tok), tok);
+  assert.strictEqual(rulesets.unsubscribeToken("unsubscribe   " + tok + "  "), tok);
+  assert.strictEqual(rulesets.unsubscribeToken("UNSUBSCRIBE " + tok), tok);
+});
+
+test("anything else is not an unsubscribe mail", () => {
+  for (const s of ["Unsubscribe me please", "Unsubscribe", "Unsubscribe short123", "RE: Unsubscribe q3Xv_9-AbCdEfGhIjKlMnOpQr",
+    "Unsubscribe q3Xv_9-AbCdEfGhIjKlMnOpQr extra", "Please unsubscribe q3Xv_9-AbCdEfGhIjKlMnOpQr", "", null]) {
+    assert.strictEqual(rulesets.unsubscribeToken(s), null, String(s));
+  }
+});

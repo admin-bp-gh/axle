@@ -1681,14 +1681,29 @@
       .catch(() => banner(host, { tone: "bad", message: t("post_failed"), unchanged: true }));
   }
 
+  // Print menu (print round 2): the "Include attachments" tick puts atts=1 on every print row of its
+  // menu the moment it changes, so a row's link is already right when it is clicked; the click
+  // handler below sets it once more. A click on the tick or its label is the tick's alone: it never
+  // closes the menu or reaches another handler.
+  function printHref(href, on) {
+    const u = new URL(href, location.href);
+    if (on) u.searchParams.set("atts", "1"); else u.searchParams.delete("atts");
+    return u.href;
+  }
+  D.addEventListener("change", (e) => {
+    const tick = e.target.closest?.("[data-print-atts]");
+    if (tick) $$("a[data-print-row]", tick.closest('[role="menu"]') || D).forEach((a) => { a.href = printHref(a.getAttribute("href"), tick.checked); });
+  });
+
   /* ---------- Wiring: one click listener, in order ---------- */
   D.addEventListener("click", (e) => {
     const tg = e.target;
+    if (tg.closest?.(".ax-print-atts")) return;
     // A confirm runs first (capture below); a menu row closes its menu, then acts like any element.
     if (menuLy && tg.closest(".wb-menu__item") && menuLy.el.contains(tg)) {
       // Print menu: the "Include attachments" tick decides the chosen row's link.
       const pr = tg.closest("a[data-print-row]");
-      if (pr) { const u = new URL(pr.href, location.href); if ($("[data-print-atts]", menuLy.el)?.checked) u.searchParams.set("atts", "1"); else u.searchParams.delete("atts"); pr.href = u.href; }
+      if (pr) { const tick = $("[data-print-atts]", menuLy.el); if (tick) pr.href = printHref(pr.getAttribute("href"), tick.checked); }
       if (tg.closest("a[href]")) { setTimeout(() => menuLy?.close()); return; }
       menuLy.close();
     }

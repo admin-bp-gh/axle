@@ -950,8 +950,8 @@ app.get("/item/:id/file/:attId", async (req, res) => {
   res.sendFile(f.path, { headers, cacheControl: false, lastModified: false, dotfiles: "allow" });
 });
 
-// Print (A4): one email or the whole thread as a bare page that prints itself, opened in a new
-// window from the sender line's print menu. The customer and the in-scope SAP documents are the
+// Print (A4): one email or the whole thread as a PDF, opened in a new window from the sender
+// line's print menu. The customer and the in-scope SAP documents are the
 // ones the item page shows; SAP slowness never blocks the print.
 app.get("/item/:id/print", async (req, res) => {
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
@@ -969,15 +969,18 @@ app.get("/item/:id/print", async (req, res) => {
     }
   } catch (e) { /* no documents line */ }
   const scope = req.query.scope === "thread" ? "thread" : "one";
-  if (req.query.atts !== "1") {
-    audit(req.user.tailscale_login, "print_email", w.id, scope);
-    return res.set("Cache-Control", "no-store").send(PV.render(w, MS.itemThread(w.id), { scope, lang, refs }));
-  }
-  // With attachments: one PDF, opened by the browser's own viewer in this new window.
-  audit(req.user.tailscale_login, "print_email", w.id, `${scope} attachments`);
+  // Always one PDF (print round 2): no browser date or URL lines, the same on a Mac and on Windows,
+  // opened by the browser's own viewer in the new window. atts=1: the attachments too. When the PDF
+  // cannot be made, the plain page that prints itself, so a print is never refused.
+  const atts = req.query.atts === "1";
+  const thread = MS.itemThread(w.id);
+  audit(req.user.tailscale_login, "print_email", w.id, atts ? `${scope} attachments` : scope);
   const readFile = async (a) => { const f = await MS.loadAttachment(w.id, a.id); return f && (f.buffer || fs.readFileSync(f.path)); };
-  const r = await PRINTATT.buildPrintPdf(w, MS.itemThread(w.id), { scope, lang, refs, readFile, htmlToPdf: CLAIMSTMT.htmlToPdf });
-  if (!r.ok) return res.status(502).send(bannerPage(t(lang, "print_menu"), req.user, `${t(lang, "pr_atts_failed")} ${r.error}`));
+  const r = await PRINTATT.buildPrintPdf(w, thread, { scope, lang, refs, readFile, atts, htmlToPdf: CLAIMSTMT.htmlToPdf });
+  if (!r.ok) {
+    audit(req.user.tailscale_login, "print_pdf_failed", w.id, String(r.error || "").slice(0, 200));
+    return res.set("Cache-Control", "no-store").send(PV.render(w, thread, { scope, lang, refs }));
+  }
   const name = `email-${w.id}.pdf`;
   res.set({ "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${name}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" }).send(r.buffer);
 });

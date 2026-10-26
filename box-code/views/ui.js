@@ -181,6 +181,7 @@ const STRINGS = {
     print_menu: "Print", print_one: "Print this email", print_thread: "Print whole thread", print_atts_tick: "Include attachments",
     pr_atts: "Attachments", pr_att_pdf: "added at the end", pr_att_noprint: "cannot be printed here", pr_att_unreadable: "could not be fetched, not printed", pr_att_broken: "damaged or protected PDF, cannot be printed here", pr_atts_failed: "The PDF with attachments could not be made:",
     pr_from: "From", pr_to: "To", pr_cc: "Cc", pr_date: "Date", pr_subject: "Subject", pr_customer: "Customer", pr_docs: "Documents",
+    pr_footer_omitted: "Signature and footer omitted", pr_page: "Page {n} of {total}", pr_att_label: "Attachment: {name}", pr_att_dup: "already printed above",
     earlier_msgs: "Earlier in this conversation", footer_fold: "Signature and footer",
     inline_image: "inline image",
     // mobile Phase 2 (M-28, M-32, M-56, M-58)
@@ -465,6 +466,7 @@ const STRINGS = {
     print_menu: "Afdrukken", print_one: "Deze e-mail afdrukken", print_thread: "Hele conversatie afdrukken", print_atts_tick: "Bijlagen meenemen",
     pr_atts: "Bijlagen", pr_att_pdf: "achteraan toegevoegd", pr_att_noprint: "kan hier niet worden afgedrukt", pr_att_unreadable: "kon niet worden opgehaald, niet afgedrukt", pr_att_broken: "beschadigde of beveiligde PDF, kan hier niet worden afgedrukt", pr_atts_failed: "De PDF met bijlagen kon niet worden gemaakt:",
     pr_from: "Van", pr_to: "Aan", pr_cc: "Cc", pr_date: "Datum", pr_subject: "Onderwerp", pr_customer: "Klant", pr_docs: "Documenten",
+    pr_footer_omitted: "Handtekening en voettekst weggelaten", pr_page: "Pagina {n} van {total}", pr_att_label: "Bijlage: {name}", pr_att_dup: "hierboven al afgedrukt",
     earlier_msgs: "Eerder in dit gesprek", footer_fold: "Handtekening en voettekst",
     inline_image: "afbeelding in tekst",
     // mobile Phase 2 (M-28, M-32, M-56, M-58)
@@ -917,7 +919,7 @@ const homeLink = (lang) => B
 
 // Bump on any assets/* change so browsers re-fetch (express.static serves the
 // files; the query string only busts the cache).
-const ASSET_V = "ax23";  // 2026-10-25: Shopify account menu in the dock (ax21: Dig deeper beside Redraft and its keys (ax20: no preview without a selection, re-translate on the reply; ax19: Create order split + Re-send order)
+const ASSET_V = "ax24";  // 2026-10-26: print menu tick wiring (ax23, 2026-10-25: Shopify account menu in the dock (ax21: Dig deeper beside Redraft and its keys (ax20: no preview without a selection, re-translate on the reply; ax19: Create order split + Re-send order)
 
 // The words axle.js shows itself (toasts, banners, the compose drawer, the draft protection).
 const CLIENT_KEYS = [

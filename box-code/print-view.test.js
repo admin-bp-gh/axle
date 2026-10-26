@@ -38,4 +38,51 @@ test("an email from before the message store prints from the item", () => {
   assert.strictEqual((h.match(/<article>/g) || []).length, 1);
   assert.ok(h.includes("jan@example.nl") && !h.includes(">Customer<"));
 });
+test("cleaning: link targets, mailto, alt text and Outlook separator go, visible text stays", () => {
+  const c = PV.cleanText("Kampenringweg 13<https://maps.app.goo.gl/x>\ninfo@budget-parts.nl<mailto:info@budget-parts.nl>\nSee <https://a.nl/b>\nmail <mailto:jan@x.nl>\n[A green and black sign Description automatically generated]<https://budget-parts.nl/pages/contact>\n________________________________\nEnd");
+  assert.strictEqual(c, "Kampenringweg 13\ninfo@budget-parts.nl\nSee https://a.nl/b\nmail jan@x.nl\n\nEnd");
+});
+test("signature: our address block and a disclaimer fold to one line, the name stays", () => {
+  const s = PV.stripSignature("Hello JP\n\nKind regards,\n\nBradley Sharnock\n\nGouda\n\nKampenringweg 13\n\n2803 PE Gouda\n\ninfo@budget-parts.nl\n\nKvK: 28064788\n\nBTW: NL817343118B01\n\nDisclaimer: Deze e-mail is vertrouwelijk.");
+  assert.deepStrictEqual(s, { text: "Hello JP\n\nKind regards,\n\nBradley Sharnock", folded: true });
+  const h = PV.render({ ...w, mailbox: "info" }, [{ ...thread[0], body: "Hi\n\nKvK: 28064788" }], { scope: "one", lang: "nl", refs });
+  assert.ok(h.includes("Handtekening en voettekst weggelaten") && !h.includes("28064788"));
+});
+test("quoted rule: a forward whose original is not in the thread is printed, with its header", () => {
+  const fw = [{ graphId: "f", from: { address: "admin@budget-parts.nl" }, to: [], cc: [], received: "2026-10-23T05:46:26Z",
+    body: "Morning JP\n\nSee below.\n\nFrom: Marcel Fassl <marcel@x.at>\nSent: Thursday, October 22, 2026 1:11 PM\nTo: Budget Parts <info@budget-parts.nl>\nSubject: Quality issue\n\nThe welds are broken." }];
+  for (const scope of ["thread", "one"]) {
+    const h = PV.render({ ...w, latest_message_id: "f" }, fw, { scope, lang: "en", refs });
+    assert.ok(h.includes("The welds are broken.") && h.includes("<blockquote>") && h.includes("Marcel Fassl &lt;marcel@x.at&gt;"), scope);
+  }
+});
+test("quoted rule: a quoted copy of a message printed in the thread is dropped, scope one keeps it", () => {
+  const th = [
+    { graphId: "a", from: { address: "c@x.nl" }, to: [], cc: [], received: "2026-10-22T11:00:00Z", body: "[cid:abc@outlook]\nDear Team,\n\nthe side steps arrived damaged, please advise." },
+    { graphId: "b", from: { address: "c@x.nl" }, to: [], cc: [], received: "2026-10-26T08:00:00Z", body: "Kind reminder.\n\nOn 22.10.2026, at 13:11, C <c@x.nl> wrote:\n\n<IMG_1.jpeg>\nDear Team,\n\nthe side steps arrived damaged, please advise." },
+  ];
+  const t2 = PV.render({ ...w, latest_message_id: "b" }, th, { scope: "thread", lang: "en", refs });
+  assert.strictEqual((t2.match(/arrived damaged/g) || []).length, 1);
+  assert.ok(!t2.includes("<blockquote>"));
+  const t1 = PV.render({ ...w, latest_message_id: "b" }, th, { scope: "one", lang: "en", refs });
+  assert.ok(t1.includes("Kind reminder.") && t1.includes("arrived damaged") && t1.includes("<blockquote>"));
+});
+test("full date and the branded header with the mailbox", () => {
+  assert.ok(/^Friday,? 23 October 2026 at 07:46$/.test(PV.fullDate("2026-10-23T05:46:26Z", "en")));
+  assert.ok(/^vrijdag 23 oktober 2026/.test(PV.fullDate("2026-10-23T05:46:26Z", "nl")));
+  const h = PV.render({ ...w, mailbox: "drachten" }, thread, { scope: "one", lang: "en", refs });
+  assert.ok(h.includes("Budget Parts B.V.") && h.includes("drachten@budget-parts.nl") && /@page \{ size: A4/.test(h));
+});
+// The print menu tick (assets/axle.js): the href rule run as written, and the wiring around it.
+test("tick wiring: the change of the tick rewrites every print row; the tick's click is its own", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "assets", "axle.js"), "utf8");
+  const fn = /function printHref\(href, on\) \{[\s\S]*?\n  \}/.exec(src)[0];
+  const printHref = new Function("location", `${fn}; return printHref;`)({ href: "http://box/axle/item/2919" });
+  assert.strictEqual(printHref("/axle/item/2919/print?scope=thread", true), "http://box/axle/item/2919/print?scope=thread&atts=1");
+  assert.strictEqual(printHref("/axle/item/2919/print?scope=thread&atts=1", false), "http://box/axle/item/2919/print?scope=thread");
+  assert.strictEqual(printHref(printHref("/axle/item/1/print?scope=one", true), true), "http://box/axle/item/1/print?scope=one&atts=1");
+  assert.ok(/addEventListener\("change"[\s\S]{0,120}\[data-print-atts\][\s\S]{0,200}a\[data-print-row\][\s\S]{0,120}printHref/.test(src), "change listener updates the rows");
+  assert.ok(/const tg = e\.target;\n    if \(tg\.closest\?\.\("\.ax-print-atts"\)\) return;/.test(src), "tick click returns before anything can close the menu");
+  assert.notStrictEqual(require("./views/ui.js").ASSET_V, "ax23", "asset version bumped so browsers fetch the new axle.js");
+});
 console.log(`${pass} passed`);

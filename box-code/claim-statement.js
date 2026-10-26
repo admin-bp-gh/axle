@@ -291,6 +291,8 @@ function htmlToPdf(html, opts = {}) {
       "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
       `--user-data-dir=${profile}`,
       "--no-pdf-header-footer",
+      // A page with a script that must finish before printing (the email print shrinks its photos).
+      ...(opts.virtualTimeMs ? [`--virtual-time-budget=${opts.virtualTimeMs}`] : []),
       `--print-to-pdf=${pdfPath}`,
       "file:///" + htmlPath.replace(/\\/g, "/"),
     ];

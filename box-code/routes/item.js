@@ -44,7 +44,8 @@ const DEEP = require("../deep.js");                // Dig deeper (Step D): the s
 const HO = require("../handover.js");              // owner handover with a note: the record, the note's sanitiser
 const VS = require("../voicemail-sheet.js");       // a voicemail's call back sheet: count, open issues, supplier (Change A2)
 const SV = require("../send-verify.js");           // Not sent: a reply Exchange left in Drafts, and its Try again
-const PO = require("../prose-output.js");          // AXLE_OUTPUT=prose: Send warns on open blocking questions (Step B)
+const PO = require("../prose-output.js");
+const PV = require("../print-view.js");            // A4: the print view of one email or the whole thread          // AXLE_OUTPUT=prose: Send warns on open blocking questions (Step B)
 const fs = require("fs");
 const path = require("path");
 
@@ -945,6 +946,29 @@ app.get("/item/:id/file/:attId", async (req, res) => {
   };
   if (f.buffer) return res.set(headers).send(f.buffer);
   res.sendFile(f.path, { headers, cacheControl: false, lastModified: false, dotfiles: "allow" });
+});
+
+// Print (A4): one email or the whole thread as a bare page that prints itself, opened in a new
+// window from the sender line's print menu. The customer and the in-scope SAP documents are the
+// ones the item page shows; SAP slowness never blocks the print.
+app.get("/item/:id/print", async (req, res) => {
+  const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
+  if (!w) return res.status(404).send(notFoundPage(req.user));
+  const lang = req.user.lang;
+  const refs = { customer: "", docs: [] };
+  try {
+    const card = await itemCardCode(w);
+    const s = card && await CUSTSUM.summarise(card);
+    if (card) refs.customer = [card, s && s.cardName].filter(Boolean).join(" ");
+  } catch (e) { /* printed without the customer */ }
+  try {
+    for (const sg of JSON.parse(w.doc_suggestions_json || "[]") || []) {
+      if (sg.status === "in_scope" && sg.docs[0]) refs.docs.push(`${t(lang, "doc_" + docTypeOf(sg.docs[0].objectId))} ${sg.docs[0].docNum}`);
+    }
+  } catch (e) { /* no documents line */ }
+  const scope = req.query.scope === "thread" ? "thread" : "one";
+  audit(req.user.tailscale_login, "print_email", w.id, scope);
+  res.set("Cache-Control", "no-store").send(PV.render(w, MS.itemThread(w.id), { scope, lang, refs }));
 });
 
 // The old index-based link (open tabs from before round 2): the same attachment's stored row when

@@ -279,7 +279,7 @@ async function classify(anthropic, email, history) {
       "LANGUAGE: set \"language\" to the language the CUSTOMER writes in, judged from <customer_writing_sample> (their own words, newest first). Ignore our quoted replies and standard legal footers. If the sample is empty or too short to tell, judge from the From address and any country/address cues in the email. " +
       "Respond with ONLY a JSON object, no other text: " +
       '{"intent":"stock_price_enquiry|quote_request|order_status|cancellation|return_complaint|b2b_order|account|internal|supplier|invoice|other",' +
-      '"priority":"high|normal|low","language":"nl|en|de|fr|es|other","injection_suspected":true|false,' +
+      '"priority":"high|normal|low","language":"nl|en|de|fr|es|other","injection_suspected":true|false,"branch_topic":"parts_quote|general|unsure",' +
       '"summary":"one short sentence in English"} ' +
       "priority high = angry customer, money at risk, or time-critical; low = informational/no reply needed. " +
       "b2b_order is ONLY for clearly identifiable trade/business customers (workshops, dealers, resellers) placing or changing an order; a private individual asking about parts is stock_price_enquiry. " +
@@ -290,7 +290,8 @@ async function classify(anthropic, email, history) {
       "stock_price_enquiry = whether one part is in stock, fits, or what it costs. " +
       "account = their webshop account: login, password, activation, changing their email address or account details, registering a business or VAT number. " +
       "internal = mail from our own staff or branches (budget-parts.nl or roverparts.eu addresses, drachten@, info@, Huub, Rob, Jack, Tom, Brad, Vera), including a customer email forwarded by a colleague with their own note on top; never b2b_order or invoice. " +
-      "A warranty claim or a faulty part is return_complaint, never b2b_order or invoice. invoice is only a request for an invoice copy or a question about an invoice or payment.",
+      "A warranty claim or a faulty part is return_complaint, never b2b_order or invoice. invoice is only a request for an invoice copy or a question about an invoice or payment. " +
+      "branch_topic = parts_quote when the sender wants a quote or advice on which part, fitment or price; general for anything else (an existing order, delivery, return, invoice, account, opening hours); unsure when you cannot tell.",
     messages: [{
       role: "user",
       content:
@@ -302,7 +303,7 @@ async function classify(anthropic, email, history) {
   try {
     out = JSON.parse(msg.content[0].text.replace(/^```(json)?|```$/g, "").trim());
   } catch {
-    out = { intent: "other", priority: "normal", language: "other", injection_suspected: false, summary: "UNPARSEABLE CLASSIFIER OUTPUT" };
+    out = { intent: "other", priority: "normal", language: "other", injection_suspected: false, branch_topic: "unsure", summary: "UNPARSEABLE CLASSIFIER OUTPUT" };
   }
   // Thin-text guard: when the customer's own prose is too short to judge, prefer a deterministic
   // country/postal hint over the model's guess (which tends to default to EN off our quoted
@@ -312,6 +313,7 @@ async function classify(anthropic, email, history) {
     if (hint) out.language = hint;
   }
   if (!SUPPORTED_LANGS.includes(out.language)) out.language = "other";
+  if (!["parts_quote", "general"].includes(out.branch_topic)) out.branch_topic = "unsure";
   // D1: hidden smuggling characters are a strong attack signal - flag deterministically.
   if (smuggle) {
     out.injection_suspected = true;

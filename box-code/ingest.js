@@ -51,7 +51,9 @@ const { db, audit, setCallerMatch, acquireSync, releaseSync, getWatermark, setWa
 // runClaim is the ONE carrier-claim implementation, shared with the redraft path so the two can
 // never drift (they already did once - see its comment in routes/shared.js). routes/shared.js is
 // pure helpers, no express and no route registration, so this pulls in nothing web-facing.
-const { runClaim, stageWantedDocs } = require("./routes/shared.js");
+const { runClaim, stageWantedDocs, markReadSafe } = require("./routes/shared.js");
+const DUAL = require("./dual-mailbox.js");       // the same email in both mailboxes: keep one, close the other (A3)
+const SAPDOC = require("./sap-doc-pdf.js");      // read-only resolvers for the dual-mailbox reference rule
 
 const arg0 = process.argv[2];
 const BOXES = arg0 === "all" ? ["info", "drachten"] : arg0 === "drachten" ? ["drachten"] : ["info"];
@@ -117,6 +119,23 @@ async function storeSuggestions(itemId, senderEmail, scanText, isContactForm, in
 // customer boundary - it only finds more of THIS customer's own references.
 function threadScanText(email, history) {
   return [email.text].concat((history || []).map((h) => h.text || "")).filter(Boolean).join("\n\n");
+}
+
+// The dual-mailbox step's live wiring: the Done close (status, resolution, audit, mark read) and the
+// read-only SAP resolvers. Tests call DUAL.handle with their own.
+function dualDeps() {
+  return {
+    db, audit,
+    resolveReference: (ref) => DS.resolveReference(ref, { resolveDocument: SAPDOC.resolveDocument, resolveShopifyOrder: SAPDOC.resolveShopifyOrder }),
+    docWarehouses: SAPDOC.docWarehouses,
+    closeItem: async (w, note) => {
+      const n = db.prepare(`UPDATE work_items SET status = 'done', resolution = 'duplicate', pre_close_status = status,
+        updated_at = datetime('now') WHERE id = ? AND status NOT IN ('done', 'archived')`).run(w.id).changes;
+      if (!n) return;
+      audit("system", "status_change", w.id, `${w.status} -> done (duplicate; ${note})`.slice(0, 300));
+      await markReadSafe("system", w);
+    },
+  };
 }
 
 async function processThread(anthropic, key, msgs, ctx) {
@@ -294,6 +313,20 @@ async function processThread(anthropic, key, msgs, ctx) {
     return { itemId, status: "new", drafted: false, threadLen: msgs.length };
   }
 
+  // Same email in both mailboxes (A3, 26 Oct 2026): reference rule first, the classifier's topic
+  // second; an uncertain result keeps both open with a note. Closing goes the Done way (status,
+  // resolution, audit, mark read). A failure here never blocks the item.
+  let dual = { action: "none" };
+  if (rule.id !== "internal_forward") {
+    try {
+      dual = await DUAL.handle(itemId, boxName, email, cls, dualDeps());
+    } catch (e) { audit("system", "dual_mailbox_error", itemId, String(e.message || e).slice(0, 150)); }
+    if (dual.action === "closed_this") return { itemId, status: "done", drafted: false, threadLen: msgs.length, tools: 0 };
+    if (dual.action === "flagged") {
+      db.prepare("INSERT INTO questions (work_item_id, kind, question) VALUES (?, 'optional', ?)").run(dual.twinId, dual.twinFlag);
+    }
+  }
+
   // Agentic investigation + draft (same engine as drafts2). Mail from one of our own mailboxes
   // (15 Oct 2026): the drafter is told whether the reply is for the colleague or for the customer
   // whose email they forwarded, and the customer's own records are read for the latter.
@@ -378,6 +411,7 @@ async function processThread(anthropic, key, msgs, ctx) {
   for (const q of result.questions_for_salesperson || []) addQ("blocking", q);
   for (const q of result.physical_checks || []) addQ("physical", q);
   for (const q of result.notes_for_salesperson || []) addQ("optional", q);   // prose path: notes, never blocking
+  if (dual.action === "flagged") addQ("optional", dual.flag);
 
   // Carrier claim (step 4): detect, assemble the dossier, and stage the sales invoice + the
   // purchase-value statement on the draft. Read-only against every business system; staging sits

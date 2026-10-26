@@ -59,7 +59,7 @@ const STRINGS = {
     done_tip: "The work is completed (close the item)",
     phone_tip: "Completed without an email, for example you called the customer",
     res_replied: "replied", res_done: "completed", res_phone: "by phone", res_no_action: "no action needed",
-    res_outlook: "handled in Outlook", res_forwarded: "handed over",
+    res_outlook: "handled in Outlook", res_forwarded: "handed over", res_duplicate: "also in the other mailbox",
     block_sender: "Block sender", block_title: "Block this sender?",
     block_explain: "Future emails from this address no longer appear in Axle. They still arrive in Outlook, and you can undo it under Blocked senders.",
     block_explain_outlook: "Future emails from this address go to the Axle Blocked folder in Outlook instead of the inbox. Nothing is deleted, and you can undo it under Blocked senders.",
@@ -178,6 +178,8 @@ const STRINGS = {
     // UI rework Step 1 (2026-06-10)
     reset_ai: "Reset to draft", reset_ai_confirm: "Replace your text with Axle's draft?",
     hide_translation: "Hide translation",
+    print_menu: "Print", print_one: "Print this email", print_thread: "Print whole thread",
+    pr_from: "From", pr_to: "To", pr_cc: "Cc", pr_date: "Date", pr_subject: "Subject", pr_customer: "Customer", pr_docs: "Documents",
     earlier_msgs: "Earlier in this conversation", footer_fold: "Signature and footer",
     inline_image: "inline image",
     // mobile Phase 2 (M-28, M-32, M-56, M-58)
@@ -343,7 +345,7 @@ const STRINGS = {
     done_tip: "Het werk is afgerond (item sluiten)",
     phone_tip: "Afgerond zonder e-mail, bijvoorbeeld de klant gebeld",
     res_replied: "beantwoord", res_done: "afgerond", res_phone: "telefonisch", res_no_action: "geen actie nodig",
-    res_outlook: "afgehandeld in Outlook", res_forwarded: "overgedragen",
+    res_outlook: "afgehandeld in Outlook", res_forwarded: "overgedragen", res_duplicate: "ook in de andere mailbox",
     block_sender: "Blokkeer afzender", block_title: "Deze afzender blokkeren?",
     block_explain: "Toekomstige e-mails van dit adres verschijnen niet meer in Axle. Ze komen nog wel aan in Outlook, en je kunt het terugdraaien onder Geblokkeerde afzenders.",
     block_explain_outlook: "Toekomstige e-mails van dit adres gaan in Outlook naar de map Axle Blocked in plaats van de inbox. Er wordt niets verwijderd, en je kunt het terugdraaien onder Geblokkeerde afzenders.",
@@ -459,6 +461,8 @@ const STRINGS = {
     // UI rework Step 1 (2026-06-10)
     reset_ai: "Terug naar concept", reset_ai_confirm: "Je tekst vervangen door het concept van Axle?",
     hide_translation: "Verberg vertaling",
+    print_menu: "Afdrukken", print_one: "Deze e-mail afdrukken", print_thread: "Hele conversatie afdrukken",
+    pr_from: "Van", pr_to: "Aan", pr_cc: "Cc", pr_date: "Datum", pr_subject: "Onderwerp", pr_customer: "Klant", pr_docs: "Documenten",
     earlier_msgs: "Eerder in dit gesprek", footer_fold: "Handtekening en voettekst",
     inline_image: "afbeelding in tekst",
     // mobile Phase 2 (M-28, M-32, M-56, M-58)
@@ -801,11 +805,19 @@ function segmentQuoted(quoted) {
 // text). An email from before round 2 with no stored message lists the newest message's files from
 // attachments_json through the old index-based route. notShown: draft-media.js notShownFor(w).
 const SHOWABLE_IMAGE = /^image\/(png|jpe?g|gif|webp)$/i;
+// Print (A4): a quiet icon on the sender line opening two rows; each opens the print view
+// (GET /item/:id/print) in a new top-level window, so the Workbench frame is never printed.
+function printMenu(w, lang) {
+  const L = (k) => esc(t(lang, k));
+  const row = (scope, label) => `<a class="wb-menu__item" role="menuitem" href="${B}/item/${w.id}/print?scope=${scope}" target="_blank" rel="noopener"><span>${L(label)}</span></a>`;
+  return iconBtn(t(lang, "print_menu"), "printer", `data-menu="print-${w.id}" aria-haspopup="menu" aria-expanded="false"`, "ax-print")
+    + `<template id="m-print-${w.id}" data-title="${L("print_menu")}" data-align="end">${row("one", "print_one")}${row("thread", "print_thread")}</template>`;
+}
 function renderTimeline(w, lang, emailTr, emailTrPending, thread = [], notShown = []) {
   const L = (k) => esc(t(lang, k));
   const who = w.sender_name ? `<b>${esc(w.sender_name)}</b> · ${esc(w.sender_email || "")}` : `<b>${esc(w.sender_email || "")}</b>`;
   const tr = emailTr || emailTrPending;
-  const from = `<div class="ax-from"><span>${who} · ${esc(fmtDateTime(w.email_received, lang))} · ${esc(w.mailbox)}@</span>${tr ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-tr-email aria-expanded="false" data-on="${L("hide_translation")}" data-off="${L("translate")}">${L("translate")}</button>` : ""}</div>`;
+  const from = `<div class="ax-from"><span>${who} · ${esc(fmtDateTime(w.email_received, lang))} · ${esc(w.mailbox)}@</span>${tr ? `<button type="button" class="wb-btn wb-btn--ghost wb-btn--sm" data-tr-email aria-expanded="false" data-on="${L("hide_translation")}" data-off="${L("translate")}">${L("translate")}</button>` : ""}${printMenu(w, lang)}</div>`;
   const newest = thread.find((m) => m.graphId === w.latest_message_id) || thread[thread.length - 1];
   const meta = (m) => `${m.from.name || m.from.address} · ${fmtDateTime(m.received, lang)}`;
   let newestAtts;
@@ -871,6 +883,7 @@ const ICONS = {
   lock: [2, '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'],
   "chevron-down": [2.2, '<path d="m6 9 6 6 6-6"/>'],
   "chevron-right": [2.2, '<path d="m9 6 6 6-6 6"/>'],
+  printer: [2, '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>'],
   dots: [2.6, '<path d="M5 12h.01M12 12h.01M19 12h.01"/>'],
   info: [2.2, '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'],
   home: [2.2, '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/>'],

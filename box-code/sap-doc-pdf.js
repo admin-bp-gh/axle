@@ -64,6 +64,16 @@ async function resolveDocument(type, docNum) {
   return { ok: true, candidates };
 }
 
+// The warehouses on a document's lines (READ-ONLY), for the dual-mailbox rule (dual-mailbox.js).
+const LINE_TABLE = { 17: "RDR1", 13: "INV1", 14: "RIN1", 15: "DLN1", 23: "QUT1" };
+async function docWarehouses(objectId, docEntry) {
+  const tbl = LINE_TABLE[objectId];
+  if (!tbl) return [];
+  const pool = await C.getPool();
+  const r = await pool.request().input("e", sql.Int, docEntry).query("SELECT DISTINCT WhsCode FROM " + tbl + " WHERE DocEntry = @e");
+  return (r.recordset || []).map((x) => x.WhsCode);
+}
+
 // Invoke the read-only Crystal renderer for a resolved (objectId, docEntry).
 // Resolves to { ok:true, buffer, bytes } or { ok:false, error }.
 function renderPdf(objectId, docEntry) {
@@ -182,7 +192,7 @@ async function invoicesForOrder(orderDocEntry) {
   }));
 }
 
-module.exports = { DOC_TYPES, docTypeInfo, resolveDocument, resolveShopifyOrder, tokenInNumAtCard, renderPdf, buildDocumentPdf, customerByEmail, customersByEmail, invoicesForOrder };
+module.exports = { DOC_TYPES, docTypeInfo, resolveDocument, resolveShopifyOrder, tokenInNumAtCard, renderPdf, buildDocumentPdf, customerByEmail, customersByEmail, invoicesForOrder, docWarehouses };
 
 // --- JSON CLI for the mail MCPs' attach_sap_document tool ---
 //   node sap-doc-pdf.js --json <type|shopify> <number> <outPath> [recipientEmail,...]

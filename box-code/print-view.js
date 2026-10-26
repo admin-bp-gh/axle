@@ -21,14 +21,14 @@ function messagesFor(w, thread, scope) {
 }
 
 // refs: { customer: "C12345 Name" | "", docs: ["Order 232416", ...] }
-function render(w, thread, { scope, lang, refs }) {
+function render(w, thread, { scope, lang, refs, extra, autoPrint = true }) {
   const L = (k) => esc(t(lang, k));
   const msgs = messagesFor(w, thread, scope === "thread" ? "thread" : "one");
   const row = (k, v) => v ? `<tr><th>${L(k)}</th><td>${esc(v)}</td></tr>` : "";
   const head = (m) => `<table class="h">${row("pr_from", addr(m.from))}${row("pr_to", list(m.to))}${row("pr_cc", list(m.cc))}
     ${row("pr_date", fmtDateTime(m.received, lang))}${row("pr_subject", w.subject || "")}
     ${row("pr_customer", refs && refs.customer)}${row("pr_docs", refs && refs.docs && refs.docs.join(", "))}</table>`;
-  const body = msgs.map((m) => `<article>${head(m)}<div class="b">${paras(m.body || "")}</div></article>`).join("");
+  const body = msgs.map((m, i) => `<article>${head(m)}<div class="b">${paras(m.body || "")}</div>${extra ? extra(m, i) : ""}</article>`).join("");
   return `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(w.subject || "Email")}</title>
 <style>
@@ -40,9 +40,13 @@ function render(w, thread, { scope, lang, refs }) {
   .h td { padding: 2px 0; word-break: break-word; }
   .b p { margin: 0 0 8px; white-space: pre-wrap; word-break: break-word; }
   .b a { color: inherit; }
+  .atts h4 { margin: 12px 0 6px; font-size: 13px; color: #555; }
+  .atts figure { margin: 0 0 12px; break-inside: avoid; }
+  .atts img { display: block; max-width: 100%; max-height: 900px; }
+  .atts figcaption, .atts ul { font-size: 12px; color: #555; }
   @media print { body { padding: 0; } article { break-inside: auto; } article + article { break-before: auto; } }
 </style></head><body>${body}
-<script>addEventListener("load", function () { setTimeout(function () { print(); }, 50); });</script>
+${autoPrint ? `<script>addEventListener("load", function () { setTimeout(function () { print(); }, 50); });</script>` : ""}
 </body></html>`;
 }
 

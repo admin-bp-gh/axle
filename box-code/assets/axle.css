@@ -537,3 +537,6 @@
 .wb-menu__item[data-sa-act] { max-width: 320px; }
 .wb-menu__item[data-sa-act] small { white-space: normal; }
 .ax-sa__last { text-transform: none; letter-spacing: 0; }
+
+/* Print menu: the Include attachments tick under the two rows. */
+.ax-print-atts { display: flex; align-items: center; gap: 10px; min-height: var(--h-ctl); padding: 4px 8px; margin-top: 4px; border-top: 1px solid var(--line, rgba(0,0,0,.1)); font-size: var(--fs-base); color: var(--ink); cursor: pointer; }

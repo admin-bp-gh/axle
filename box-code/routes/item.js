@@ -46,6 +46,8 @@ const VS = require("../voicemail-sheet.js");       // a voicemail's call back sh
 const SV = require("../send-verify.js");           // Not sent: a reply Exchange left in Drafts, and its Try again
 const PO = require("../prose-output.js");
 const PV = require("../print-view.js");            // A4: the print view of one email or the whole thread          // AXLE_OUTPUT=prose: Send warns on open blocking questions (Step B)
+const CLAIMSTMT = require("../claim-statement.js"); // its headless-Edge htmlToPdf
+const PRINTATT = require("../print-attachments.js"); // A4: print with attachments as one PDF
 const fs = require("fs");
 const path = require("path");
 
@@ -967,8 +969,17 @@ app.get("/item/:id/print", async (req, res) => {
     }
   } catch (e) { /* no documents line */ }
   const scope = req.query.scope === "thread" ? "thread" : "one";
-  audit(req.user.tailscale_login, "print_email", w.id, scope);
-  res.set("Cache-Control", "no-store").send(PV.render(w, MS.itemThread(w.id), { scope, lang, refs }));
+  if (req.query.atts !== "1") {
+    audit(req.user.tailscale_login, "print_email", w.id, scope);
+    return res.set("Cache-Control", "no-store").send(PV.render(w, MS.itemThread(w.id), { scope, lang, refs }));
+  }
+  // With attachments: one PDF, opened by the browser's own viewer in this new window.
+  audit(req.user.tailscale_login, "print_email", w.id, `${scope} attachments`);
+  const readFile = async (a) => { const f = await MS.loadAttachment(w.id, a.id); return f && (f.buffer || fs.readFileSync(f.path)); };
+  const r = await PRINTATT.buildPrintPdf(w, MS.itemThread(w.id), { scope, lang, refs, readFile, htmlToPdf: CLAIMSTMT.htmlToPdf });
+  if (!r.ok) return res.status(502).send(bannerPage(t(lang, "print_menu"), req.user, `${t(lang, "pr_atts_failed")} ${r.error}`));
+  const name = `email-${w.id}.pdf`;
+  res.set({ "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${name}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" }).send(r.buffer);
 });
 
 // The old index-based link (open tabs from before round 2): the same attachment's stored row when

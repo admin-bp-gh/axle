@@ -1686,6 +1686,9 @@
     const tg = e.target;
     // A confirm runs first (capture below); a menu row closes its menu, then acts like any element.
     if (menuLy && tg.closest(".wb-menu__item") && menuLy.el.contains(tg)) {
+      // Print menu: the "Include attachments" tick decides the chosen row's link.
+      const pr = tg.closest("a[data-print-row]");
+      if (pr) { const u = new URL(pr.href, location.href); if ($("[data-print-atts]", menuLy.el)?.checked) u.searchParams.set("atts", "1"); else u.searchParams.delete("atts"); pr.href = u.href; }
       if (tg.closest("a[href]")) { setTimeout(() => menuLy?.close()); return; }
       menuLy.close();
     }

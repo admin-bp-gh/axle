@@ -178,7 +178,8 @@ const STRINGS = {
     // UI rework Step 1 (2026-06-10)
     reset_ai: "Reset to draft", reset_ai_confirm: "Replace your text with Axle's draft?",
     hide_translation: "Hide translation",
-    print_menu: "Print", print_one: "Print this email", print_thread: "Print whole thread",
+    print_menu: "Print", print_one: "Print this email", print_thread: "Print whole thread", print_atts_tick: "Include attachments",
+    pr_atts: "Attachments", pr_att_pdf: "added at the end", pr_att_noprint: "cannot be printed here", pr_att_unreadable: "could not be fetched, not printed", pr_att_broken: "damaged or protected PDF, cannot be printed here", pr_atts_failed: "The PDF with attachments could not be made:",
     pr_from: "From", pr_to: "To", pr_cc: "Cc", pr_date: "Date", pr_subject: "Subject", pr_customer: "Customer", pr_docs: "Documents",
     earlier_msgs: "Earlier in this conversation", footer_fold: "Signature and footer",
     inline_image: "inline image",
@@ -461,7 +462,8 @@ const STRINGS = {
     // UI rework Step 1 (2026-06-10)
     reset_ai: "Terug naar concept", reset_ai_confirm: "Je tekst vervangen door het concept van Axle?",
     hide_translation: "Verberg vertaling",
-    print_menu: "Afdrukken", print_one: "Deze e-mail afdrukken", print_thread: "Hele conversatie afdrukken",
+    print_menu: "Afdrukken", print_one: "Deze e-mail afdrukken", print_thread: "Hele conversatie afdrukken", print_atts_tick: "Bijlagen meenemen",
+    pr_atts: "Bijlagen", pr_att_pdf: "achteraan toegevoegd", pr_att_noprint: "kan hier niet worden afgedrukt", pr_att_unreadable: "kon niet worden opgehaald, niet afgedrukt", pr_att_broken: "beschadigde of beveiligde PDF, kan hier niet worden afgedrukt", pr_atts_failed: "De PDF met bijlagen kon niet worden gemaakt:",
     pr_from: "Van", pr_to: "Aan", pr_cc: "Cc", pr_date: "Datum", pr_subject: "Onderwerp", pr_customer: "Klant", pr_docs: "Documenten",
     earlier_msgs: "Eerder in dit gesprek", footer_fold: "Handtekening en voettekst",
     inline_image: "afbeelding in tekst",
@@ -809,9 +811,9 @@ const SHOWABLE_IMAGE = /^image\/(png|jpe?g|gif|webp)$/i;
 // (GET /item/:id/print) in a new top-level window, so the Workbench frame is never printed.
 function printMenu(w, lang) {
   const L = (k) => esc(t(lang, k));
-  const row = (scope, label) => `<a class="wb-menu__item" role="menuitem" href="${B}/item/${w.id}/print?scope=${scope}" target="_blank" rel="noopener"><span>${L(label)}</span></a>`;
+  const row = (scope, label) => `<a class="wb-menu__item" role="menuitem" href="${B}/item/${w.id}/print?scope=${scope}" data-print-row target="_blank" rel="noopener"><span>${L(label)}</span></a>`;
   return iconBtn(t(lang, "print_menu"), "printer", `data-menu="print-${w.id}" aria-haspopup="menu" aria-expanded="false"`, "ax-print")
-    + `<template id="m-print-${w.id}" data-title="${L("print_menu")}" data-align="end">${row("one", "print_one")}${row("thread", "print_thread")}</template>`;
+    + `<template id="m-print-${w.id}" data-title="${L("print_menu")}" data-align="end">${row("one", "print_one")}${row("thread", "print_thread")}<label class="ax-print-atts"><input type="checkbox" class="wb-check" data-print-atts><span>${L("print_atts_tick")}</span></label></template>`;
 }
 function renderTimeline(w, lang, emailTr, emailTrPending, thread = [], notShown = []) {
   const L = (k) => esc(t(lang, k));

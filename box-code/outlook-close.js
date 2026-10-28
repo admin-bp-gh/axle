@@ -115,6 +115,11 @@ const MAX_ITEMS = 400;
 // undone: an item closed longer ago than this is settled history, and resurrecting it months
 // later would be a surprise rather than a help. REOPEN_PAGES caps the unread fetch (50/page).
 const REOPEN_DAYS = 30;
+// A human close is never undone in its first few minutes. Sending a reply writes the read_marks
+// ledger before Graph's mark-read lands, so a sync in that gap saw the mail still unread and
+// reopened the item Brad had just answered (#3023, 28 Oct 2026). Anyone deliberately marking it
+// unread again is still honoured by the first sync after the window.
+const REOPEN_GRACE_MS = 5 * 60000;
 const REOPEN_PAGES = 10;
 
 // Resolved lazily (not at require time): the mailbox addresses come from the .env the caller
@@ -197,6 +202,7 @@ function canReopen(w, nowMs = Date.now(), weMarkedItRead = false) {
   if (w.resolution === "outlook") return "unread";      // our own close: as before
   if (!HUMAN_CLOSES.has(w.resolution)) return null;     // legacy null, 'forwarded', anything new
   if (!weMarkedItRead) return null;                     // never read in the first place, not un-read
+  if (nowMs - closedMs < REOPEN_GRACE_MS) return null;  // mark-read may not have landed yet
   return "unread-after-close";
 }
 
@@ -224,6 +230,7 @@ function whyNotReopen(w, weMarkedItRead) {
   if (w.resolution === "outlook") return "(should have reopened — report this)";
   if (!HUMAN_CLOSES.has(w.resolution)) return `resolution '${w.resolution || "none"}' is never undone`;
   if (!weMarkedItRead) return "Axle never marked this message read (closed before the ledger, or the mark failed)";
+  if (Date.now() - closedMs < REOPEN_GRACE_MS) return "closed less than 5 minutes ago";
   return "(unknown — report this)";
 }
 

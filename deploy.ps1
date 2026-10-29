@@ -40,7 +40,7 @@ $neverDeploy = @(
   "axle-send.sh",         # Mac-side helper
   "shared-domains.js"     # marked obsolete in its own header
 )
-# NOTE on Sprocket's help doc (axle-help.md): it briefly sat on the list above. sprocket.js reads
+# NOTE on the AI Helper's help doc (axle-help.md): it briefly sat on the list above. sprocket.js reads
 # __dirname\..\sprocket = C:\Axle\sprocket, OUTSIDE the app tree, so deploying it normally would
 # have created a dead second copy in app\sprocket\. Blocking it was worse though: the repo copy
 # then synced nowhere, so editing it reached no one. It is now routed to its real home instead -
@@ -110,7 +110,7 @@ try {
     Where-Object { $_.FullName -notmatch '\\(node_modules|eval)\\' -and $neverDeploy -notcontains $_.Name } |   # eval\: the offline draft eval, repo-only
     ForEach-Object {
       $rel  = $_.FullName.Substring($src.Length).TrimStart('\')
-      # Sprocket's help doc is the one thing that does NOT live in the app tree. sprocket.js reads
+      # The AI Helper's help doc is the one thing that does NOT live in the app tree. sprocket.js reads
       # __dirname\..\sprocket, i.e. C:\Axle\sprocket, deliberately: the doc is read fresh on every
       # answer, so Brad can edit the live copy and the team sees it with no deploy and no restart.
       # Copying it into C:\Axle\app\sprocket\ would create a second file nothing ever reads, so it
@@ -145,7 +145,7 @@ try {
   # Added 2026-08-15, after this script took the server down. It skipped the NEW file
   # outlook-block.js (correctly, per the -IncludeNew rule), then deployed the MODIFIED
   # routes\admin.js that had just gained `require("../outlook-block.js")`, passed every suite (they
-  # exercise other modules and never load admin.js), restarted, and left Axle dead. The warning
+  # exercise other modules and never load admin.js), restarted, and left the Email app dead. The warning
   # about repo-only files was printed several screens earlier and is easy to miss.
   #
   # So: every relative require in a file we are about to deploy must resolve to something that will
@@ -194,11 +194,11 @@ try {
   # --- 2. Building the release -----------------------------------------------------------------
   # The live tree is never written any more. A deploy builds a NEW release folder next to it,
   # C:\Axle\app-<commit>-<stamp>: a copy of the live release (node_modules and box-only files
-  # included, ACLs included so the axle account keeps exactly the rights it has today), with this
+  # included, ACLs included so the `axle` account keeps exactly the rights it has today), with this
   # run's changed files placed into it by their own repo-relative path. Tests then run against that
   # folder, and only step 4 makes it live. app\ is a junction to the live release; release folders
   # sit NEXT to it so __dirname\.. is still C:\Axle (data\, secrets\, logs\, sprocket\).
-  # Sprocket's help doc is the one exception: it lives in C:\Axle\sprocket (read fresh on every
+  # The AI Helper's help doc is the one exception: it lives in C:\Axle\sprocket (read fresh on every
   # answer, see step 1), so it is placed there directly, as before.
   Say "`n=== 2. Building release $commit ===" "Cyan"
   $live = (Get-Item $app -Force).Target | Select-Object -First 1
@@ -250,7 +250,7 @@ try {
     Sort-Object CreationTime -Descending | Select-Object -Skip 4 |
     ForEach-Object { Say "  pruning $($_.Name)"; Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 
-  Say "`nDEPLOY OK - now hard-refresh Axle over Tailscale and check the change on a real item." "Green"
+  Say "`nDEPLOY OK - now hard-refresh the Email app over Tailscale and check the change on a real item." "Green"
 }
 catch {
   Say "`nFAILED: $($_.Exception.Message)" "Red"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# axle-send.sh - Taildrop one or more box-code files to the Axle box (Mac side).
+# axle-send.sh - Taildrop one or more box-code files to the Workbench server (Mac side).
 # Usage:  axle-send.sh server.js send.js send-guard.js
 #         (names are relative to the box-code folder; pass as many as you like)
 # Then on the box run:  C:\Axle\axle-pull.ps1

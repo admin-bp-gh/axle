@@ -10,7 +10,7 @@ const ok = (c, n) => { if (c) pass++; else { fail++; console.log("  FAIL:", n); 
 const rec = {
   id: "FR-0001", goal: "Send an SMS <script>alert(1)</script> when orders ship",
   requester: 'Jack "the lad"', frequency: "weekly", workaround_today: "none today",
-  impact: "would save real time", example: "", original_question: "I wish Axle could text people",
+  impact: "would save real time", example: "", original_question: "I wish the Email app could text people",
   votes: 3,
 };
 

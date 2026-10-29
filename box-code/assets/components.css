@@ -1,4 +1,4 @@
-/* components.css - Axle component styles (UI rework Step 1, 2026-06-10).
+/* components.css - Email component styles (UI rework Step 1, 2026-06-10).
    Built on tokens.css. Every selector the pre-Step-1 inline stylesheet served is
    kept (inbox, blocks, audit and the compose modal restyle without HTML changes),
    plus the Step-1 components: chip menus, the conversation timeline, the single
@@ -208,7 +208,7 @@ a.preview-doc:hover { background: var(--surface-2); }
 .actionbar { position: sticky; bottom: 10px; z-index: 30; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-card); padding: var(--s3) var(--s4); margin-top: var(--s4); box-shadow: var(--shadow-bar); }
 .actionbar .spacer { flex: 1 1 auto; }
 .actionbar .note { font-size: var(--fs-sm); color: var(--muted); }
-/* "Create order" (2026-10-06): an anchor styled as a bar button; opens Ratchet in a new tab. */
+/* "Create order" (2026-10-06): an anchor styled as a bar button; opens Sales in a new tab. */
 .actionbar a.ratchet-order { display: inline-block; font-size: var(--fs-base); padding: 8px 14px; border-radius: var(--r-ctl); border: 1px solid var(--border-2); background: var(--surface); color: var(--ink); text-decoration: none; }
 .actionbar a.ratchet-order:hover { border-color: var(--faint); background: var(--surface-2); }
 .actions form { display: inline; margin-right: var(--s2); }   /* legacy actions box (blocks page etc.) */
@@ -436,7 +436,7 @@ body.ax-nav::before { content: ""; position: fixed; top: 0; left: 0; right: 0; h
 /* attachment upload in progress (AJAX + reload had a dead gap) */
 .attbusy { padding: 4px 0; font-size: var(--fs-sm); color: var(--muted); }
 
-/* "Axle is investigating" banner gets a live spinner */
+/* "The Email assistant is investigating" banner gets a live spinner */
 .banner.busy::before { content: ""; display: inline-block; width: 13px; height: 13px; margin-right: 8px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: ax-spin .8s linear infinite; vertical-align: -2px; }
 
 /* mobile Back affordance — only shown in the single-column list->detail layout */

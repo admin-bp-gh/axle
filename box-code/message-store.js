@@ -4,7 +4,7 @@
 // phone photo pasted into the body), kept only the newest message's list in attachments_json
 // (overwritten on re-open), stored a failed listing as "none", and fetched the bytes live from Graph
 // on every view by a message id that dies when the message is moved. Now:
-//   - every message Axle sees for an item is a row in `messages` (sender, to, cc, received, body),
+//   - every message the Email app sees for an item is a row in `messages` (sender, to, cc, received, body),
 //     and the attachments of EVERY message are listed into `message_attachments` (pickAttachments'
 //     rules: file attachments, inline images of 15 KB and up; item and reference attachments are
 //     left out, as before);

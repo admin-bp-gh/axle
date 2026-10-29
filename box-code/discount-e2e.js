@@ -1,7 +1,7 @@
 // discount-e2e.js — live, READ-ONLY end-to-end check of the discount-awareness feature.
 // Runs the REAL deployed engine (engine.agenticDraft, live read tools) against a few
 // discount scenarios built on REAL store codes, and prints the live discount lookup +
-// the resulting draft. Writes NOTHING to the Axle DB and sends NOTHING. Safe to re-run.
+// the resulting draft. Writes NOTHING to the Email DB and sends NOTHING. Safe to re-run.
 //
 //   Run on the box:  cd C:\Axle\app ;  node discount-e2e.js
 require("dotenv").config({ path: "C:\\Axle\\secrets\\.env", quiet: true });
@@ -73,7 +73,7 @@ function line() { console.log("\n" + "=".repeat(90)); }
     if (qs.length) console.log(`\n-- questions for salesperson --\n  - ${qs.join("\n  - ")}`);
   }
   line();
-  console.log("\nDONE — read-only. Nothing was written to the Axle DB and nothing was sent.");
+  console.log("\nDONE: read-only. Nothing was written to the Email DB and nothing was sent.");
   try { await C.closePool(); } catch (_) {}
   process.exit(0);
 })().catch((e) => { console.error("E2E ERROR:", e); process.exit(1); });

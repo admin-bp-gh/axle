@@ -1,4 +1,4 @@
-// resolve-customer.js - Axle Compose: deterministic, READ-ONLY customer resolver.
+// resolve-customer.js - Email Compose: deterministic, READ-ONLY customer resolver.
 //
 // Turns whatever a salesperson knows about a customer - a SAP sales-order number, an
 // AR-invoice number, a SAP customer code, an email (full OR partial), a Shopify order

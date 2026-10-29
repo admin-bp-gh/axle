@@ -4,15 +4,15 @@
 // WHY (item #1308, 2026-08-15). Closing an item marked exactly one message read: the item's
 // newest, via routes/shared.js markReadSafe -> latest_message_id. A thread the customer wrote
 // into twice therefore left the earlier mail sitting unread in Outlook. Two consequences, both
-// bad: the mailbox says "unhandled" while Axle says done, and the outlook-close reopen mirror -
+// bad: the mailbox says "unhandled" while the Email app says done, and the outlook-close reopen mirror -
 // whose rule is AN ITEM IS LIVE IF ANY MESSAGE IN ITS THREAD IS UNREAD - can pull the item Brad
 // just finished straight back onto the list.
 //
-// THE RULE IS DELIBERATELY NARROW. Axle keys a work item by sender + normalised subject; Outlook
+// THE RULE IS DELIBERATELY NARROW. The Email app keys a work item by sender + normalised subject; Outlook
 // keys a conversation by conversationId. Those are not the same set. A supplier, a colleague or a
-// second customer writing into the same Outlook thread is a SEPARATE Axle item, and marking their
+// second customer writing into the same Outlook thread is a SEPARATE Email item, and marking their
 // mail read would hide live work - and, with AXLE_ACTION_OUTLOOK_CLOSE on, then close it. So each
-// sibling is resolved back to the Axle item its conversation key maps to:
+// sibling is resolved back to the Email item its conversation key maps to:
 //
 //   no item, or THIS item      -> mark read. It is this item's own mail.
 //   a different CLOSED item    -> mark read. Nobody is waiting on it.

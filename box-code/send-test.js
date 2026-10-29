@@ -1,5 +1,5 @@
 // send-test.js - one-off verification for Phase 5.2: confirm Mail.Send is scoped to the
-// Axle mailboxes only. Sends a test email to admin@ from info@ and drachten@ (expected to
+// Email mailboxes only. Sends a test email to admin@ from info@ and drachten@ (expected to
 // succeed) and attempts a send from admin@ (expected to be DENIED by the RBAC scope).
 // No customer ever receives anything. Delete after verifying. Usage: node send-test.js
 require("dotenv").config({ path: "C:\\Axle\\secrets\\.env", quiet: true });
@@ -34,8 +34,8 @@ async function trySend(tok, mailbox) {
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       message: {
-        subject: "Axle send-scope test (" + mailbox + ")",
-        body: { contentType: "Text", content: "Axle 5.2 verification - safe to ignore/delete. Sender: " + mailbox },
+        subject: "Email send-scope test (" + mailbox + ")",
+        body: { contentType: "Text", content: "Email 5.2 verification - safe to ignore/delete. Sender: " + mailbox },
         toRecipients: [{ emailAddress: { address: ADMIN } }],
       },
       saveToSentItems: true,
@@ -54,7 +54,7 @@ async function trySend(tok, mailbox) {
     { mailbox: ADMIN, label: "admin@ (must be DENIED)", expect: 403 },
   ];
   let allOk = true;
-  console.log("Axle 5.2 Mail.Send scope verification\n");
+  console.log("Email 5.2 Mail.Send scope verification\n");
   for (const c of cases) {
     const { status, detail } = await trySend(tok, c.mailbox);
     const ok = status === c.expect;

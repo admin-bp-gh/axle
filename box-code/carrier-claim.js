@@ -6,7 +6,7 @@
 // (Aug 2026) is the worked example: barcode 1ZRJ71190404069255, stuck in distribution since 30
 // June, "Graag ontvang ik een inkoop- en verkoopfactuur."
 //
-// Axle's existing attachment path could not help there. It scopes every document to the customer
+// The Email app's existing attachment path could not help there. It scopes every document to the customer
 // resolved from the SENDER's address, and the sender is info@myparcel.nl, so both correct hits -
 // the order and the AR invoice - were pushed into "different customer, review before attaching"
 // and the salesperson was told to go and find them by hand.

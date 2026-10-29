@@ -9,7 +9,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 process.env.AXLE_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "axle-send-verify-")), "t.db");
-assert.ok(!/[\\/](Axle|axle)[\\/]data[\\/]/.test(process.env.AXLE_DB), "refusing to run against a real Axle data dir");
+assert.ok(!/[\\/](Axle|axle)[\\/]data[\\/]/.test(process.env.AXLE_DB), "refusing to run against a real Email data dir");
 process.env.MAILBOX_INFO = "info@example.test";
 process.env.AXLE_ACTION_SEND_VERIFY = "on";
 const SV = require("./send-verify.js");

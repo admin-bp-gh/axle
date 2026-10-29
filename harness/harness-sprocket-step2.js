@@ -1,4 +1,4 @@
-// harness-sprocket-step2.js — sandbox proof for Sprocket STEP 2 (request mode + the request log).
+// harness-sprocket-step2.js: sandbox proof for the AI Helper STEP 2 (request mode + the request log).
 // Run: node harness/harness-sprocket-step2.js
 //
 // Tests the feature-request STORE end-to-end (append, de-dupe→vote, md mirror, ids/status) against
@@ -20,7 +20,7 @@ const ok = (c, n) => { if (c) pass++; else { fail++; console.log("  FAIL:", n); 
 (() => {
   const r = STORE.saveRequest({ goal: "automatically chase customers with unpaid invoices",
     workaround_today: "I chase them by hand", frequency: "weekly", impact: "would save real time",
-    example: "", original_question: "can Axle chase unpaid invoices?", requester: "Jack", language: "en" });
+    example: "", original_question: "can the Email app chase unpaid invoices?", requester: "Jack", language: "en" });
   ok(r.deduped === false, "first save is not a dupe");
   ok(r.id === "FR-0001", "first id is FR-0001");
   ok(r.record.status === "new" && r.record.votes === 1, "new record: status new, 1 vote");
@@ -33,7 +33,7 @@ const ok = (c, n) => { if (c) pass++; else { fail++; console.log("  FAIL:", n); 
 // ---- store: a similar goal from another requester de-dupes into a +1, no new record ----
 (() => {
   const r = STORE.saveRequest({ goal: "chase unpaid invoices for customers automatically",
-    requester: "Rob", language: "nl", original_question: "kan Axle onbetaalde facturen opvolgen?" });
+    requester: "Rob", language: "nl", original_question: "kan de E-mail-app onbetaalde facturen opvolgen?" });
   ok(r.deduped === true, "similar goal de-dupes");
   ok(r.id === "FR-0001", "vote lands on FR-0001");
   ok(r.votes === 2, "votes now 2");

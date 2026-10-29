@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// harness-mobile.js - repo-only test harness for the Axle mobile redesign (mobile plan
+// harness-mobile.js - repo-only test harness for the Email mobile redesign (mobile plan
 // section 4.4, K5). Boots the real box-code routes on the Step-0 stub kit against a temp
 // fixture DB (harness/step0), drives Chromium from AXLE_PPTR_DIR with puppeteer, and
 // writes screenshots + JSON reports to design-reference/mobile-audit/. Never touches

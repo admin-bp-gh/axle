@@ -1,4 +1,4 @@
-// server.js - Axle team tool web server.
+// server.js - Email team tool web server.
 // v9: search - live filter box on the inbox (all useful fields incl. body text),
 //     search-with-highlight inside the email on the detail page.
 // v8: attachments listed on the detail page, opened via on-demand Graph fetch
@@ -103,12 +103,12 @@ app.use((req, res, next) => {
   const login = String(req.headers["tailscale-user-login"] || "");
   if (!login) {
     audit("system", "no_identity_header", null, `direct request from ${req.socket.remoteAddress}`);
-    return res.status(403).send("<h1>Forbidden</h1><p>Axle must be accessed via its tailnet HTTPS address.</p>");
+    return res.status(403).send("<h1>Forbidden</h1><p>The Email app must be accessed via its tailnet HTTPS address.</p>");
   }
   const user = db.prepare("SELECT * FROM users WHERE tailscale_login = ?").get(login);
   if (!user) {
     audit(login, "access_denied", null, "unregistered tailnet user");
-    return res.status(403).send(`<h1>Not registered</h1><p>Tailnet identity <b>${esc(login)}</b> is not registered in Axle. Ask Brad to add you.</p>`);
+    return res.status(403).send(`<h1>Not registered</h1><p>Tailnet identity <b>${esc(login)}</b> is not registered in the Email app. Ask Brad to add you.</p>`);
   }
   req.user = user;
   req.user.lang = langOK(getCookie(req, "axle_lang")); // per-browser UI language (header toggle)
@@ -215,7 +215,7 @@ app.post("/compose", async (req, res) => {
   const mailbox = ["info", "drachten"].includes(req.body.mailbox) ? req.body.mailbox : defaultMailbox(req.user);
   const pickCard = String(req.body.pick_card || "").trim();
   const pickAddr = String(req.body.pick_addr || "").trim().toLowerCase();
-  const mode = req.body.mode === "send" ? "send" : "draft";          // "draft" = let Axle write it; "send" = verbatim send-now
+  const mode = req.body.mode === "send" ? "send" : "draft";          // "draft" = let the Email assistant write it; "send" = verbatim send-now
   const composeSubject = String(req.body.subject || "").trim().slice(0, 200);
 
   const fail = (msg) => inline(req) ? res.status(400).json(inlineNo("refused", msg)) : res.status(400).send(page(t(lang, "compose_failed"), req.user,
@@ -681,7 +681,7 @@ root.use(BASE.path || "/", app);
 
 if (require.main === module) {
   const server = root.listen(PORT, BIND_IP, () => {
-    console.log(`Axle web listening on ${BIND_IP}:${PORT}${BASE.path ? ` under ${BASE.path}` : ""} (loopback; fronted by Tailscale Serve)`);
+    console.log(`Email web listening on ${BIND_IP}:${PORT}${BASE.path ? ` under ${BASE.path}` : ""} (loopback; fronted by Tailscale Serve)`);
     MS.startBackfillOnce();   // once per database, in the background: the threads and attachments of the open emails
   });
   // Deploy handover (run-server.ps1): the supervisor starts the new release while the old one still

@@ -1,7 +1,7 @@
 // backfill-atts.js - one-off: fetch attachment metadata for existing open work
 // items (ingest only does this for new/changed conversations). Also rescans '[]' items so inline
 // photos missed before 2026-10-06 (hasAttachments=false on inline-only mail) show up. READ-ONLY on
-// Graph; writes only attachments_json in Axle's own SQLite DB. Re-run safe.
+// Graph; writes only attachments_json in the Email app's own SQLite DB. Re-run safe.
 // Usage: node backfill-atts.js
 require("dotenv").config({ path: require("path").join(__dirname, "..", "secrets", ".env"), quiet: true });
 const rulesets = require("./rules.js");

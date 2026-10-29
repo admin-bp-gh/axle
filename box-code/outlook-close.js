@@ -1,42 +1,42 @@
-// outlook-close.js — Outlook → Axle reconciliation: close a work item when its email has been
-// dealt with in Outlook. Three signals, all meaning "this is no longer live work for Axle":
+// outlook-close.js: Outlook → Email reconciliation: close a work item when its email has been
+// dealt with in Outlook. Three signals, all meaning "this is no longer live work for the Email app":
 //
 //   read    — the email is still in a monitored folder but has been marked read. Reading it in
 //             the shared mailbox is the team's existing "I've dealt with this" gesture.
 //   moved   — the email is no longer in one of the mailbox's monitored folders (rules.js
 //             `folders`: the Inbox, plus info@'s "Shopify Contact Form"). Filing it away is a
 //             deliberate act; Tom, who works entirely in Outlook, files his mail out of the
-//             Inbox and it should leave Axle's queue when he does.
+//             Inbox and it should leave the Email queue when he does.
 //   gone    — the id 404s: the email was deleted. (An Exchange move MINTS A NEW ID, so a move to
 //             another folder or to Deleted Items usually 404s the old id too — 'moved' and
 //             'gone' are the same conclusion, and only the audit detail distinguishes them.)
 //
 // Why this exists: the team can always handle an email the old way, straight in Outlook. Before
-// this pass, that email stayed on Axle's Open list until someone remembered to press Done —
+// this pass, that email stayed on the Email Open list until someone remembered to press Done,
 // so the queue slowly filled with work that was already finished.
 //
-// Note this is the ONLY thing that keeps Axle's queue scoped to the monitored folders after
+// Note this is the ONLY thing that keeps the Email queue scoped to the monitored folders after
 // ingest. Ingest reads only those folders, so nothing wrong ever comes IN; but without this,
 // nothing notices an email LEAVING them.
 //
 // Why it is a SEPARATE pass and not part of ingest: ingest is a watermark poll that skips any
 // conversation whose newest message id it has already seen (ingest.js, processThread), so it
 // never revisits an older email and could not notice a change of read state. This pass works
-// the other way round — it starts from Axle's OPEN items and asks Graph about exactly those
+// the other way round: it starts from the Email app's OPEN items and asks Graph about exactly those
 // message ids.
 //
 // THE MIRROR RULE — reopen on unread (added 2026-08-06). If reading an email in Outlook is the
 // team's "I've dealt with this" gesture, then marking it UNREAD again is the equally common
-// "actually, this still needs doing" gesture — and until this existed, Axle had no way to hear
+// "actually, this still needs doing" gesture, and until this existed, the Email app had no way to hear
 // it. An item closed here stayed closed for good, so a customer email someone deliberately
 // re-flagged as unread had silently dropped off the queue. (Found on the live box: #992, a
-// propshaft complaint, and #1091 — both unread in Outlook, both closed in Axle.)
+// propshaft complaint, and #1091, both unread in Outlook, both closed in the Email app.)
 //
 // It is deliberately a NARROW mirror:
-//   * items THIS pass closed (resolution = 'outlook'), unconditionally — Axle closed it, Axle may
+//   * items THIS pass closed (resolution = 'outlook'), unconditionally: the Email app closed it, the Email app may
 //     reopen it.
 //   * items a HUMAN closed with Done / phone / a sent reply, but ONLY when the unread message is
-//     one AXLE itself marked read at close time (the read_marks ledger) — so it was deliberately
+//     one the Email app itself marked read at close time (the read_marks ledger), so it was deliberately
 //     un-read afterwards. Widened 2026-08-15 — see canReopen for why the blanket "never undo a
 //     human decision" rule stopped being right once closing began marking the whole thread read,
 //     and for why a timestamp cannot do this job. Archive and 'forwarded' are still never undone.
@@ -48,7 +48,7 @@
 // It runs FROM THE MAILBOX, not from the DB: one folder-scoped "give me the unread mail" read
 // per mailbox, then each unread message is matched back to its work item. That direction matters
 // for two reasons the first cut of this got wrong (dry run, 2026-08-06 — it reopened nothing):
-//   1. THREADS. Axle keeps one item per conversation and stores only the NEWEST message's id, but
+//   1. THREADS. The Email app keeps one item per conversation and stores only the NEWEST message's id, but
 //      the message a human marks unread is usually the one they were working — often the
 //      customer's ORIGINAL mail, several replies back. Checking `latest_message_id` alone missed
 //      exactly that: on the live box, #992's newest message was read while the original complaint
@@ -76,22 +76,22 @@
 // however they are sequenced, and across runs, not just within one.
 //
 // It also removes a subtler over-close that predates the mirror: an item whose newest message was
-// read but whose earlier mail was never opened used to be closed, which is precisely the "Axle
+// read but whose earlier mail was never opened used to be closed, which is precisely the "Email app
 // says done, Outlook says unread" drift that started this whole investigation.
 //
-// Direction of travel (important): Axle → Outlook already exists (routes/shared.js markReadSafe
+// Direction of travel (important): Email → Outlook already exists (routes/shared.js markReadSafe
 // PATCHes isRead when an item is sent / marked done / archived). That path only ever touches
 // items that are ALREADY closed, and closed items are excluded from the worklist here, so the
 // two never fight. Since 2026-08-15 it marks the WHOLE thread read, not just the newest message
-// (thread-read.js) — which is what makes it agree with the live-thread rule below: an item Axle
+// (thread-read.js), which is what makes it agree with the live-thread rule below: an item the Email app
 // closes no longer leaves unread mail behind for the reopen pass to find.
 //
 // Safety:
 //   * READ-ONLY against Microsoft 365 — C.getReadStates issues GETs only. The only write is to
-//     Axle's own SQLite.
+//     the Email app's own SQLite.
 //   * Allow-listed and OFF by default: set AXLE_ACTION_OUTLOOK_CLOSE=on in the box .env.
 //   * An injection-flagged item closes ONLY on 'moved' or 'gone'. Filing or deleting a suspicious
-//     email is a deliberate act and Axle accepts it; merely previewing one in the reading pane is
+//     email is a deliberate act and the Email app accepts it; merely previewing one in the reading pane is
 //     not, so 'read' never closes a flagged item. (Brad's call, 2026-07-27: the earlier blanket
 //     exclusion meant flagged items could never clear on their own and just piled up.)
 //   * Never touches an item mid-draft ('investigating') or a composed (outbound-origin) item,
@@ -111,7 +111,7 @@ const { db, audit } = require("./db.js");
 const MAX_ITEMS = 400;
 
 // The REOPEN pass (the mirror of the close, added 2026-08-06) works from OUTLOOK's unread list,
-// not from Axle's closed list — see the header. REOPEN_DAYS bounds how far back a close may be
+// not from the Email closed list (see the header). REOPEN_DAYS bounds how far back a close may be
 // undone: an item closed longer ago than this is settled history, and resurrecting it months
 // later would be a surprise rather than a help. REOPEN_PAGES caps the unread fetch (50/page).
 const REOPEN_DAYS = 30;
@@ -173,7 +173,7 @@ const HUMAN_CLOSES = new Set(["done", "phone", "replied"]);
 //
 // TWO REOPEN REASONS (the second added 2026-08-15):
 //   "unread"             — undoing THIS pass's own close (resolution 'outlook'). Unconditional:
-//                          Axle closed it, so Axle may reopen it.
+//                          the Email app closed it, so the Email app may reopen it.
 //   "unread-after-close" — undoing a HUMAN's close (Done / phone / a sent reply). This used to be
 //                          forbidden outright, on the rule that a human decision is never undone.
 //                          What made that rule necessary was that our own closes left the REST of
@@ -184,14 +184,14 @@ const HUMAN_CLOSES = new Set(["done", "phone", "replied"]);
 //                          one: marking it unread in Outlook means "this still needs doing".
 //
 // The gate on the second is `weMarkedItRead` — was this exact message on the read_marks ledger,
-// i.e. did AXLE mark it read when the item was closed? If so, its being unread now can only be a
+// i.e. did the Email app mark it read when the item was closed? If so, its being unread now can only be a
 // human's doing. The obvious alternative, "was the message modified after the close?", is not
 // available: EXCHANGE DOES NOT BUMP lastModifiedDateTime ON A READ-STATE CHANGE. Proved on the
-// live box with item #500 — Axle PATCHed it to read at 13:41, Brad marked it unread minutes
+// live box with item #500: the Email app PATCHed it to read at 13:41, Brad marked it unread minutes
 // later, and the stamp stayed on the previous day's 11:44 throughout. Do not try that again.
 //
 // The ledger also gives the no-mass-resurrection property for free: items closed before it existed
-// have no rows, so the first run after this ships can only reopen what Axle has closed since.
+// have no rows, so the first run after this ships can only reopen what the Email app has closed since.
 function canReopen(w, nowMs = Date.now(), weMarkedItRead = false) {
   if (!w) return null;                                  // never ingested / another mailbox
   if (w.origin !== "inbound") return null;              // composed item: no inbound mail to unread
@@ -206,7 +206,7 @@ function canReopen(w, nowMs = Date.now(), weMarkedItRead = false) {
   return "unread-after-close";
 }
 
-// Did Axle mark this message read when it closed this item? The ledger is keyed by message, so the
+// Did the Email app mark this message read when it closed this item? The ledger is keyed by message, so the
 // work_item_id is checked too: a message that has since been re-filed under a different item is
 // not evidence about this one.
 function markedReadByAxle(box, messageId, itemId) {
@@ -229,7 +229,7 @@ function whyNotReopen(w, weMarkedItRead) {
   if (Date.now() - closedMs > REOPEN_DAYS * 86400000) return `closed more than ${REOPEN_DAYS} days ago`;
   if (w.resolution === "outlook") return "(should have reopened — report this)";
   if (!HUMAN_CLOSES.has(w.resolution)) return `resolution '${w.resolution || "none"}' is never undone`;
-  if (!weMarkedItRead) return "Axle never marked this message read (closed before the ledger, or the mark failed)";
+  if (!weMarkedItRead) return "The Email app never marked this message read (closed before the ledger, or the mark failed)";
   if (Date.now() - closedMs < REOPEN_GRACE_MS) return "closed less than 5 minutes ago";
   return "(unknown — report this)";
 }
@@ -546,21 +546,21 @@ async function explain(itemId) {
   // looks like a bug rather than the deliberate rule it is.
   if (!reason && w.injection_flag && state && !state.gone && state.isRead) {
     out.verdict = "stays open — injection-flagged, and 'read' alone never closes a flagged item " +
-                  "(file or delete it in Outlook, or press Done in Axle)";
+                  "(file or delete it in Outlook, or press Done in the Email app)";
   }
   return out;
 }
 
 // The OTHER direction of drift: mail that is unread in Outlook's monitored folders but is NOT on
-// Axle's open list. Fetches every unread message in the mailbox's monitored folders and says, for
-// each, where it ended up in Axle — open, closed (and how), archived, suppressed as a blocked
+// The Email open list. Fetches every unread message in the mailbox's monitored folders and says, for
+// each, where it ended up in the Email app: open, closed (and how), archived, suppressed as a blocked
 // sender, or never ingested at all. Read-only; the counterpart to --explain, which goes the other
-// way (Axle item -> Outlook state).
+// way (Email item -> Outlook state).
 //
 // Matching mirrors ingest exactly: an item is found by its stored Graph message id first, then by
 // the conversation key (sender + normalised subject) that engine.threadGroup derives — because
 // ingest stores ONE item per thread and only the newest message's id, so an older unread message
-// in the same thread is still "in Axle".
+// in the same thread is still "in the Email app".
 async function auditBox(box) {
   const E = require("./engine.js");   // lazy: only the CLI diagnostic needs it
   const { isBlockedSender } = require("./db.js");
@@ -582,7 +582,7 @@ async function auditBox(box) {
     else if (w.status === "done") where = `#${w.id} closed (${w.resolution || "—"})`;
     else where = `#${w.id} OPEN (${w.status})${w.injection_flag ? " [flagged]" : ""}`;
     // Why did (or didn't) this unread message bring its item back? The inputs to the reopen
-    // decision, side by side: whether Axle marked this message read when it closed the item, when
+    // decision, side by side: whether the Email app marked this message read when it closed the item, when
     // it closed it, and the verdict. Added 2026-08-15 — "I marked it unread and it didn't come
     // back" is the question this diagnostic exists to answer.
     const ours = w ? markedReadByAxle(box, m.id, w.id) : false;
@@ -603,7 +603,7 @@ async function auditBox(box) {
 }
 
 // Everything that ARRIVED in the monitored folders over the last N days but has NO work item in
-// Axle — read or unread. The blunt "did we lose anything?" check.
+// the Email app, read or unread. The blunt "did we lose anything?" check.
 //
 // This exists because of the 2026-07-27 incident: a mis-clicked '@gmail.com' domain block meant
 // ingest silently skipped every consumer customer for 13 days, and nothing surfaced it. Ingest's
@@ -659,7 +659,7 @@ if (require.main === module) {
     const arg = process.argv[2];
     const boxes = arg === "all" ? ["info", "drachten"] : arg === "drachten" ? ["drachten"] : ["info"];
 
-    // --audit: everything unread in Outlook, and where it landed in Axle. Diagnostic, writes nothing.
+    // --audit: everything unread in Outlook, and where it landed in the Email app. Diagnostic, writes nothing.
     if (process.argv.includes("--audit")) {
       for (const box of boxes) {
         const a = await auditBox(box);
@@ -669,7 +669,7 @@ if (require.main === module) {
           console.table(a.rows);
           const missing = a.rows.filter((r) => r.axle === "NOT IN AXLE").length;
           const open = a.rows.filter((r) => r.axle.includes("OPEN")).length;
-          console.log(`open in Axle: ${open} | closed/archived/blocked: ${a.rows.length - open - missing} | not in Axle: ${missing}`);
+          console.log(`open in the Email app: ${open} | closed/archived/blocked: ${a.rows.length - open - missing} | not in the Email app: ${missing}`);
         }
       }
       await C.closePool();

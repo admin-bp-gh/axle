@@ -18,7 +18,7 @@ for (const name of required) {
   if (!set) ok = false;
 }
 // Drafting through the Workbench shared agent (AXLE_AGENT=step) needs its shared secret; without it
-// Axle falls back to drafting directly through the Anthropic API.
+// The Email app falls back to drafting directly through the Anthropic API.
 if (process.env.AXLE_AGENT === "step" && !process.env.AGENT_TOKEN) {
   console.log("WARN    AGENT_TOKEN (AXLE_AGENT=step is set; drafts fall back to the direct Anthropic API until it is)");
 }

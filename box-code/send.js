@@ -1,4 +1,4 @@
-// send.js - the ONLY module in Axle that sends email. Kept separate from the read-only
+// send.js - the ONLY module in the Email app that sends email. Kept separate from the read-only
 // connectors so the read/write split stays clear. A reply is sent in two steps: the message is
 // created in the mailbox's Drafts with our verbatim HTML body, the recipient hard-locked by the
 // caller (send-guard), and proper threading via In-Reply-To / References Internet headers set as
@@ -96,7 +96,7 @@ async function sendReply({ mailbox, originalMessageId, to, cc, subject, html, at
   try {
     await sendDraft(mailbox, draft.id, tok);
   } catch (e) {
-    // Nothing went out: remove our draft so a retry from Axle starts clean. Best effort.
+    // Nothing went out: remove our draft so a retry from the Email app starts clean. Best effort.
     await fetch(`${base}/${encodeURIComponent(draft.id)}`, { method: "DELETE", headers: { Authorization: `Bearer ${tok}`, ...IMMUTABLE } }).catch(() => {});
     throw e;
   }

@@ -1,4 +1,4 @@
-// db.js — SQLite data layer for the Axle team tool.
+// db.js: SQLite data layer for the Email team tool.
 // One work item per conversation (mailbox + conversation_key). All UI actions audit-logged.
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   detail       TEXT
 );
 
--- Phase 5: one row per outbound email Axle sends. UNIQUE(draft_id) enforces "one send
+-- Phase 5: one row per outbound email the Email app sends. UNIQUE(draft_id) enforces "one send
 -- per approved draft" - a double-click or retry of the same approval cannot send twice.
 -- A 'pending' row is reserved before the Graph call and stamped with graph_message_id on
 -- success (or deleted on failure so a genuine retry is possible).
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS sends (
   UNIQUE (draft_id)
 );
 
--- On-view translation cache. Axle generates wording in English and customer content
+-- On-view translation cache. The Email app generates wording in English and customer content
 -- stays in the customer's language; this table holds each unique piece of text rendered
 -- into a UI language so repeat views cost nothing. Key = sha256(targetLang + text).
 CREATE TABLE IF NOT EXISTS translations (
@@ -103,13 +103,13 @@ CREATE TABLE IF NOT EXISTS draft_attachments (
   added_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Every inbound message Axle itself marked READ in Outlook when an item was closed (send / Done /
+-- Every inbound message the Email app itself marked READ in Outlook when an item was closed (send / Done /
 -- Archive / handover). This is the ledger the reopen mirror reads: if a message WE marked read is
 -- unread again, a human did that deliberately, and the item comes back (outlook-close.canReopen).
 --
 -- Why a ledger and not a timestamp: the obvious test — "was the message modified after we closed
 -- it?" — cannot work. Exchange does NOT bump lastModifiedDateTime when isRead changes. Proved on
--- the live box 2026-08-15 with item #500: Axle PATCHed the message to read at 13:41 and Brad
+-- the live box 2026-08-15 with item #500: the Email app PATCHed the message to read at 13:41 and Brad
 -- marked it unread minutes later, and lastModifiedDateTime stayed at the previous day's 11:44
 -- through both. The state transition itself is the only reliable evidence, so we record our own
 -- side of it. Rows predate nothing: an item closed before this table existed has none, which is
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS draft_attachments (
 -- reopen replaces the row rather than duplicating it.
 CREATE TABLE IF NOT EXISTS read_marks (
   mailbox      TEXT NOT NULL,                   -- 'info' | 'drachten'
-  message_id   TEXT NOT NULL,                   -- Graph id of the message Axle marked read
+  message_id   TEXT NOT NULL,                   -- Graph id of the message the Email app marked read
   work_item_id INTEGER NOT NULL REFERENCES work_items(id),
   marked_at    TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (mailbox, message_id)
@@ -264,8 +264,8 @@ ensureColumn("work_items", "ack_draft", "INTEGER NOT NULL DEFAULT 0");
 //
 // Since 2026-08-14 this table is ALSO the source of truth for a server-side Exchange inbox rule
 // (outlook-block.js, allow-list action #7): blocking now files the sender's mail out of the Outlook
-// Inbox into the "Axle Blocked" folder, instead of Axle-only suppression that left the team still
-// staring at mail they had told Axle to ignore. The rule is rebuilt in full from these rows, so
+// Inbox into the "Axle Blocked" folder, instead of Email-app-only suppression that left the team still
+// staring at mail they had told the Email app to ignore. The rule is rebuilt in full from these rows, so
 // this table stays authoritative and Outlook is only ever a projection of it.
 db.exec(`
 CREATE TABLE IF NOT EXISTS sender_blocks (
@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS sender_block_sync (
 );
 `);
 
-// Teach Axle (Phase 6, 2026-10-05). A salesperson flags from an item what Axle should have known;
+// Teach Email (Phase 6, 2026-10-05). A salesperson flags from an item what the Email assistant should have known;
 // Brad reviews on /teach. status pending -> approved | rejected, approved -> retired (once folded
 // into business-knowledge.md or found wrong). Decided rows are kept for the audit trail, never
 // deleted; only the author (or an admin) can withdraw a still-pending flag. Approved rows are read into the drafting prompt by knowledge.js on
@@ -338,7 +338,7 @@ CREATE TABLE IF NOT EXISTS draft_feedback (
 CREATE INDEX IF NOT EXISTS idx_feedback_item ON draft_feedback(work_item_id);
 `);
 
-// Round 2 (2026-10-07): every incoming message Axle sees for a work item, and that message's
+// Round 2 (2026-10-07): every incoming message the Email app sees for a work item, and that message's
 // attachments (message-store.js owns both). work_items.email_text and attachments_json are still
 // written as before; these tables add the whole thread. One row per Graph message (mailbox +
 // graph_id); internet_id lets a moved message (new Graph id) be found again. to_json and cc_json

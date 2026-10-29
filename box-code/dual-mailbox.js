@@ -76,7 +76,7 @@ async function decide(email, cls, deps) {
   return (await referenceBranch(text, deps)) || topicBranch(cls);
 }
 
-const flagText = (box, reason) => `This email is also in ${BOX_TEXT[OTHER[box]]}. Axle could not decide which mailbox handles it (${reason}); close one copy by hand.`;
+const flagText = (box, reason) => `This email is also in ${BOX_TEXT[OTHER[box]]}. The Email app could not decide which mailbox handles it (${reason}); close one copy by hand.`;
 
 // Ingest step for one message in boxName that may have a twin. Runs before drafting.
 // deps: { db, audit, closeItem(w, note), resolveReference, docWarehouses }.

@@ -13,7 +13,7 @@ const ids = (r) => r.add.map((m) => m.id);
 
 console.log("unread-sweep");
 
-test("the live case: mail moved into a watched folder, on a thread Axle has never seen", () => {
+test("the live case: mail moved into a watched folder, on a thread the Email app has never seen", () => {
   const r = sweepAdditions([msg("MOVED")], new Set(), keyOf, none);
   assert.deepStrictEqual(ids(r), ["MOVED"]);
   assert.deepStrictEqual(r.skip, []);

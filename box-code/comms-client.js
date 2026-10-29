@@ -1,5 +1,5 @@
 "use strict";
-// comms-client.js - Axle's side of Workbench customer comms wave 3 (2026-10-25).
+// comms-client.js - the Email app's side of Workbench customer comms wave 3 (2026-10-25).
 //
 // unsubscribe(e, t) and interest(body) call Workbench POST /api/comms/unsubscribe and POST /api/comms/interest
 // on loopback (AGENT_URL, default http://127.0.0.1:8485) with the shared AGENT_TOKEN, cut at 3 s. Each returns

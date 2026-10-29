@@ -1,7 +1,7 @@
-// send-verify.js: did the email Axle sent actually leave? (15 Oct 2026)
+// send-verify.js: did the email the Email app sent actually leave? (15 Oct 2026)
 //
 // Exchange can accept a send and then never send it: the message stays in the mailbox's Drafts
-// and Graph reports nothing (the reply to Pere Garriga, item 2709, 15 Oct 2026). Axle used to treat
+// and Graph reports nothing (the reply to Pere Garriga, item 2709, 15 Oct 2026). The Email app used to treat
 // "accepted" as "sent", so nobody knew until the customer chased. send.js now sends a draft whose
 // immutable id it keeps (sends.graph_message_id); this pass, run at the end of every sync, looks
 // each recent send up by that id:

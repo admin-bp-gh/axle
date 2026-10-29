@@ -1,4 +1,4 @@
-// logrotate-tee.js - size-based rotating logger for the Axle server.
+// logrotate-tee.js - size-based rotating logger for the Email server.
 //
 // Reads the server's merged stdout+stderr on stdin and appends it to server.log. When the
 // live log reaches AXLE_LOG_MAX_BYTES it is rotated: server.log.<KEEP> is dropped,

@@ -1,5 +1,5 @@
 "use strict";
-// prose-output.js - Axle 2b (AI parity Step B, 16 Oct 2026): the drafter writes the reply as plain prose,
+// prose-output.js - Email 2b (AI parity Step B, 16 Oct 2026): the drafter writes the reply as plain prose,
 // a small <internal> block carries what only the drafter knows, and a second small Haiku call reads the
 // rest of the structured fields off the prose and the tool log. parseResult's output shape is kept, so
 // everything downstream (gates, storage, the item page) takes the same object as before.
@@ -118,9 +118,9 @@ async function extractFields(sdk, { reply, toolLog, strip = (s) => s, parse }) {
   }
 }
 
-const Q_INTERNAL = "Axle's notes for you on this draft could not be read. Read the reply carefully before sending.";
-const Q_FORMAT = "Axle did not mark which part of its answer is the reply. Read the reply carefully and remove anything not meant for the customer before sending.";
-const Q_EXTRACT = "Axle could not check its own draft this time. Read the reply carefully before sending.";
+const Q_INTERNAL = "The Email assistant's notes for you on this draft could not be read. Read the reply carefully before sending.";
+const Q_FORMAT = "The Email assistant did not mark which part of its answer is the reply. Read the reply carefully and remove anything not meant for the customer before sending.";
+const Q_EXTRACT = "The Email assistant could not check its own draft this time. Read the reply carefully before sending.";
 
 // The parseResult-shaped object. Held = any question or physical check: the reply then sits in
 // interim_draft (the sendable holding reply), exactly where a held JSON draft puts it.

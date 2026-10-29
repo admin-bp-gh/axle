@@ -1,4 +1,4 @@
-// connectors.js — shared READ-ONLY connectors for all Axle scripts.
+// connectors.js: shared READ-ONLY connectors for all Email app scripts.
 // Every function here reads. Nothing in this file writes to any business system.
 const sql = require("mssql");
 
@@ -526,7 +526,7 @@ async function sapStockPrice(itemCodes, priceList) {
 //
 // 2026-10-08 (purchasing ETA, phase 4): out of stock with FREE inbound stock (dbo.vw_ItemEta,
 // inbound net of existing back orders) comes before the DropShip rule. The view is the single
-// source for ETAs, the same one RoverSync and the webshop read, so the three tiers match the
+// source for ETAs, the same one Webshop Sync and the webshop read, so the three tiers match the
 // product page:
 //
 //   eta_confirmed  Confidence = 'confirmed'  -> the date
@@ -1315,7 +1315,7 @@ async function shopifyGraphql(query, variables) {
   return data.data;
 }
 
-// Shopify account actions (Axle side panel card, 2026-10-25): the customer record behind an email
+// Shopify account actions (Email side panel card, 2026-10-25): the customer record behind an email
 // address, as the card needs it. All matches are returned; the caller decides what one, none or
 // several means. Needs read_customers; the mutations in shopify-account.js need write_customers.
 async function shopifyCustomerLookup(email) {
@@ -1373,7 +1373,7 @@ async function shopifyOrderByName(orderName) {
 // TWO BRANCHES (added 2026-08-04). MyParcel issues ONE API KEY PER SHOP, and a key can only read
 // its own shop — anything else returns 401 readResourceOwnedByOthers. Budget Parts runs two shops
 // under one account (207826): 137660 "Budget Parts B.V." (Gouda) and 137714 "Budget Parts Noord"
-// (Drachten). Until now Axle held only the Gouda key, so every parcel lookup for the drachten@
+// (Drachten). Until now the Email app held only the Gouda key, so every parcel lookup for the drachten@
 // mailbox silently found nothing — 3,734 Drachten shipments were invisible. Searches and tracking
 // therefore fan out over every configured key and merge, tagging each result with its branch.
 const MYPARCEL_STATUS = {
@@ -1401,7 +1401,7 @@ const mpFlag = (v) => (Number(v) === 1 || v === true) || undefined;  // 0/absent
 
 // One entry per shop: MYPARCEL_API_KEY is the primary (labelled by MYPARCEL_SHOP_LABEL, default
 // "gouda"); any MYPARCEL_API_KEY_<LABEL> adds another, e.g. MYPARCEL_API_KEY_DRACHTEN. Built lazily
-// so a key added to the environment is picked up without a code change, and so Axle keeps working
+// so a key added to the environment is picked up without a code change, and so the Email app keeps working
 // unchanged when only one key is configured.
 function mpAccounts() {
   const out = [];
@@ -1851,7 +1851,7 @@ async function returnDossier(orderRef, opts = {}) {
     tier: customer ? customer.ListName : undefined,
     prior_credit_notes: customer ? customer.credit_notes : undefined,
     prior_invoices: customer ? customer.invoices : undefined,
-    note: "Hints only — confirm electrical + B2C/B2B by judgement. Every system action (decline the Shopify return, create the credit note, refund) is a human to-do; Axle drafts only.",
+    note: "Hints only: confirm electrical + B2C/B2B by judgement. Every system action (decline the Shopify return, create the credit note, refund) is a human to-do; the Email assistant drafts only.",
   };
 }
 

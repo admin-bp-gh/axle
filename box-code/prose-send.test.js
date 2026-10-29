@@ -59,7 +59,7 @@ const sendTag = (html) => /<button type="submit" class="wb-btn wb-btn--commit" f
 test("item page: the flag strip quotes the fragment; Send is live with the open-question warning; no Send anyway", async () => {
   for (const login of ["jack@bp", "brad@bp"]) {
     const { body } = await req("GET", `/item/${held}`, login);
-    assert.match(body, /Check before sending: Axle flagged part of this reply\./);
+    assert.match(body, /Check before sending: the Email assistant flagged part of this reply\./);
     assert.match(body, /<mark data-ax-flag="fits your VIN">fits your VIN<\/mark>/);
     assert.match(body, /Recommends a part whose fitment is not confirmed\./);
     assert.doesNotMatch(sendTag(body), / disabled/, login);
@@ -85,9 +85,9 @@ test("item page: a JSON-drafted item keeps today's Send even with a blocking que
   assert.doesNotMatch(body, /ax-openq/);
 });
 
-test("item page: notes on a ready item show as Notes from Axle and never hold Send", async () => {
+test("item page: notes on a ready item show as Notes from the Email assistant and never hold Send", async () => {
   const { body } = await req("GET", `/item/${withNotes}`, "jack@bp");
-  assert.match(body, /Notes from Axle<\/b><ul class="ax-gflags"><li><span[^>]*>Create the credit note on receipt</);
+  assert.match(body, /Notes from the Email assistant<\/b><ul class="ax-gflags"><li><span[^>]*>Create the credit note on receipt</);
   assert.doesNotMatch(sendTag(body), / disabled/);
 });
 

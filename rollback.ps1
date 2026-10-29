@@ -1,6 +1,6 @@
-# rollback.ps1 - hand Axle back to the release before the live one (same handover as a deploy).
+# rollback.ps1 - hand the Email app back to the release before the live one (same handover as a deploy).
 # No copying, no tests: the previous release folder is still on disk (deploy.ps1 keeps the last 5).
-# Self-elevates: the server runs as the low-privilege axle account.
+# Self-elevates: the server runs as the low-privilege `axle` account.
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
            ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {

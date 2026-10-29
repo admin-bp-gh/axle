@@ -1,4 +1,4 @@
-# restart-axle.ps1 — restart the Axle Server task, elevated, and prove it actually restarted.
+# restart-axle.ps1: restart the "Axle Server" task, elevated, and prove it actually restarted.
 #
 # The runbook has pointed at this script since June. It did not exist until 2026-08-15, which was
 # discovered mid-deploy with the server down — the worst possible moment to find out. It exists now.

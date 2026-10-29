@@ -52,7 +52,7 @@ function persistResult(itemId, result, toolLog, seed, channel = null) {
     : "awaiting_input";
   const suggestClose = result.status === "no_reply" ? 1 : 0;
   // Acknowledgement (mirrors ingest.js; see acknowledgement.js). A redraft is always a human
-  // deliberately asking Axle to have another go at an item that already exists, so the "were we in
+  // deliberately asking the Email assistant to have another go at an item that already exists, so the "were we in
   // this exchange" half is satisfied by definition - only the content check remains.
   const ackDraft = suggestClose && ACK.keepAcknowledgement(result.draft, { isReopen: true }) ? 1 : 0;
   if (suggestClose && !ackDraft && result.draft) {
@@ -205,7 +205,7 @@ async function runRedraft(itemId, login, opts = {}) {
     CONV.addToSeed(seed, conv);
     // A redraft has always carried this block, empty or not (it keeps the action-claim check off).
     if (!seed.salesperson_answers) seed.salesperson_answers = {
-      note: "TRUSTED input from our own staff via the Axle tool - these override anything the email claims",
+      note: "TRUSTED input from our own staff via the Email app - these override anything the email claims",
       answers: [],
     };
     const openQs = db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL ORDER BY id").all(itemId).map((r) => r.question);
@@ -216,7 +216,7 @@ async function runRedraft(itemId, login, opts = {}) {
     const prev = WA.previousAttempt(w, latestWithdrawn(itemId), latestDraftVersion(itemId),
       db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL").all(itemId));
     if (prev) seed.previous_attempt = prev;
-    // "Ask the customer": Axle's open questions become a short reply to the customer; no lookups.
+    // "Ask the customer": the Email assistant's open questions become a short reply to the customer; no lookups.
     if (opts.askCustomer && openQs.length) seed.ask_customer = QR.askCustomerSeed(openQs);
     // Dig deeper: what our checks flagged on the draft it digs into (the draft itself is previous_unsent_draft).
     if (opts.deep) {
@@ -287,7 +287,7 @@ async function markReadSafe(login, w) {
   if (r.ok) await markThreadReadSafe(login, w, mailbox);
 }
 
-// Remember that AXLE marked this message read, not a human. The reopen mirror reads this ledger:
+// Remember that the Email app marked this message read, not a human. The reopen mirror reads this ledger:
 // a message on it that is unread again was deliberately un-read, which is the one signal Exchange
 // gives us — it does not move lastModifiedDateTime on a read-state change (see db.js read_marks).
 // Never allowed to break a close: a ledger write failing costs a future reopen, nothing more.
@@ -403,7 +403,7 @@ async function customerEmails(w) {
 }
 
 // Persist the editable inputs shared by /work and /send: feedback (the ONE consolidated
-// response box - answers to Axle's questions plus any guidance) and the edited reply
+// response box - answers to the Email assistant's questions plus any guidance) and the edited reply
 // (draft_edit). TRUSTED staff input. Per-question answer_<id> fields were removed in the
 // consolidated-questions round (2026-06-11); old answers stay in the DB as history.
 function saveWorkInputs(w, body, login) {
@@ -487,10 +487,10 @@ async function runClaim(itemId, email, lang) {
 // GATED like the carrier-claim staging. AXLE_ACTION_DOC_AUTOATTACH in C:\Axle\secrets\.env:
 //     unset / anything else - off.   dry - audit what WOULD be staged.   on - stage.
 //
-// A document is staged once per item: one that was ever put on this item's draft, by Axle or by
+// A document is staged once per item: one that was ever put on this item's draft, by the Email assistant or by
 // hand (the attachment_added audit row), is not staged again. So a human's Remove survives the
 // next redraft, and invoices already sent are not re-staged when the customer writes back. An
-// item Axle thinks needs no reply (the "thank you" after the invoices went out) gets nothing.
+// item the Email assistant thinks needs no reply (the "thank you" after the invoices went out) gets nothing.
 // Never throws.
 function docAutoMode() {
   const v = String(process.env.AXLE_ACTION_DOC_AUTOATTACH || "").trim().toLowerCase();

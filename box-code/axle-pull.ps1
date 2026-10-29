@@ -1,4 +1,4 @@
-# axle-pull.ps1 (v5) - place Taildropped files into the Axle tree.
+# axle-pull.ps1 (v5) - place Taildropped files into the Email app tree.
 # v5 (UI rework step 0): the app tree now has subfolders (views\, routes\, hardening\).
 # Routing rule: a file goes to where a file of that NAME already lives ANYWHERE under
 # C:\Axle\app (node_modules excluded). Basenames are unique across the tree by
@@ -9,7 +9,7 @@
 # Looks in two inboxes so it works regardless of Tailscale's "save received files to"
 # setting:
 #   1) C:\Axle\_incoming            - dedicated Taildrop folder (recommended)
-#   2) %USERPROFILE%\Downloads      - default; only recent files that match a known Axle
+#   2) %USERPROFILE%\Downloads      - default; only recent files that match a known Email app
 #                                     file are touched, so nothing unrelated is disturbed.
 # Strips any " (N)" collision suffix, copies over the live file, runs node --check on every
 # .js, and removes the consumed copy.

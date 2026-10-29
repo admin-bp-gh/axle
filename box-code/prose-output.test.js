@@ -1,4 +1,4 @@
-// prose-output.test.js - Axle 2b (AI parity Step B): the reply as prose plus an <internal> block, the Haiku
+// prose-output.test.js - Email 2b (AI parity Step B): the reply as prose plus an <internal> block, the Haiku
 // field read, the gates flagging instead of withdrawing on that path, and the open blocking question
 // count Send warns on (never a hold since 19 Oct 2026). No network: a fake fetch for the agent, a fake SDK for the extractor.
 // Run: node prose-output.test.js

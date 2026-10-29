@@ -5,9 +5,9 @@
 // payload or throws with a clear reason.
 //
 // WHAT THIS ACTION IS. Reassigning an item to an owner who works a DIFFERENT mailbox is a real
-// handover, not a relabel. Axle forwards the email to that owner's mailbox so the work physically
+// handover, not a relabel. The Email app forwards the email to that owner's mailbox so the work physically
 // moves: it lands where they actually work, and (once the caller closes the item and marks the
-// source message read) it leaves the handing-over team's Axle queue and their Outlook unread list.
+// source message read) it leaves the handing-over team's Email queue and their Outlook unread list.
 // Reassigning inside the same mailbox - Sales(Gouda) -> Tom, both info@ - forwards nothing and
 // keeps the old relabel behaviour.
 //
@@ -77,7 +77,7 @@ function plainAddress(s) {
 
 // The handover note placed above the forwarded message. Ours, not the customer's: it says who
 // handed the item over, from which queue to which, who the customer is, and where to open it, so
-// the receiving person has the context Axle had. Graph puts the forward's `comment` into the body as
+// the receiving person has the context the Email app had. Graph puts the forward's `comment` into the body as
 // HTML (15 Oct 2026: the plain-text note of items 2717 and 2724 arrived on one line, and the
 // "<address>" after the sender's name vanished as an unknown tag), so the note is HTML: our fixed
 // words, every value escaped (on top of the scrubbing above), one line per fact. The customer of an
@@ -94,7 +94,7 @@ function workbenchLink(id) {
 }
 function handoverNote(workItem, { fromOwner, toOwner, byName, byLogin }) {
   const E = SG.escapeHtml;
-  const who = plainName(byName) || plainName(byLogin) || "Axle";
+  const who = plainName(byName) || plainName(byLogin) || "the Email app";
   // Mail from our own mailbox with no customer in it (a colleague's own message) names the colleague.
   const own = SG.ownMailCase(workItem);
   const cust = own && own.customer ? { name: own.customer.name, email: own.customer.addr } : { name: workItem.sender_name, email: workItem.sender_email };
@@ -104,10 +104,10 @@ function handoverNote(workItem, { fromOwner, toOwner, byName, byLogin }) {
   const origin = senderName && senderAddr ? `${senderName} <${senderAddr}>` : (senderAddr || senderName || "unknown");
   const link = workbenchLink(workItem.id);
   return noteBlock([
-    `Handed over in Axle by ${E(who)}`,
+    `Handed over in the Email app by ${E(who)}`,
     `From ${E(label(fromOwner) || "unassigned")} to ${E(label(toOwner))}`,
     `${whoLabel}: ${E(origin)}`,
-    link ? `Open in Axle: <a href="${E(link)}">${E(link)}</a>` : `Axle item #${Number(workItem.id)}`,
+    link ? `Open in the Email app: <a href="${E(link)}">${E(link)}</a>` : `Email item #${Number(workItem.id)}`,
   ]);
 }
 

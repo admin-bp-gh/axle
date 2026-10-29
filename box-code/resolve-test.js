@@ -27,7 +27,7 @@ function show(label, r) {
     if (c.notes && c.notes.length) c.notes.forEach((n) => console.log("  note:       " + n));
   }
   if (r.candidates && r.candidates.length) {
-    console.log(`  candidates (${r.candidates.length}) - Axle will NOT auto-pick:`);
+    console.log(`  candidates (${r.candidates.length}) - the Email app will NOT auto-pick:`);
     r.candidates.slice(0, 12).forEach((c) =>
       console.log(`     - ${(c.name || "?").padEnd(34)} [${c.cardCode}]  ${c.email || "(no email)"}  ${c.country || ""}  ${c.language_hint}${c.reason ? "  - " + c.reason : ""}`));
   }
@@ -62,7 +62,7 @@ const SUITE = [
   const args = process.argv.slice(2);
   if (args.length) { show(args.join(" + "), await resolveCustomer(args.length === 1 ? args[0] : args)); return; }
 
-  console.log("Axle Compose - customer resolver, Gate A suite (read-only)\n");
+  console.log("Email Compose - customer resolver, Gate A suite (read-only)\n");
   let pass = 0, total = 0;
   for (const t of SUITE) {
     const r = await resolveCustomer(t.input);

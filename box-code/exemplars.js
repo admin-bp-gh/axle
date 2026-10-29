@@ -11,7 +11,7 @@
 // example for other customers. Now:
 //   * a send containing an access code, an IBAN other than ours, or a phone number other than our
 //     two branches never qualifies (sensitive());
-//   * a send qualifies only when its reply went out from Axle's FIRST draft for that turn, with no
+//   * a send qualifies only when its reply went out from the Email assistant's FIRST draft for that turn, with no
 //     redraft and under 20 % edited (turnFacts(): the same turn the adoption dashboard's
 //     first-draft acceptance uses; the edit size here is counted in words, cheap enough to run on
 //     every draft, where the dashboard counts characters);

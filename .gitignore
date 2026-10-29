@@ -6,7 +6,7 @@ dist/
 .DS_Store
 # Phase 7: DB backups land here (inside the repo) - never track the .db copies.
 Backups/
-# One-off sap-doc-pdf skill packaging run - build output, not Axle source.
+# One-off sap-doc-pdf skill packaging run - build output, not Email app source.
 _sap-doc-pdf-run/
 render/
 # The draft eval regenerates this copy of engine.js on every run.

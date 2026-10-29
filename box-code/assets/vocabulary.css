@@ -1,5 +1,5 @@
 /* Workbench vocabulary v1: the wb- classes, decided 6 Oct 2026. Plain CSS on the tokens in
-   tokens.css, read unchanged by Workbench and by Axle (no Tailwind, no preflight assumed).
+   tokens.css, read unchanged by Workbench and by the Email app (no Tailwind, no preflight assumed).
    Every rule starts with a wb- class. Phone: max-width 639.98px. Touch: pointer coarse, which
    tokens.css turns into 44 px controls. */
 
@@ -18,7 +18,7 @@
 /* A hidden attribute always hides a part, whatever display its class sets. */
 :where([class*="wb-"])[hidden] { display: none !important; }
 
-/* Clickable parts reset themselves, so a page without a CSS reset (Axle) renders them the same. */
+/* Clickable parts reset themselves, so a page without a CSS reset (the Email app) renders them the same. */
 .wb-btn, .wb-pillbtn, .wb-chip, .wb-seg > button, .wb-tab, .wb-menu__item, .wb-clear, .wb-stepper > button,
 .wb-home__go, .wb-home__jump {
   box-sizing: border-box; margin: 0; padding: 0; border: 0; background: none; color: inherit;
@@ -190,8 +190,8 @@
 /* Removable pill: a small clear button at the end (an attachment, a picked value). */
 .wb-pill:has(> .wb-clear) { padding-right: 3px; }
 .wb-pill > .wb-clear { width: 16px; height: 16px; }
-/* The ABC grade pill (OITM.U_ABC), after the quality pill on every Winch and Ratchet line row (AbcPill,
-   modules/winch/LineRow.tsx; Winch 15 Oct 2026, Ratchet 16 Oct 2026). A+ and A the green wash (A+ in the
+/* The ABC grade pill (OITM.U_ABC), after the quality pill on every Warehouse and Sales line row (AbcPill,
+   modules/winch/LineRow.tsx; Warehouse 15 Oct 2026, Sales 16 Oct 2026). A+ and A the green wash (A+ in the
    heavier weight), B the blue wash, C grey, D a faint grey outline. */
 .wb-pill.wx-abc--aplus { --tone-bg: var(--ok-bg); --tone-fg: var(--ok-fg); font-weight: 600; }
 .wb-pill.wx-abc--a { --tone-bg: var(--ok-bg); --tone-fg: var(--ok-fg); }

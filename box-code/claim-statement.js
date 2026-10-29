@@ -8,7 +8,7 @@
 // was right. It also does not always exist - three of the eight lines on order 227148 have no
 // usable purchase record at all.
 //
-// So Axle produces the document that actually answers the question: a one-page statement of the
+// So the Email app produces the document that actually answers the question: a one-page statement of the
 // purchase value of THIS parcel's contents, line by line, from our own accounting records, with
 // the supplier invoice behind each line named as a reference. It discloses exactly what the claim
 // needs and nothing else.

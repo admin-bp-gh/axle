@@ -1,4 +1,4 @@
-// scenarios.js - Axle Compose: the seeded quick-start scenario library.
+// scenarios.js - Email Compose: the seeded quick-start scenario library.
 //
 // A free-text instruction always works in Compose. Scenarios are OPTIONAL starters: a chip
 // pre-fills a plain-language prompt skeleton (the salesperson edits it) and carries hints to

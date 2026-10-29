@@ -5,7 +5,7 @@
 //
 //   P1  how often this number left a voicemail in the 14 days before this one, timed by KPN's own
 //       clock (the "Time:" line, else the .wav name, else the email's received time), never by
-//       when Axle ingested it: ingest can run minutes to hours late (finding of 9 Oct 2026).
+//       when the Email app ingested it: ingest can run minutes to hours late (finding of 9 Oct 2026).
 //   P2  open issues (returns, complaints, warranty) for the caller's customer card.
 //   P3  the supplier panel: email domains, purchase order lines, open warranty items.
 
@@ -225,7 +225,7 @@ function poLine(po, now = new Date()) {
     currency: foreign ? cur : "EUR", due, overdue: !!due && due < amsDay(now) };
 }
 
-// Open warranty items with this supplier in Axle: open, rule warranty_warp or intent
+// Open warranty items with this supplier in the Email app: open, rule warranty_warp or intent
 // return_complaint, sender at one of the supplier's domains. Newest first.
 function supplierIssues(rows, domains, { limit = ISSUE_LIMIT } = {}) {
   const ds = domains instanceof Set ? domains : new Set(domains || []);

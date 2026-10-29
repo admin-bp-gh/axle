@@ -1,11 +1,11 @@
-// outlook-block.js — Axle → Outlook sender blocking (allow-list action #7, added 2026-08-14).
+// outlook-block.js: Email → Outlook sender blocking (allow-list action #7, added 2026-08-14).
 //
-// THE GAP THIS CLOSES. "Block sender" used to be Axle-only suppression: ingest skipped the mail
+// THE GAP THIS CLOSES. "Block sender" used to be Email-app-only suppression: ingest skipped the mail
 // (db.isBlockedSender) but it still landed in the shared Outlook inbox, so the team went on seeing
-// exactly the mail they had just told Axle they never wanted to see again. Blocking now also
+// exactly the mail they had just told the Email app they never wanted to see again. Blocking now also
 // writes a server-side Exchange inbox rule that files that sender out of the Inbox.
 //
-// WHAT IT WRITES. One Axle-owned rule per mailbox per kind:
+// WHAT IT WRITES. One Email-app-owned rule per mailbox per kind:
 //   "Axle - Blocked senders"  conditions.fromAddresses   (EXACT address match)
 //   "Axle - Blocked domains"  conditions.senderContains  (legacy '@domain' rows only)
 // Both act: move to the "Axle Blocked" folder, mark read, stop processing further rules.
@@ -29,7 +29,7 @@
 //
 // RECONCILED, NOT MUTATED. The rule is rebuilt in full from the sender_blocks table (the single
 // source of truth) on every block/unblock and again on each ingest run. Anyone editing, disabling
-// or deleting it in Outlook is healed on the next pass, and Axle's DB and the mailbox cannot drift.
+// or deleting it in Outlook is healed on the next pass, and the Email app's DB and the mailbox cannot drift.
 // The rebuild is idempotent, and a content hash per mailbox keeps the routine ingest pass to one
 // cheap read when nothing has changed.
 //
@@ -297,7 +297,7 @@ async function syncMailbox(box, opts = {}) {
       const sorted = (after.data.value || []).slice().sort((a, b) => (a.sequence || 99) - (b.sequence || 99));
       rep.firstRule = sorted.length ? sorted[0].displayName : null;
       if (rep.firstRule && rep.firstRule !== RULE_ADDRESSES && (pat.addresses.length || pat.domains.length)) {
-        rep.warnings.push(`"${rep.firstRule}" runs before the Axle block rule — reorder in Outlook if blocked mail still reaches the inbox`);
+        rep.warnings.push(`"${rep.firstRule}" runs before the Email app's block rule: reorder in Outlook if blocked mail still reaches the inbox`);
       }
     }
     db.prepare(

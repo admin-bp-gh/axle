@@ -1,7 +1,7 @@
 "use strict";
 // caller-match.test.js: the voicemail caller lookup and card choice (connectors.js, ingest.js, db.js).
 //
-// Exists because of the 2026-10-01 finding: Axle scanned the BODY of KPN voicemail emails for
+// Exists because of the 2026-10-01 finding: the Email app scanned the BODY of KPN voicemail emails for
 // the caller's number, but KPN puts it in the SUBJECT ("Voice Message Attached from 0612345678
 // - 0612345678"). The SAP lookup therefore never ran: 0 matches on 155 voicemails. These tests
 // pin the subject-first extraction, the number normalisation, the exact-match rule for

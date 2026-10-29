@@ -1,4 +1,4 @@
-// views/ui.js - Axle's shared view layer: esc(), the STRINGS i18n dictionary (EN/NL,
+// views/ui.js - the Email app's shared view layer: esc(), the STRINGS i18n dictionary (EN/NL,
 // parity-tested), label + timestamp formatting, untrusted-email rendering (linkify /
 // quoted-history folding) and the page() layout shell.
 // Extracted VERBATIM from server.js (UI rework Step 0, 2026-06-10): presentation
@@ -12,9 +12,9 @@ const B = BASE.path;                        // plain [A-Za-z0-9_/-]: safe in att
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// --- i18n: Axle's own wording, per UI language --------------------------------
+// --- i18n: the Email app's own wording, per UI language --------------------------------
 // Customer content (emails, drafts) is NOT here, that is translated on demand by
-// translate.js. This dictionary covers only the chrome Axle itself authors.
+// translate.js. This dictionary covers only the chrome the Email app itself authors.
 const UI_LANGS = ["en", "nl"];
 const DEFAULT_LANG = "en";
 const langOK = (l) => (UI_LANGS.includes(l) ? l : DEFAULT_LANG);
@@ -30,38 +30,38 @@ const STRINGS = {
     check: "Check", back_inbox: "Back", no_subject: "(no subject)",
     injection_chip: "Possible scam or injection",
     not_sent_chip: "Not sent",
-    not_sent_explain: "Microsoft accepted this reply but never sent it, even after Axle tried again. It is still in the {box}@ Drafts folder, so the customer has not received it. Try again sends that same email. If you have already dealt with it another way, close the item.",
+    not_sent_explain: "Microsoft accepted this reply but never sent it, even after the Email app tried again. It is still in the {box}@ Drafts folder, so the customer has not received it. Try again sends that same email. If you have already dealt with it another way, close the item.",
     not_sent_retry: "Try again",
     not_sent_send_off: "An earlier reply on this email has not been sent yet. Use Try again on the Not sent banner first.",
-    investigating_banner: "Axle is drafting this reply. You can work on other emails.",
-    deep: "Dig deeper", deep_hint: "Axle checks the reply again more thoroughly (JLR EPC, our catalogue, trusted catalogue sites) and replaces this draft. Ctrl+Shift+Enter",
-    deep_banner: "Axle is digging deeper: checking JLR EPC, our catalogue and trusted catalogue sites. This takes a minute or two; you can work on other emails.",
-    deep_hint_fitment: "Dig deeper may confirm the fitment.", deep_hint_question: "Dig deeper may answer Axle's question.", deep_hint_low: "Axle is unsure of this draft; Dig deeper may help.",
+    investigating_banner: "The Email assistant is drafting this reply. You can work on other emails.",
+    deep: "Dig deeper", deep_hint: "The Email assistant checks the reply again more thoroughly (JLR EPC, our catalogue, trusted catalogue sites) and replaces this draft. Ctrl+Shift+Enter",
+    deep_banner: "The Email assistant is digging deeper: checking JLR EPC, our catalogue and trusted catalogue sites. This takes a minute or two; you can work on other emails.",
+    deep_hint_fitment: "Dig deeper may confirm the fitment.", deep_hint_question: "Dig deeper may answer the Email assistant's question.", deep_hint_low: "The Email assistant is unsure of this draft; Dig deeper may help.",
     customer_email: "Customer email",
     translation_note: "Translated for you: the customer wrote in {lang}.",
-    withdrawn_title: "Axle wrote a reply but withdrew it.",
-    withdrawn_vin: "It claimed something was checked against the customer's VIN, which Axle cannot do.",
+    withdrawn_title: "The Email assistant wrote a reply but withdrew it.",
+    withdrawn_vin: "It claimed something was checked against the customer's VIN, which the Email assistant cannot do.",
     withdrawn_sourcing: "It told the customer how we source the part.",
     withdrawn_availability: "It promised a part whose availability is still unknown.",
     withdrawn_next: "Answer the questions or add feedback and redraft, or write the reply yourself below.",
     withdrawn_show: "Show the withdrawn text (reference only, not sendable)",
     remove: "Remove", file_too_big: "That file is over the 3 MB limit.",
     attach_total: "Attachment limit reached (3 MB total for this reply).",
-    feedback_ph: "Tell Axle what to change",
+    feedback_ph: "Tell the Email assistant what to change",
     answer: "Answer",
     redraft_hint: "Writes the reply again with your note, in the background",
-    ask_customer: "Ask the customer", ask_customer_hint: "Axle writes a short reply asking the customer the questions only they can answer",
-    quick_chip: "Quick reply", quick_chip_title: "A short reply in a conversation we are in: Axle keeps its answer short",
+    ask_customer: "Ask the customer", ask_customer_hint: "The Email assistant writes a short reply asking the customer the questions only they can answer",
+    quick_chip: "Quick reply", quick_chip_title: "A short reply in a conversation we are in: the Email assistant keeps its answer short",
     ad_quick: "Quick replies",
     mark_done: "Mark done", reopen: "Reopen",
-    new_order_ratchet: "Create order", new_order_ratchet_tip: "Open Ratchet's order builder with this e-mail already read in; you review before anything is created",
+    new_order_ratchet: "Create order", new_order_ratchet_tip: "Open the Sales order builder with this e-mail already read in; you review before anything is created",
     mark_phone: "Resolved by phone",
     done_tip: "The work is completed (close the item)",
     phone_tip: "Completed without an email, for example you called the customer",
     res_replied: "replied", res_done: "completed", res_phone: "by phone", res_no_action: "no action needed",
     res_outlook: "handled in Outlook", res_forwarded: "handed over", res_duplicate: "also in the other mailbox",
     block_sender: "Block sender", block_title: "Block this sender?",
-    block_explain: "Future emails from this address no longer appear in Axle. They still arrive in Outlook, and you can undo it under Blocked senders.",
+    block_explain: "Future emails from this address no longer appear in the Email app. They still arrive in Outlook, and you can undo it under Blocked senders.",
     block_explain_outlook: "Future emails from this address go to the Axle Blocked folder in Outlook instead of the inbox. Nothing is deleted, and you can undo it under Blocked senders.",
     block_sap_warn: "Careful: this address matches a SAP customer: {name} ({code}).",
     block_sap_none: "No SAP customer uses this address.",
@@ -76,19 +76,19 @@ const STRINGS = {
     sent_to: "Sent to",
     send_disabled_inj: "Sending is off until someone has checked the scam warning at the top.",
     // AI parity Step B (16 Oct 2026, AXLE_OUTPUT=prose): gate flags and the answer-first Send.
-    flags_title: "Check before sending: Axle flagged part of this reply.",
+    flags_title: "Check before sending: the Email assistant flagged part of this reply.",
     flag_vin_claim: "Claims a check against the VIN that JLR EPC has not confirmed:",
     flag_sourcing: "Says how we source the part (customers get the lead time only):",
     flag_availability: "No availability or lead time can be promised yet for:",
     flag_fitment: "Recommends a part whose fitment is not confirmed.",
     flag_action_claim: "Says something was or will be done; make sure that is true:",
     open_q_warn: "Open question for the customer not yet answered",
-    axle_notes: "Notes from Axle",
-    inj_explain: "Axle thinks this email may be a scam or an attempt to manipulate it, so Send is off. Read the original carefully and do not open its links. If it is genuine, say what you checked and click Checked, it's genuine: Axle then writes a fresh draft. If it is a scam, close it.",
+    axle_notes: "Notes from the Email assistant",
+    inj_explain: "The Email assistant thinks this email may be a scam or an attempt to manipulate it, so Send is off. Read the original carefully and do not open its links. If it is genuine, say what you checked and click Checked, it's genuine: the Email assistant then writes a fresh draft. If it is a scam, close it.",
     inj_reason_label: "What did you check?", inj_reason_ph: "e.g. known customer, order #S21831 exists",
     inj_reason_needed: "Say briefly what you checked.", inj_clear: "Checked, it's genuine", inj_scam: "Scam, close it",
-    inj_cleared: "Warning cleared, Axle is writing a fresh draft", inj_closed: "Closed as scam",
-    what_checked: "What Axle checked", none_paren: "(none)", not_found: "No such work item.",
+    inj_cleared: "Warning cleared, the Email assistant is writing a fresh draft", inj_closed: "Closed as scam",
+    what_checked: "What the Email assistant checked", none_paren: "(none)", not_found: "No such work item.",
     body_not_stored: "(body not stored)",
     send_refused: "Send refused by guardrails", send_failed: "Send failed",
     send_failed_note: "Nothing was sent. You can try again.",
@@ -102,7 +102,7 @@ const STRINGS = {
     compose_who_ph: "Code, email, order, invoice or name",
     compose_finding: "Looking up",
     compose_instruction: "What should it say",
-    compose_instruction_ph: "Tell Axle what to write, or write the email yourself",
+    compose_instruction_ph: "Tell the Email assistant what to write, or write the email yourself",
     compose_subject: "Subject",
     compose_from: "Send from",
     compose_cancel: "Cancel",
@@ -110,7 +110,7 @@ const STRINGS = {
     compose_pick_address: "Pick the address to use:",
     compose_pick_customer: "More than one match. Pick the customer:",
     compose_not_found: "No customer found. Check the identifier.",
-    compose_guest: "Not a known SAP account. Axle sends to this address.",
+    compose_guest: "Not a known SAP account. The Email app sends to this address.",
     compose_frozen: "This account is frozen in SAP. Check before contacting.",
     compose_need_who_instr: "Enter a customer and an instruction.",
     compose_need_pick: "Find the customer and confirm the recipient first.",
@@ -133,8 +133,8 @@ const STRINGS = {
     attach_doc_compose_only: "PDF attach isn't available on this item.",
     doc_order: "Order", doc_invoice: "Invoice", doc_quotation: "Quotation", doc_delivery: "Delivery", doc_creditnote: "Credit note",
     sugg_title: "Suggested documents",
-    suggest_close_chip: "No reply needed?", suggest_close_title: "Axle suggests no email reply is needed. Review it and mark it Done if you agree. Nothing closes automatically.",
-    ack_draft_chip: "Just acknowledge?", ack_draft_title: "Nothing here needs answering, so Axle has written a short courtesy reply. Send it, or simply mark the item Done. Nothing goes out on its own.",
+    suggest_close_chip: "No reply needed?", suggest_close_title: "The Email assistant suggests no email reply is needed. Review it and mark it Done if you agree. Nothing closes automatically.",
+    ack_draft_chip: "Just acknowledge?", ack_draft_title: "Nothing here needs answering, so the Email assistant has written a short courtesy reply. Send it, or simply mark the item Done. Nothing goes out on its own.",
     prev_draft_summary: "Draft for an earlier message in this thread",
     prev_draft_hint: "The customer wrote again after this was drafted, so it is not an answer to their latest message. Kept for reference only: it cannot be sent.",
     sugg_pick: "Several documents share this number. Pick one:",
@@ -176,7 +176,7 @@ const STRINGS = {
     cf_confirm_first: "No address found for this customer. Choose the recipient on the To line before this can be sent.",
     cf_subject: "Subject",
     // UI rework Step 1 (2026-06-10)
-    reset_ai: "Reset to draft", reset_ai_confirm: "Replace your text with Axle's draft?",
+    reset_ai: "Reset to draft", reset_ai_confirm: "Replace your text with the Email assistant's draft?",
     hide_translation: "Hide translation",
     print_menu: "Print", print_one: "Print this email", print_thread: "Print whole thread", print_atts_tick: "Include attachments",
     pr_atts: "Attachments", pr_att_pdf: "added at the end", pr_att_noprint: "cannot be printed here", pr_att_unreadable: "could not be fetched, not printed", pr_att_broken: "damaged or protected PDF, cannot be printed here", pr_atts_failed: "The PDF with attachments could not be made:",
@@ -203,14 +203,14 @@ const STRINGS = {
     load_failed_title: "This email could not be loaded.",
     pull_refresh: "Pull to refresh",
     refreshing: "Refreshing",
-    // Teach Axle (Phase 6, 2026-10-05)
-    teach_title: "Teach Axle", teach_page: "Teach Axle",
-    teach_ph: "What should Axle have known?",
+    // Teach Email (Phase 6, 2026-10-05)
+    teach_title: "Teach Email", teach_page: "Teach Email",
+    teach_ph: "What should the Email assistant have known?",
     teach_btn: "Flag for Brad", teach_withdraw: "Withdraw",
     teach_pending: "Waiting for Brad", teach_approved: "Learned", teach_rejected: "Not added", teach_retired: "Retired",
-    teach_retire: "Retire", teach_retire_confirm: "Remove this entry from Axle's knowledge? It stays on record as retired.",
+    teach_retire: "Retire", teach_retire_confirm: "Remove this entry from the Email assistant's knowledge? It stays on record as retired.",
     teach_draft_then: "Draft at the time of flagging",
-    teach_by_axle: "Axle, from {who}'s feedback", teach_feedback_then: "The feedback it came from",
+    teach_by_axle: "Email assistant, from {who}'s feedback", teach_feedback_then: "The feedback it came from",
     suggest_rule: "Also suggest this as a rule for Brad",
     teach_approve: "Approve", teach_reject: "Reject", teach_none: "Nothing waiting.",
     teach_decided: "Decided", teach_col_text: "Text", teach_col_by: "Reviewed",
@@ -227,8 +227,8 @@ const STRINGS = {
     q_in_all_history: "{n} in All, History", q_in_all_open: "{n} in All, Open",
     snip_body: "In the email", snip_sent: "In our reply", snip_files: "Attachment", snip_recipients: "Recipients",
     snip_customer: "Customer", snip_sender: "From", snip_subject: "Subject", snip_summary: "Summary",
-    attach: "Attach", compose_write: "Write it myself", compose_draft_ai: "Draft with Axle", send: "Send",
-    compose_frozen_pill: "Frozen", compose_need_instr: "Tell Axle what to write.",
+    attach: "Attach", compose_write: "Write it myself", compose_draft_ai: "Draft with the Email assistant", send: "Send",
+    compose_frozen_pill: "Frozen", compose_need_instr: "Tell the Email assistant what to write.",
     confirm_ok: "Continue", unchanged: "Nothing was changed.", post_failed: "That did not go through. Check the connection and try again.",
     // Redesign phase 2 (2026-10-07): the email screen
     not_sap: "Not a SAP customer", cust_orders_1: "{n} open order", cust_orders_n: "{n} open orders",
@@ -241,12 +241,12 @@ const STRINGS = {
     handover_title: "Hand over to {owner}", handover_note_label: "Note for your colleague",
     handover_note_ph: "What has been done, what is still open, what they should know",
     handover_forward_note: "The email is also forwarded to {address}.",
-    handover_redraft_hint: "The email moves to their queue with your note on top; Axle then redrafts the reply for them with the whole thread in view.",
+    handover_redraft_hint: "The email moves to their queue with your note on top; the Email assistant then redrafts the reply for them with the whole thread in view.",
     handover_note_required: "Write a note first: this email moves to another mailbox.",
     handover_banner: "Handed over by {by} (from {from})", unassigned: "unassigned",
-    resend_guarantee: "Re-send order", resend_guarantee_tip: "A free-of-charge copy of the original order in Ratchet's builder, prices and shipping at zero; edit anything there, nothing is created until you create it", order_menu: "More order options", new_order_row: "New order",
+    resend_guarantee: "Re-send order", resend_guarantee_tip: "A free-of-charge copy of the original order in the Sales order builder, prices and shipping at zero; edit anything there, nothing is created until you create it", order_menu: "More order options", new_order_row: "New order",
     return_label: "Return label", return_label_ok: "Create label", return_label_toast: "Return label attached, redrafting",
-    return_label_confirm: "Create a return label?\n\nA prepaid PostNL return label to our warehouse is created in MyParcel and attached to this reply. We pay for it once the customer uses it. Axle then redrafts the reply to say the label is attached.",
+    return_label_confirm: "Create a return label?\n\nA prepaid PostNL return label to our warehouse is created in MyParcel and attached to this reply. We pay for it once the customer uses it. The Email assistant then redrafts the reply to say the label is attached.",
     return_label_off: "Return labels are not enabled.",
     return_label_no_country: "This email does not resolve to a SAP customer with a country, so no return label can be made.",
     return_label_abroad: "None of our shipments were found for this customer's orders, and a plain PostNL return label only works within the Netherlands (customer country: {country}). Nothing was created.",
@@ -269,7 +269,7 @@ const STRINGS = {
     nm_recorded: "{sku}: the customer will be emailed when it is back in stock.", nm_already: "{sku}: already recorded for this customer.", nm_failed: "{sku}: could not record the request. Try again later.",
     teach_done: "Flagged for Brad", teach_withdrawn: "Flag withdrawn", not_sent: "Not sent",
     nothing_sent: "Nothing was sent.", details: "Details", redraft: "Redraft",
-    answer_ph: "Answer here, then redraft", needs_input: "Axle needs your input before this is right.",
+    answer_ph: "Answer here, then redraft", needs_input: "The Email assistant needs your input before this is right.",
     q_1: "1 question", q_n: "{n} questions", check_shelf: "Check on the shelf",
     // Redesign phase 3 (2026-10-07): the rare pages
     col_email: "Email", col_user: "User", col_action: "Action", col_detail: "Detail",
@@ -280,27 +280,27 @@ const STRINGS = {
     audit_note: "Last 500 entries, newest first, Amsterdam time.",
     audit_match_1: "1 match, newest first, Amsterdam time.", audit_matches: "{n} matches, newest first, Amsterdam time.",
     audit_capped: "Newest 500 matches, Amsterdam time. Narrow the search for older entries.",
-    ad_window: "{from} to {to}", ad_sends: "Replies sent via Axle", ad_unchanged: "Last version sent unchanged",
+    ad_window: "{from} to {to}", ad_sends: "Replies sent via the Email app", ad_unchanged: "Last version sent unchanged",
     ad_first_ok: "First draft accepted", ad_redraft: "Needed a redraft", ad_col_last_unch: "Last version unchanged",
-    ad_metrics: "First draft accepted: Axle's first draft for that reply went out with no redraft and 80 % or more of it kept. Needed a redraft: a salesperson pressed Redraft before that reply went out. Last version unchanged: the sent text against Axle's last version, after any redrafts.", ad_box_replied: "{box} replied via Axle",
-    ad_by_user: "Adoption by user", ad_col_sends: "Axle sends", ad_col_accept: "Draft acceptance", ad_col_median: "Median match",
-    ad_col_last: "Last Axle send", ad_today: "Today", ad_day_1: "1 day ago", ad_days: "{n} days ago", ad_never: "Never",
+    ad_metrics: "First draft accepted: the Email assistant's first draft for that reply went out with no redraft and 80 % or more of it kept. Needed a redraft: a salesperson pressed Redraft before that reply went out. Last version unchanged: the sent text against the Email assistant's last version, after any redrafts.", ad_box_replied: "{box} replied via the Email app",
+    ad_by_user: "Adoption by user", ad_col_sends: "Email app sends", ad_col_accept: "Draft acceptance", ad_col_median: "Median match",
+    ad_col_last: "Last Email app send", ad_today: "Today", ad_day_1: "1 day ago", ad_days: "{n} days ago", ad_never: "Never",
     ad_b_verbatim: "Unchanged", ad_b_light: "Light edit", ad_b_moderate: "Moderate edit", ad_b_heavy: "Heavy rewrite",
-    ad_daily: "Daily activity", ad_in: "Emails in", ad_sent: "Sent via Axle",
-    ad_resolved: "Where replies are resolved", ad_r_replied: "Replied via Axle", ad_r_done: "Closed (sent elsewhere)",
+    ad_daily: "Daily activity", ad_in: "Emails in", ad_sent: "Sent via the Email app",
+    ad_resolved: "Where replies are resolved", ad_r_replied: "Replied via the Email app", ad_r_done: "Closed (sent elsewhere)",
     ad_r_phone: "Phone", ad_r_no_action: "No reply needed", ad_r_open: "Still open", ad_r_outlook: "Handled in Outlook", ad_r_forwarded: "Handed over",
     ad_weekly: "Draft acceptance by week", ad_weekly_hint: "Graded sends per ISO week. Style examples live from week 40.",
     ad_col_week: "Week", ad_col_heavy: "Heavily edited",
     ad_digest: "Most-edited drafts, last 7 days", ad_digest_hint: "Under 80 % match, worst first per topic.",
     ad_col_topic: "Topic", ad_col_by: "Sent by", ad_col_match: "Match", ad_col_edit: "Edit", ad_col_chars: "Draft to sent (chars)",
     ad_digest_none: "No edited sends in the last 7 days.", ad_topics: "Draft edited most by topic",
-    ad_conf: "Is Axle's confidence trustworthy?", ad_conf_hint: "Sent unchanged, by Axle's own confidence.", ad_col_conf: "Confidence",
+    ad_conf: "Is the Email assistant's confidence trustworthy?", ad_conf_hint: "Sent unchanged, by the Email assistant's own confidence.", ad_col_conf: "Confidence",
     ad_c_high: "High", ad_c_medium: "Medium", ad_c_low: "Low", ad_c_none: "None",
-    mark_done_bar: "Mark done", mark_phone_bar: "Resolved by phone", save_failed: "Not saved", save_failed_tip: "Could not save. Your text is still on this screen and Axle tries again as you type.",
+    mark_done_bar: "Mark done", mark_phone_bar: "Resolved by phone", save_failed: "Not saved", save_failed_tip: "Could not save. Your text is still on this screen and the Email app tries again as you type.",
     // Round 2 phase 3b: attachments in their message and the photo viewer, the rich editor, the
     // camera, translate on the reply, Cc, the customer's contact line
     att_open: "Open {name}", att_failed: "Could not load",
-    media_unread: "Axle could not read: {list}", media_too_large: "too large", media_too_many: "too many attachments",
+    media_unread: "The Email assistant could not read: {list}", media_too_large: "too large", media_too_many: "too many attachments",
     media_total_limit: "too many attachments", media_type: "file type not supported", media_unavailable: "could not be fetched",
     viewer_title: "Photo", viewer_count: "{i} of {n}", viewer_prev: "Previous photo", viewer_next: "Next photo", viewer_open: "Open original",
     fmt_toolbar: "Formatting", fmt_bold: "Bold", fmt_italic: "Italic", fmt_underline: "Underline", fmt_list: "Bulleted list", reply_ph: "Write your reply",
@@ -318,38 +318,38 @@ const STRINGS = {
     check: "Controleer", back_inbox: "Terug", no_subject: "(geen onderwerp)",
     injection_chip: "Mogelijk oplichting of injectie",
     not_sent_chip: "Niet verstuurd",
-    not_sent_explain: "Microsoft heeft dit antwoord aangenomen maar nooit verstuurd, ook niet toen Axle het opnieuw probeerde. Het staat nog in de map Concepten van {box}@, dus de klant heeft het niet ontvangen. Opnieuw proberen verstuurt diezelfde e-mail. Heb je het al op een andere manier afgehandeld, sluit het item dan.",
+    not_sent_explain: "Microsoft heeft dit antwoord aangenomen maar nooit verstuurd, ook niet toen de E-mail-app het opnieuw probeerde. Het staat nog in de map Concepten van {box}@, dus de klant heeft het niet ontvangen. Opnieuw proberen verstuurt diezelfde e-mail. Heb je het al op een andere manier afgehandeld, sluit het item dan.",
     not_sent_retry: "Opnieuw proberen",
     not_sent_send_off: "Een eerder antwoord op deze e-mail is nog niet verstuurd. Gebruik eerst Opnieuw proberen in de melding Niet verstuurd.",
-    investigating_banner: "Axle schrijft dit antwoord. Je kunt intussen aan andere e-mails werken.",
-    deep: "Dieper zoeken", deep_hint: "Axle controleert het antwoord nog eens grondiger (JLR EPC, onze catalogus, vertrouwde catalogussites) en vervangt dit concept. Ctrl+Shift+Enter",
-    deep_banner: "Axle zoekt dieper: JLR EPC, onze catalogus en vertrouwde catalogussites worden nagekeken. Dit duurt een minuut of twee; je kunt intussen aan andere e-mails werken.",
-    deep_hint_fitment: "Dieper zoeken kan de pasvorm bevestigen.", deep_hint_question: "Dieper zoeken kan de vraag van Axle beantwoorden.", deep_hint_low: "Axle twijfelt over dit concept; dieper zoeken kan helpen.",
+    investigating_banner: "De E-mailassistent schrijft dit antwoord. Je kunt intussen aan andere e-mails werken.",
+    deep: "Dieper zoeken", deep_hint: "De E-mailassistent controleert het antwoord nog eens grondiger (JLR EPC, onze catalogus, vertrouwde catalogussites) en vervangt dit concept. Ctrl+Shift+Enter",
+    deep_banner: "De E-mailassistent zoekt dieper: JLR EPC, onze catalogus en vertrouwde catalogussites worden nagekeken. Dit duurt een minuut of twee; je kunt intussen aan andere e-mails werken.",
+    deep_hint_fitment: "Dieper zoeken kan de pasvorm bevestigen.", deep_hint_question: "Dieper zoeken kan de vraag van de E-mailassistent beantwoorden.", deep_hint_low: "De E-mailassistent twijfelt over dit concept; dieper zoeken kan helpen.",
     customer_email: "E-mail van klant",
     translation_note: "Voor je vertaald: de klant schreef in het {lang}.",
-    withdrawn_title: "Axle had een antwoord geschreven maar heeft het ingetrokken.",
-    withdrawn_vin: "Het beweerde iets aan het chassisnummer van de klant te hebben gecontroleerd, en dat kan Axle niet.",
+    withdrawn_title: "De E-mailassistent had een antwoord geschreven maar heeft het ingetrokken.",
+    withdrawn_vin: "Het beweerde iets aan het chassisnummer van de klant te hebben gecontroleerd, en dat kan de E-mailassistent niet.",
     withdrawn_sourcing: "Het vertelde de klant hoe wij het onderdeel inkopen.",
     withdrawn_availability: "Het beloofde een onderdeel waarvan de beschikbaarheid nog onbekend is.",
     withdrawn_next: "Beantwoord de vragen of geef feedback en stel opnieuw op, of schrijf het antwoord hieronder zelf.",
     withdrawn_show: "Toon de ingetrokken tekst (alleen ter referentie, niet te versturen)",
     remove: "Verwijderen", file_too_big: "Dat bestand is groter dan de limiet van 3 MB.",
     attach_total: "Bijlagelimiet bereikt (max 3 MB totaal voor dit antwoord).",
-    feedback_ph: "Vertel Axle wat er anders moet",
+    feedback_ph: "Vertel de E-mailassistent wat er anders moet",
     answer: "Antwoord",
     redraft_hint: "Schrijft het antwoord opnieuw met jouw opmerking, op de achtergrond",
-    ask_customer: "Vraag het de klant", ask_customer_hint: "Axle schrijft een kort antwoord met de vragen die alleen de klant kan beantwoorden",
-    quick_chip: "Kort antwoord", quick_chip_title: "Een kort bericht in een lopend gesprek: Axle houdt het antwoord kort",
+    ask_customer: "Vraag het de klant", ask_customer_hint: "De E-mailassistent schrijft een kort antwoord met de vragen die alleen de klant kan beantwoorden",
+    quick_chip: "Kort antwoord", quick_chip_title: "Een kort bericht in een lopend gesprek: de E-mailassistent houdt het antwoord kort",
     ad_quick: "Korte antwoorden",
     mark_done: "Markeer afgehandeld", reopen: "Heropen",
-    new_order_ratchet: "Order aanmaken", new_order_ratchet_tip: "Opent de orderbouwer van Ratchet met deze e-mail al ingelezen; je controleert alles voordat er iets wordt aangemaakt",
+    new_order_ratchet: "Order aanmaken", new_order_ratchet_tip: "Opent de orderbouwer van Verkoop met deze e-mail al ingelezen; je controleert alles voordat er iets wordt aangemaakt",
     mark_phone: "Telefonisch afgehandeld",
     done_tip: "Het werk is afgerond (item sluiten)",
     phone_tip: "Afgerond zonder e-mail, bijvoorbeeld de klant gebeld",
     res_replied: "beantwoord", res_done: "afgerond", res_phone: "telefonisch", res_no_action: "geen actie nodig",
     res_outlook: "afgehandeld in Outlook", res_forwarded: "overgedragen", res_duplicate: "ook in de andere mailbox",
     block_sender: "Blokkeer afzender", block_title: "Deze afzender blokkeren?",
-    block_explain: "Toekomstige e-mails van dit adres verschijnen niet meer in Axle. Ze komen nog wel aan in Outlook, en je kunt het terugdraaien onder Geblokkeerde afzenders.",
+    block_explain: "Toekomstige e-mails van dit adres verschijnen niet meer in de E-mail-app. Ze komen nog wel aan in Outlook, en je kunt het terugdraaien onder Geblokkeerde afzenders.",
     block_explain_outlook: "Toekomstige e-mails van dit adres gaan in Outlook naar de map Axle Blocked in plaats van de inbox. Er wordt niets verwijderd, en je kunt het terugdraaien onder Geblokkeerde afzenders.",
     block_sap_warn: "Let op: dit adres hoort bij een SAP-klant: {name} ({code}).",
     block_sap_none: "Geen SAP-klant gebruikt dit adres.",
@@ -363,19 +363,19 @@ const STRINGS = {
     col_sender_b: "Afzender", col_by_b: "Geblokkeerd door", col_when_b: "Wanneer", col_item_b: "Uit e-mail",
     sent_to: "Verstuurd naar",
     send_disabled_inj: "Versturen staat uit totdat iemand de oplichtingswaarschuwing bovenaan heeft gecontroleerd.",
-    flags_title: "Controleer voor het versturen: Axle heeft een deel van dit antwoord gemarkeerd.",
+    flags_title: "Controleer voor het versturen: de E-mailassistent heeft een deel van dit antwoord gemarkeerd.",
     flag_vin_claim: "Beweert een controle op het chassisnummer die JLR EPC niet heeft bevestigd:",
     flag_sourcing: "Zegt hoe we het onderdeel inkopen (klanten krijgen alleen de levertijd):",
     flag_availability: "Hiervoor kan nog geen beschikbaarheid of levertijd worden beloofd:",
     flag_fitment: "Raadt een onderdeel aan waarvan de pasvorm niet is bevestigd.",
     flag_action_claim: "Zegt dat iets gedaan is of wordt; controleer dat het klopt:",
     open_q_warn: "Openstaande vraag aan de klant nog niet beantwoord",
-    axle_notes: "Notities van Axle",
-    inj_explain: "Axle denkt dat deze e-mail oplichting kan zijn of een poging om Axle te manipuleren, dus Versturen staat uit. Lees het origineel goed en open geen links. Is het echt, schrijf dan wat je hebt gecontroleerd en klik op Gecontroleerd, het is echt: Axle schrijft dan een nieuw concept. Is het oplichting, sluit het dan.",
+    axle_notes: "Notities van de E-mailassistent",
+    inj_explain: "De E-mailassistent denkt dat deze e-mail oplichting kan zijn of een poging om de E-mailassistent te manipuleren, dus Versturen staat uit. Lees het origineel goed en open geen links. Is het echt, schrijf dan wat je hebt gecontroleerd en klik op Gecontroleerd, het is echt: de E-mailassistent schrijft dan een nieuw concept. Is het oplichting, sluit het dan.",
     inj_reason_label: "Wat heb je gecontroleerd?", inj_reason_ph: "bijv. bekende klant, order #S21831 bestaat",
     inj_reason_needed: "Schrijf kort wat je hebt gecontroleerd.", inj_clear: "Gecontroleerd, het is echt", inj_scam: "Oplichting, sluiten",
-    inj_cleared: "Waarschuwing opgeheven, Axle schrijft een nieuw concept", inj_closed: "Gesloten als oplichting",
-    what_checked: "Wat Axle heeft gecontroleerd", none_paren: "(geen)", not_found: "Dit werkitem bestaat niet.",
+    inj_cleared: "Waarschuwing opgeheven, de E-mailassistent schrijft een nieuw concept", inj_closed: "Gesloten als oplichting",
+    what_checked: "Wat de E-mailassistent heeft gecontroleerd", none_paren: "(geen)", not_found: "Dit werkitem bestaat niet.",
     body_not_stored: "(inhoud niet opgeslagen)",
     send_refused: "Versturen geweigerd door beveiliging", send_failed: "Versturen mislukt",
     send_failed_note: "Er is niets verstuurd. Je kunt het opnieuw proberen.",
@@ -389,7 +389,7 @@ const STRINGS = {
     compose_who_ph: "Code, e-mail, order, factuur of naam",
     compose_finding: "Opzoeken",
     compose_instruction: "Wat moet erin staan",
-    compose_instruction_ph: "Vertel Axle wat het moet schrijven, of schrijf de e-mail zelf",
+    compose_instruction_ph: "Vertel de E-mailassistent wat hij moet schrijven, of schrijf de e-mail zelf",
     compose_subject: "Onderwerp",
     compose_from: "Verzenden vanaf",
     compose_cancel: "Annuleren",
@@ -397,7 +397,7 @@ const STRINGS = {
     compose_pick_address: "Kies het te gebruiken adres:",
     compose_pick_customer: "Meerdere klanten gevonden. Kies de klant:",
     compose_not_found: "Geen klant gevonden. Controleer wat je hebt ingevuld.",
-    compose_guest: "Geen bekend SAP-account. Axle verstuurt naar dit adres.",
+    compose_guest: "Geen bekend SAP-account. De E-mail-app verstuurt naar dit adres.",
     compose_frozen: "Dit account is geblokkeerd in SAP. Controleer dit voordat je contact opneemt.",
     compose_need_who_instr: "Voer een klant en een opdracht in.",
     compose_need_pick: "Zoek eerst de klant en bevestig de ontvanger.",
@@ -418,8 +418,8 @@ const STRINGS = {
     attach_doc_compose_only: "PDF bijvoegen is niet beschikbaar bij dit item.",
     doc_order: "Order", doc_invoice: "Factuur", doc_quotation: "Offerte", doc_delivery: "Levering", doc_creditnote: "Creditnota",
     sugg_title: "Voorgestelde documenten",
-    suggest_close_chip: "Geen antwoord nodig?", suggest_close_title: "Axle stelt voor dat geen e-mailantwoord nodig is. Beoordeel het item en markeer het als gereed als u het ermee eens bent. Er wordt niets automatisch gesloten.",
-    ack_draft_chip: "Alleen bevestigen?", ack_draft_title: "Hier hoeft niets beantwoord te worden, dus Axle heeft een korte beleefde reactie geschreven. Verstuur die, of markeer het item gewoon als gereed. Er gaat niets vanzelf de deur uit.",
+    suggest_close_chip: "Geen antwoord nodig?", suggest_close_title: "De E-mailassistent stelt voor dat geen e-mailantwoord nodig is. Beoordeel het item en markeer het als gereed als u het ermee eens bent. Er wordt niets automatisch gesloten.",
+    ack_draft_chip: "Alleen bevestigen?", ack_draft_title: "Hier hoeft niets beantwoord te worden, dus de E-mailassistent heeft een korte beleefde reactie geschreven. Verstuur die, of markeer het item gewoon als gereed. Er gaat niets vanzelf de deur uit.",
     prev_draft_summary: "Concept voor een eerder bericht in dit gesprek",
     prev_draft_hint: "De klant heeft opnieuw geschreven nadat dit concept was gemaakt, dus het is geen antwoord op het laatste bericht. Alleen ter referentie bewaard: het kan niet worden verzonden.",
     sugg_pick: "Meerdere documenten met dit nummer. Kies er een:",
@@ -461,7 +461,7 @@ const STRINGS = {
     cf_confirm_first: "Geen adres gevonden voor deze klant. Kies de ontvanger op de Aan-regel voordat dit verstuurd kan worden.",
     cf_subject: "Onderwerp",
     // UI rework Step 1 (2026-06-10)
-    reset_ai: "Terug naar concept", reset_ai_confirm: "Je tekst vervangen door het concept van Axle?",
+    reset_ai: "Terug naar concept", reset_ai_confirm: "Je tekst vervangen door het concept van de E-mailassistent?",
     hide_translation: "Verberg vertaling",
     print_menu: "Afdrukken", print_one: "Deze e-mail afdrukken", print_thread: "Hele conversatie afdrukken", print_atts_tick: "Bijlagen meenemen",
     pr_atts: "Bijlagen", pr_att_pdf: "achteraan toegevoegd", pr_att_noprint: "kan hier niet worden afgedrukt", pr_att_unreadable: "kon niet worden opgehaald, niet afgedrukt", pr_att_broken: "beschadigde of beveiligde PDF, kan hier niet worden afgedrukt", pr_atts_failed: "De PDF met bijlagen kon niet worden gemaakt:",
@@ -488,14 +488,14 @@ const STRINGS = {
     load_failed_title: "Deze e-mail kon niet worden geladen.",
     pull_refresh: "Trek om te verversen",
     refreshing: "Verversen",
-    // Teach Axle (Phase 6, 2026-10-05)
-    teach_title: "Leer Axle iets", teach_page: "Leer Axle iets",
-    teach_ph: "Wat had Axle moeten weten?",
+    // Teach Email (Phase 6, 2026-10-05)
+    teach_title: "Leer E-mail iets", teach_page: "Leer E-mail iets",
+    teach_ph: "Wat had de E-mailassistent moeten weten?",
     teach_btn: "Doorgeven aan Brad", teach_withdraw: "Intrekken",
     teach_pending: "Wacht op Brad", teach_approved: "Geleerd", teach_rejected: "Niet toegevoegd", teach_retired: "Ingetrokken",
-    teach_retire: "Intrekken", teach_retire_confirm: "Deze regel uit de kennis van Axle halen? Hij blijft bewaard als ingetrokken.",
+    teach_retire: "Intrekken", teach_retire_confirm: "Deze regel uit de kennis van de E-mailassistent halen? Hij blijft bewaard als ingetrokken.",
     teach_draft_then: "Concept op het moment van melden",
-    teach_by_axle: "Axle, uit feedback van {who}", teach_feedback_then: "De feedback waar het uit komt",
+    teach_by_axle: "E-mailassistent, uit feedback van {who}", teach_feedback_then: "De feedback waar het uit komt",
     suggest_rule: "Ook als regel voorstellen aan Brad",
     teach_approve: "Goedkeuren", teach_reject: "Afwijzen", teach_none: "Niets in de wacht.",
     teach_decided: "Beoordeeld", teach_col_text: "Tekst", teach_col_by: "Beoordeeld door",
@@ -503,7 +503,7 @@ const STRINGS = {
     // Redesign fase 1 (2026-10-07): pagina, wachtrij A, geschiedenis, nieuwe e-mail A, clientbibliotheek
     mine: "Aan mij", show_label: "Toon", search: "Zoeken", more: "Meer", back: "Terug",
     history: "Historie", history_none: "Geen afgesloten e-mails.", history_no_match: "Geen afgesloten e-mails gevonden voor '{q}'.",
-    teach_review: "Leer Axle iets", audit_log: "Auditlog", updated: "Bijgewerkt {t}",
+    teach_review: "Leer E-mail iets", audit_log: "Auditlog", updated: "Bijgewerkt {t}",
     no_open: "Geen open e-mails.", nothing_waiting: "Niets te doen. Nieuwe e-mails verschijnen hier vanzelf.",
     // Ronde 2 (verzoeken 6 en 12): Open | Historie naast Aan mij | Alle, een zoekveld voor beide lijsten
     list_label: "Lijst", open_list: "Open", open_no_match: "Geen open e-mails gevonden voor '{q}'.",
@@ -512,8 +512,8 @@ const STRINGS = {
     q_in_all_history: "{n} in Alle, Historie", q_in_all_open: "{n} in Alle, Open",
     snip_body: "In de e-mail", snip_sent: "In ons antwoord", snip_files: "Bijlage", snip_recipients: "Ontvangers",
     snip_customer: "Klant", snip_sender: "Van", snip_subject: "Onderwerp", snip_summary: "Samenvatting",
-    attach: "Bijvoegen", compose_write: "Zelf schrijven", compose_draft_ai: "Opstellen met Axle", send: "Versturen",
-    compose_frozen_pill: "Geblokkeerd", compose_need_instr: "Vertel Axle wat het moet schrijven.",
+    attach: "Bijvoegen", compose_write: "Zelf schrijven", compose_draft_ai: "Opstellen met de E-mailassistent", send: "Versturen",
+    compose_frozen_pill: "Geblokkeerd", compose_need_instr: "Vertel de E-mailassistent wat hij moet schrijven.",
     confirm_ok: "Doorgaan", unchanged: "Er is niets gewijzigd.", post_failed: "Dat is niet gelukt. Controleer de verbinding en probeer het opnieuw.",
     // Redesign fase 2 (2026-10-07): het e-mailscherm
     not_sap: "Geen SAP-klant", cust_orders_1: "{n} openstaande order", cust_orders_n: "{n} openstaande orders",
@@ -526,12 +526,12 @@ const STRINGS = {
     handover_title: "Overdragen aan {owner}", handover_note_label: "Notitie voor je collega",
     handover_note_ph: "Wat is er gedaan, wat staat nog open, wat moet je collega weten",
     handover_forward_note: "De e-mail wordt ook doorgestuurd naar {address}.",
-    handover_redraft_hint: "De e-mail gaat naar hun lijst met jouw notitie erboven; Axle stelt het antwoord daarna opnieuw op met de hele conversatie in beeld.",
+    handover_redraft_hint: "De e-mail gaat naar hun lijst met jouw notitie erboven; de E-mailassistent stelt het antwoord daarna opnieuw op met de hele conversatie in beeld.",
     handover_note_required: "Schrijf eerst een notitie: deze e-mail gaat naar een andere mailbox.",
     handover_banner: "Overgedragen door {by} (van {from})", unassigned: "niet toegewezen",
-    resend_guarantee: "Order opnieuw versturen", resend_guarantee_tip: "Een kosteloze kopie van de oorspronkelijke order in de orderbouwer van Ratchet, prijzen en verzending op nul; pas daar alles aan, er wordt niets aangemaakt tot je hem aanmaakt", order_menu: "Meer orderopties", new_order_row: "Nieuwe order",
+    resend_guarantee: "Order opnieuw versturen", resend_guarantee_tip: "Een kosteloze kopie van de oorspronkelijke order in de orderbouwer van Verkoop, prijzen en verzending op nul; pas daar alles aan, er wordt niets aangemaakt tot je hem aanmaakt", order_menu: "Meer orderopties", new_order_row: "Nieuwe order",
     return_label: "Retourlabel", return_label_ok: "Label maken", return_label_toast: "Retourlabel bijgevoegd, wordt opnieuw opgesteld",
-    return_label_confirm: "Retourlabel maken?\n\nEr wordt in MyParcel een betaald PostNL-retourlabel naar ons magazijn gemaakt en bij dit antwoord gevoegd. Wij betalen het zodra de klant het gebruikt. Axle stelt het antwoord daarna opnieuw op en vermeldt het label.",
+    return_label_confirm: "Retourlabel maken?\n\nEr wordt in MyParcel een betaald PostNL-retourlabel naar ons magazijn gemaakt en bij dit antwoord gevoegd. Wij betalen het zodra de klant het gebruikt. De E-mailassistent stelt het antwoord daarna opnieuw op en vermeldt het label.",
     return_label_off: "Retourlabels zijn niet ingeschakeld.",
     return_label_no_country: "Deze e-mail is niet te koppelen aan een SAP-klant met een land, dus er kan geen retourlabel worden gemaakt.",
     return_label_abroad: "Geen zending van ons gevonden bij de orders van deze klant, en een los PostNL-retourlabel werkt alleen binnen Nederland (land klant: {country}). Er is niets gemaakt.",
@@ -555,7 +555,7 @@ const STRINGS = {
     blocked_toast: "Afzender geblokkeerd", teach_done: "Doorgegeven aan Brad",
     teach_withdrawn: "Melding ingetrokken", not_sent: "Niet verstuurd", nothing_sent: "Er is niets verstuurd.",
     details: "Details", redraft: "Opnieuw opstellen", answer_ph: "Antwoord hier en stel daarna opnieuw op",
-    needs_input: "Axle heeft je input nodig voordat dit klopt.", q_1: "1 vraag", q_n: "{n} vragen",
+    needs_input: "De E-mailassistent heeft je input nodig voordat dit klopt.", q_1: "1 vraag", q_n: "{n} vragen",
     check_shelf: "Controleer in het schap",
     // Redesign fase 3 (2026-10-07): de zeldzame pagina's
     col_email: "E-mail", col_user: "Gebruiker", col_action: "Actie", col_detail: "Details",
@@ -566,27 +566,27 @@ const STRINGS = {
     audit_note: "Laatste 500 regels, nieuwste eerst, Amsterdamse tijd.",
     audit_match_1: "1 resultaat, nieuwste eerst, Amsterdamse tijd.", audit_matches: "{n} resultaten, nieuwste eerst, Amsterdamse tijd.",
     audit_capped: "Nieuwste 500 resultaten, Amsterdamse tijd. Verfijn de zoekopdracht voor oudere regels.",
-    ad_window: "{from} tot {to}", ad_sends: "Antwoorden verstuurd via Axle", ad_unchanged: "Laatste versie ongewijzigd verstuurd",
+    ad_window: "{from} tot {to}", ad_sends: "Antwoorden verstuurd via de E-mail-app", ad_unchanged: "Laatste versie ongewijzigd verstuurd",
     ad_first_ok: "Eerste concept geaccepteerd", ad_redraft: "Opnieuw opgesteld", ad_col_last_unch: "Laatste versie ongewijzigd",
-    ad_metrics: "Eerste concept geaccepteerd: het eerste concept van Axle voor dat antwoord ging zonder opnieuw opstellen de deur uit, met 80 % of meer behouden. Opnieuw opgesteld: een verkoper drukte op Opnieuw opstellen voordat dat antwoord verstuurd werd. Laatste versie ongewijzigd: de verstuurde tekst tegen de laatste versie van Axle, na eventueel opnieuw opstellen.", ad_box_replied: "{box} beantwoord via Axle",
-    ad_by_user: "Adoptie per gebruiker", ad_col_sends: "Via Axle verstuurd", ad_col_accept: "Conceptacceptatie", ad_col_median: "Mediane overeenkomst",
-    ad_col_last: "Laatst via Axle", ad_today: "Vandaag", ad_day_1: "1 dag geleden", ad_days: "{n} dagen geleden", ad_never: "Nooit",
+    ad_metrics: "Eerste concept geaccepteerd: het eerste concept van de E-mailassistent voor dat antwoord ging zonder opnieuw opstellen de deur uit, met 80 % of meer behouden. Opnieuw opgesteld: een verkoper drukte op Opnieuw opstellen voordat dat antwoord verstuurd werd. Laatste versie ongewijzigd: de verstuurde tekst tegen de laatste versie van de E-mailassistent, na eventueel opnieuw opstellen.", ad_box_replied: "{box} beantwoord via de E-mail-app",
+    ad_by_user: "Adoptie per gebruiker", ad_col_sends: "Via de E-mail-app verstuurd", ad_col_accept: "Conceptacceptatie", ad_col_median: "Mediane overeenkomst",
+    ad_col_last: "Laatst via de E-mail-app", ad_today: "Vandaag", ad_day_1: "1 dag geleden", ad_days: "{n} dagen geleden", ad_never: "Nooit",
     ad_b_verbatim: "Ongewijzigd", ad_b_light: "Kleine aanpassing", ad_b_moderate: "Matige aanpassing", ad_b_heavy: "Herschreven",
-    ad_daily: "Dagelijkse activiteit", ad_in: "E-mails binnen", ad_sent: "Verstuurd via Axle",
-    ad_resolved: "Waar antwoorden worden afgehandeld", ad_r_replied: "Beantwoord via Axle", ad_r_done: "Gesloten (elders verstuurd)",
+    ad_daily: "Dagelijkse activiteit", ad_in: "E-mails binnen", ad_sent: "Verstuurd via de E-mail-app",
+    ad_resolved: "Waar antwoorden worden afgehandeld", ad_r_replied: "Beantwoord via de E-mail-app", ad_r_done: "Gesloten (elders verstuurd)",
     ad_r_phone: "Telefonisch", ad_r_no_action: "Geen antwoord nodig", ad_r_open: "Nog open", ad_r_outlook: "Afgehandeld in Outlook", ad_r_forwarded: "Overgedragen",
     ad_weekly: "Conceptacceptatie per week", ad_weekly_hint: "Beoordeelde verzendingen per ISO-week. Stijlvoorbeelden actief vanaf week 40.",
     ad_col_week: "Week", ad_col_heavy: "Sterk aangepast",
     ad_digest: "Meest aangepaste concepten, laatste 7 dagen", ad_digest_hint: "Minder dan 80 % overeenkomst, slechtste eerst per onderwerp.",
     ad_col_topic: "Onderwerp", ad_col_by: "Verstuurd door", ad_col_match: "Overeenkomst", ad_col_edit: "Aanpassing", ad_col_chars: "Concept naar verstuurd (tekens)",
     ad_digest_none: "Geen aangepaste verzendingen in de laatste 7 dagen.", ad_topics: "Concept het meest aangepast per onderwerp",
-    ad_conf: "Klopt het vertrouwen van Axle?", ad_conf_hint: "Ongewijzigd verstuurd, per eigen inschatting van Axle.", ad_col_conf: "Vertrouwen",
+    ad_conf: "Klopt het vertrouwen van de E-mailassistent?", ad_conf_hint: "Ongewijzigd verstuurd, per eigen inschatting van de E-mailassistent.", ad_col_conf: "Vertrouwen",
     ad_c_high: "Hoog", ad_c_medium: "Gemiddeld", ad_c_low: "Laag", ad_c_none: "Geen",
-    mark_done_bar: "Afgehandeld", mark_phone_bar: "Teruggebeld", save_failed: "Niet opgeslagen", save_failed_tip: "Kon niet opslaan. Je tekst staat nog op dit scherm en Axle probeert het opnieuw zodra je typt.",
+    mark_done_bar: "Afgehandeld", mark_phone_bar: "Teruggebeld", save_failed: "Niet opgeslagen", save_failed_tip: "Kon niet opslaan. Je tekst staat nog op dit scherm en de E-mail-app probeert het opnieuw zodra je typt.",
     // Ronde 2 fase 3b: bijlagen bij hun bericht en de fotoviewer, de opmaakeditor, de camera,
     // vertalen bij het antwoord, Cc, de contactregel van de klant
     att_open: "{name} openen", att_failed: "Kon niet laden",
-    media_unread: "Axle kon niet lezen: {list}", media_too_large: "te groot", media_too_many: "te veel bijlagen",
+    media_unread: "De E-mailassistent kon niet lezen: {list}", media_too_large: "te groot", media_too_many: "te veel bijlagen",
     media_total_limit: "te veel bijlagen", media_type: "bestandstype niet ondersteund", media_unavailable: "kon niet worden opgehaald",
     viewer_title: "Foto", viewer_count: "{i} van {n}", viewer_prev: "Vorige foto", viewer_next: "Volgende foto", viewer_open: "Origineel openen",
     fmt_toolbar: "Opmaak", fmt_bold: "Vet", fmt_italic: "Cursief", fmt_underline: "Onderstrepen", fmt_list: "Opsomming", reply_ph: "Schrijf je antwoord",
@@ -609,7 +609,7 @@ const t = (lang, k, vars) => {
 // --- labels that depend on a controlled vocabulary, per language ---------------
 const titleCase = (s) => String(s == null ? "" : s).replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 // Step 2 (F2): action-state vocabulary, each label names what the USER does next,
-// not Axle's internal state ("Needs your answer", not "Awaiting input"). Same keys,
+// not the Email app's internal state ("Needs your answer", not "Awaiting input"). Same keys,
 // same routes; rename only. statusWithRes still appends the resolution reason.
 const STATUS_LABEL = {
   en: { new: "New", investigating: "Drafting", awaiting_input: "Needs your answer", ready: "Ready to send", done: "Done", archived: "Archived" },
@@ -743,7 +743,7 @@ const replyParas = (text) => FMT.displayHtml(text, { esc, atom: linkAnchor });
 // that open the viewer in axle.js (data-photo; data-meta names the message: sender and time), each
 // a skeleton until it loads and a "could not load" tile with Retry when it fails or its fetch is
 // known to have failed; then the other files as chips with a type icon, name and size: a PDF opens in
-// Axle's PDF viewer (axle.js; Ctrl or Cmd + click: a new tab), anything else downloads. atts: [{ name, size, url, image, pdf, contentType, failed }].
+// The Email app's PDF viewer (axle.js; Ctrl or Cmd + click: a new tab), anything else downloads. atts: [{ name, size, url, image, pdf, contentType, failed }].
 function attachmentsHtml(atts, meta, lang) {
   if (!atts.length) return "";
   const L = (k) => esc(t(lang, k));
@@ -753,7 +753,7 @@ function attachmentsHtml(atts, meta, lang) {
   const files = atts.filter((a) => !a.image).map((a) => `<a class="wb-pillbtn ax-file" href="${esc(a.url)}"${a.pdf ? ' target="_blank" rel="noopener" data-pdf' : " download"} title="${esc(a.name)}">${icon(/^image\//i.test(a.contentType || "") ? "image" : "file")}<span>${esc(a.name)}</span><small>${fmtSize(a.size)}</small></a>`);
   return `<div class="ax-atts-in">${photos.length ? `<div class="ax-thumbs">${photos.join("")}</div>` : ""}${files.length ? `<div class="ax-files">${files.join("")}</div>` : ""}</div>`;
 }
-// The quiet line under the newest message's attachments naming what Axle's drafter could not read
+// The quiet line under the newest message's attachments naming what the Email drafter could not read
 // (draft-media.js notShownFor: [{ name, reason }]).
 const unreadLine = (notShown, lang) => notShown.length
   ? `<p class="ax-unread">${icon("info")}<span>${esc(t(lang, "media_unread", { list: notShown.map((x) => `${x.name} (${t(lang, "media_" + x.reason)})`).join(", ") }))}</span></p>` : "";
@@ -800,7 +800,7 @@ function segmentQuoted(quoted) {
 // The customer's email (F7): one line naming sender, address, time and mailbox, with Translate when
 // the customer wrote in another language than the reader's; the newest message (its legal footer
 // folded, [cid:] tokens shown as a readable marker, clamped on a phone behind "Show full message");
-// the translation behind the toggle; its attachments and what Axle could not read; older messages
+// the translation behind the toggle; its attachments and what the Email assistant could not read; older messages
 // folded beneath, one block each.
 // emailTrPending: the translation is not cached yet; axle.js fills it in (POST /item/:id/translations).
 // thread: message-store's itemThread (oldest first). Its newest message (the item's latest message)
@@ -891,7 +891,7 @@ const ICONS = {
   dots: [2.6, '<path d="M5 12h.01M12 12h.01M19 12h.01"/>'],
   info: [2.2, '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'],
   home: [2.2, '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/>'],
-  // Axle's own additions in the same stroke style (round 2): the reply's formatting, the camera, file
+  // The Email app's own additions in the same stroke style (round 2): the reply's formatting, the camera, file
   // and photo chips, the customer's phone
   bold: [2.4, '<path d="M7 4h6.5a4 4 0 0 1 0 8H7zM7 12h7.5a4 4 0 0 1 0 8H7z"/>'],
   italic: [2.2, '<path d="M10 4h8M6 20h8M14.5 4l-5 16"/>'],
@@ -912,7 +912,7 @@ const iconBtn = (label, name, attrs, cls) =>
   `<button type="button" class="wb-btn wb-btn--ghost wb-btn--icon${cls ? " " + cls : ""}" aria-label="${esc(label)}" title="${esc(label)}"${attrs ? " " + attrs : ""}>${icon(name)}</button>`;
 // A pill: status (no border) in a tone; attrs pre-escaped.
 const pill = (text, tone, attrs) => `<span class="wb-pill" data-tone="${tone || "neutral"}"${attrs ? " " + attrs : ""}>${esc(text)}</span>`;
-// The house link to the Workbench home, drawn only when Axle runs under Workbench's base path.
+// The house link to the Workbench home, drawn only when the Email app runs under Workbench's base path.
 const homeLink = (lang) => B
   ? `<a class="wb-btn wb-btn--ghost wb-btn--icon" href="/#/" aria-label="${esc(t(lang, "workbench_home"))}" title="${esc(t(lang, "workbench_home"))}">${icon("home")}</a>`
   : "";
@@ -940,8 +940,8 @@ const clientStrings = (lang) =>
 const voidPane = (lang) =>
   `<div class="ax-void"><p class="ax-void__pick">${esc(t(lang, "shell_select"))}</p><p class="ax-void__empty">${esc(t(lang, "nothing_waiting"))}</p></div>`;
 
-// page(): the document shell. Links the shared tokens and vocabulary, Axle's layout sheet, htmx and
-// axle.js. Framed in Workbench (user.inFrame) Axle draws no bar at all; standalone it draws one slim
+// page(): the document shell. Links the shared tokens and vocabulary, the Email app's layout sheet, htmx and
+// axle.js. Framed in Workbench (user.inFrame) the Email app draws no bar at all; standalone it draws one slim
 // top bar (the panes add their own on a phone, see axle.css). opts.shell: body is the queue and work
 // area (shell()), with the void template axle.js restores; otherwise body sits in the page column,
 // after opts.head (a desk page's own phone bar, see deskPage()), both in .ax-pagewrap.
@@ -950,11 +950,11 @@ function page(title, user, body, refreshSec, opts) {
   const lang = langOK(user.lang);
   const isShell = !!(opts && opts.shell);
   const cls = ["wb-app", "ax-doc", user.inFrame ? "is-framed" : "", (opts && opts.bodyClass) || ""].filter(Boolean).join(" ");
-  const top = user.inFrame ? "" : `<header class="wb-page__hd ax-top">${homeLink(lang)}<a class="ax-top__t" href="${B}/">Axle</a></header>`;
+  const top = user.inFrame ? "" : `<header class="wb-page__hd ax-top">${homeLink(lang)}<a class="ax-top__t" href="${B}/">${lang === "nl" ? "E-mail" : "Email"}</a></header>`;
   return `<!doctype html><html lang="${lang === "nl" ? "nl" : "en-GB"}" data-base="${B}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 ${refreshSec ? `<meta http-equiv="refresh" content="${refreshSec}">` : ""}
-<title>${esc(title)} · Axle</title>
+<title>${esc(title)} · ${lang === "nl" ? "E-mail" : "Email"}</title>
 <link rel="stylesheet" href="${B}/assets/tokens.css?v=${ASSET_V}">
 <link rel="stylesheet" href="${B}/assets/vocabulary.css?v=${ASSET_V}">
 <link rel="stylesheet" href="${B}/assets/axle.css?v=${ASSET_V}">

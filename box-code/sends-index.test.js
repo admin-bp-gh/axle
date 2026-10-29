@@ -12,7 +12,7 @@
 // SAFETY: this test NEVER touches the live database. db.js reads its path from AXLE_DB at require
 // time, so each case runs db.js in a CHILD process with AXLE_DB pinned to a throwaway file in the
 // OS temp dir. The parent opens that throwaway file directly and asserts nothing else. A guard
-// below refuses to run if the temp path ever collides with a real Axle data directory.
+// below refuses to run if the temp path ever collides with a real Email data directory.
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
@@ -26,7 +26,7 @@ const DB_JS = path.join(__dirname, "db.js");
 // A fresh throwaway DB path per test, with its WAL/SHM siblings cleaned up afterwards.
 function tmpDbPath(tag) {
   const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "axle-sends-idx-")), `${tag}.db`);
-  assert.ok(!/[\\/](Axle|axle)[\\/]data[\\/]/.test(p), "refusing to run against a real Axle data dir");
+  assert.ok(!/[\\/](Axle|axle)[\\/]data[\\/]/.test(p), "refusing to run against a real Email data dir");
   return p;
 }
 function cleanup(dbPath) {
@@ -74,7 +74,7 @@ function insertSend(db, { item = 1, to = "a@b.nl", sha = "deadbeef" } = {}) {
 }
 
 // Put a freshly-migrated DB back into its PRE-migration state: the narrow index, under the old
-// name. This is what every real Axle DB looks like before this deploy.
+// name. This is what every real Email DB looks like before this deploy.
 function revertToOldIndex(dbPath) {
   const db = new Database(dbPath);
   db.exec("DROP INDEX IF EXISTS idx_sends_item_to_body");

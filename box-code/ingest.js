@@ -1,6 +1,6 @@
 // ingest.js - pipeline: mailbox emails -> rules + classification -> agentic
-// drafts -> work items in the Axle DB. READ-ONLY against all business systems;
-// the only thing written is Axle's own SQLite database.
+// drafts -> work items in the Email DB. READ-ONLY against all business systems;
+// the only thing written is the Email app's own SQLite database.
 // Re-run safe: unchanged conversations are skipped; a new inbound email on an
 // existing item re-opens it (new draft version, answered questions preserved).
 //
@@ -33,8 +33,8 @@ const E = require("./engine.js");
 const CF = require("./contact-form.js");
 const RN = require("./return-note.js");
 const DS = require("./doc-suggest.js");
-const OUTLOOK = require("./outlook-close.js");   // Outlook -> Axle: close what was handled in Outlook
-const OBLOCK = require("./outlook-block.js");    // Axle -> Outlook: file blocked senders out of the inbox
+const OUTLOOK = require("./outlook-close.js");   // Outlook -> Email: close what was handled in Outlook
+const OBLOCK = require("./outlook-block.js");    // Email -> Outlook: file blocked senders out of the inbox
 const ACK = require("./acknowledgement.js");     // no_reply courtesy line: when to keep it, and what may be in it
 const US = require("./unread-sweep.js");         // which unread mail the watermark missed may be added to a run
 const MS = require("./message-store.js");        // every message of the thread and its attachments, files on disk
@@ -549,8 +549,8 @@ async function runBoxes(boxes, opts = {}) {
     }
   }
 
-  // Outlook -> Axle reconciliation: anything the team handled in Outlook (i.e. marked read there)
-  // drops off Axle's Open list. Deliberately runs AFTER ingest: a new inbound on an existing thread
+  // Outlook -> Email reconciliation: anything the team handled in Outlook (i.e. marked read there)
+  // drops off the Email Open list. Deliberately runs AFTER ingest: a new inbound on an existing thread
   // re-opens the item with a NEW, unread message id, so the reconciliation then correctly leaves it
   // open. Skipped during the one-time unread seed, where "read" is exactly what we just filtered out.
   // Gated by the allow-list action AXLE_ACTION_OUTLOOK_CLOSE; no-op when it is off.
@@ -578,7 +578,7 @@ async function runBoxes(boxes, opts = {}) {
       `Send-verify: checked ${v.checked}, verified ${v.verified}, sent again ${v.retried}, not sent ${v.stuck}, gone ${v.gone}, errors ${v.errors}`);
   }
 
-  // Axle -> Outlook: keep the blocked-sender inbox rule in step with the sender_blocks table.
+  // Email -> Outlook: keep the blocked-sender inbox rule in step with the sender_blocks table.
   // Normally a no-op (one DB read comparing a hash), so it costs nothing per run; it exists so a
   // rule someone edited, disabled or deleted in Outlook heals itself, and so a block made while
   // Graph was down is eventually applied instead of quietly never happening. Gated by

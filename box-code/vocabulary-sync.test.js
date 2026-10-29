@@ -1,4 +1,4 @@
-// vocabulary-sync.test.js: Axle's copies of the shared vocabulary must stay identical to Workbench's
+// vocabulary-sync.test.js: the Email app's copies of the shared vocabulary must stay identical to Workbench's
 // (line endings aside, since a Windows checkout may write CRLF). assets/tokens.css and
 // assets/vocabulary.css are never edited here; a change is made in Workbench (web/src/styles) and
 // copied across. This catches a copy that was forgotten.
@@ -23,7 +23,7 @@ for (const f of ["tokens.css", "vocabulary.css"]) {
   if (read(path.join(__dirname, "assets", f)) === read(path.join(WB, f))) console.log(`  ok: assets/${f} matches Workbench`);
   else {
     fail++;
-    console.log(`  FAIL: assets/${f} differs from ${path.join(WB, f)}. Copy Workbench's file over Axle's (never the other way).`);
+    console.log(`  FAIL: assets/${f} differs from ${path.join(WB, f)}. Copy Workbench's file over the Email app's (never the other way).`);
   }
 }
 console.log(`\nvocabulary-sync: ${2 - fail} passed, ${fail} failed`);

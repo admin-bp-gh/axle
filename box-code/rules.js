@@ -9,11 +9,11 @@
 // and survives staffing changes. Drachten keeps its own label.
 const SALES_GOUDA = "Sales(Gouda)";
 
-// PURCHASING IS NOT ROUTED IN AXLE (2026-08-06, Brad's call). Tom works entirely in Outlook, and
+// PURCHASING IS NOT ROUTED IN THE EMAIL APP (2026-08-06, Brad's call). Tom works entirely in Outlook, and
 // server-side Outlook rules already file the vast majority of his mail into "Purchasing | Tom",
-// which Axle does not read. Anything of his that does reach the Inbox gets moved there by hand,
-// and outlook-close.js then clears it from Axle on the 'moved' rule. So no rule assigns to Tom:
-// an Axle owner label for someone who never opens Axle is a trap — it parks work in a queue
+// which the Email app does not read. Anything of his that does reach the Inbox gets moved there by hand,
+// and outlook-close.js then clears it from the Email app on the 'moved' rule. So no rule assigns to Tom:
+// an Email owner label for someone who never opens the Email app is a trap: it parks work in a queue
 // nobody watches, which looks identical to work being handled.
 //
 // What triggered this: `supplier_invoice` matched on sender OR subject, so ANY email whose
@@ -28,7 +28,7 @@ const SALES_GOUDA = "Sales(Gouda)";
 
 // --- Owner home mailboxes (reassign-and-forward, 2026-08-08) ---------------------------------
 // Where each owner label ACTUALLY works. Reassigning an item to an owner whose home mailbox is
-// not the item's own mailbox is a real handover, not a relabel: Axle forwards the email to that
+// not the item's own mailbox is a real handover, not a relabel: the Email app forwards the email to that
 // mailbox and closes its own item, so the work physically moves and leaves the handing-over
 // team's queue AND their Outlook unread list — instead of parking in a queue nobody watches,
 // which is the exact trap described in the Tom note above.
@@ -37,8 +37,8 @@ const SALES_GOUDA = "Sales(Gouda)";
 // here, in code, from a fixed table — never from a work item, an email body, a tool result or a
 // model. Nothing a customer writes can add an entry, so a forward cannot leave the company.
 //
-// admin@ is a DESTINATION ONLY: Axle does not read that mailbox (Brad works it in Outlook), so a
-// forward to Brad takes the email out of Axle entirely. info@ and drachten@ ARE ingested, so a
+// admin@ is a DESTINATION ONLY: the Email app does not read that mailbox (Brad works it in Outlook), so a
+// forward to Brad takes the email out of the Email app entirely. info@ and drachten@ ARE ingested, so a
 // forward between them is re-ingested by the receiving mailbox and becomes a fresh work item
 // there (see the internal_forward rule below).
 //
@@ -74,7 +74,7 @@ function queueBoxSql() {
 }
 const isOurMailbox = (addr) => ourMailboxAddresses().includes(String(addr || "").trim().toLowerCase());
 
-// An email one of our own mailboxes forwarded to another — either Axle's own handover forward or
+// An email one of our own mailboxes forwarded to another, either the Email app's own handover forward or
 // a human pressing Forward in Outlook. Owned by the receiving mailbox's sales queue and drafted
 // like any other customer mail; tagged so it is recognisable at a glance.
 //
@@ -141,7 +141,7 @@ const drachtenRules = [
 
 module.exports = {
   queueBoxSql,
-  // 'folders' = the mail folders Axle ingests for this mailbox. info@ also reads "Shopify Contact
+  // 'folders' = the mail folders the Email app ingests for this mailbox. info@ also reads "Shopify Contact
   // Form" (customer messages from the webshop contact form, which a server-side Outlook rule files
   // out of the Inbox). Names are resolved to Graph folder ids at read time.
   // 'reassignOnly' = owner labels a human may hand an item to, that no rule ever assigns

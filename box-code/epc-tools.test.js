@@ -1,4 +1,4 @@
-// epc-tools.test.js - the JLR EPC lookups in Axle (AI parity Step A): offered only through the Workbench
+// epc-tools.test.js - the JLR EPC lookups in the Email app (AI parity Step A): offered only through the Workbench
 // agent, run through POST /api/agent/tool with the token, the reply rules that use them (SYSTEM_EPC), the
 // VIN claim gate standing down once a VIN was decoded, and the EPC physical check skipped once a part was
 // checked against the VIN. No network: a fake fetch.

@@ -1,4 +1,4 @@
-// backup-db.js — consistent online backup of the Axle SQLite database.
+// backup-db.js: consistent online backup of the Email SQLite database.
 //
 // Why this exists: axle.db runs in WAL mode and is held open by the live server, so a
 // raw file copy could capture a torn / internally-inconsistent database. This uses

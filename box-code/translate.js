@@ -1,6 +1,6 @@
-// translate.js — on-demand, cached translation for the Axle UI.
+// translate.js: on-demand, cached translation for the Email app UI.
 //
-// Axle authors its own wording (questions, summaries) in English; customer content
+// The Email app authors its own wording (questions, summaries) in English; customer content
 // (email bodies, drafts) stays in the customer's own language so a reply can be sent
 // verbatim. This module renders either into the *viewing user's* language, so staff
 // never need a separate translate app while working an item.

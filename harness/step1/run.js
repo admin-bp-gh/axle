@@ -165,7 +165,7 @@ async function structureChecks(base) {
   ok("item1: close actions in overflow menu with descriptions (F9)", i1.includes('class="menu"') && i1.includes('value="done"') && i1.includes('value="phone"') && i1.includes('value="archived"') && i1.includes(`action="/item/1/block"`));
   ok("item1: combined SAP documents card (F11)", i1.includes("SAP documents") && i1.includes('value="90021"') && i1.includes('<select name="doctype">'));
   ok("item1: out-of-scope doc behind review fold (F11)", i1.includes('value="90002"') && between(i1, "Different customer", 'value="90002"'));
-  ok("item1: brief still reachable", i1.includes("What Axle checked"));
+  ok("item1: brief still reachable", i1.includes("What the Email assistant checked"));
 
   // item 2: awaiting_input with open questions -> questions card leads (F8)
   const i2 = (await get(base, "/item/2")).body;

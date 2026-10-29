@@ -259,7 +259,7 @@ test("a forwarded customer email whose sender cannot be read still needs a recip
 });
 
 test("a colleague's own message replies to the colleague's mailbox with no extra step", () => {
-  const done = "Done!\n\nMet vriendelijke groet,\nTeam Budget Parts Noord\n\n________________________________\nFrom: Budget Parts | Gouda <info@budget-parts.nl>\nSent: Thursday, October 15, 2026 14:14\nTo: Budget Parts | Drachten <drachten@budget-parts.nl>\nSubject: FW: Order 226574\n\nHanded over in Axle by Brad\n________________________________\nFrom: Jan Dekker <jan@dekker4x4.nl>\nSent: Thursday, October 15, 2026 12:34\nTo: info@budget-parts.nl\n\nHoi";
+  const done = "Done!\n\nMet vriendelijke groet,\nTeam Budget Parts Noord\n\n________________________________\nFrom: Budget Parts | Gouda <info@budget-parts.nl>\nSent: Thursday, October 15, 2026 14:14\nTo: Budget Parts | Drachten <drachten@budget-parts.nl>\nSubject: FW: Order 226574\n\nHanded over in the Email app by Brad\n________________________________\nFrom: Jan Dekker <jan@dekker4x4.nl>\nSent: Thursday, October 15, 2026 12:34\nTo: info@budget-parts.nl\n\nHoi";
   for (const w of [
     { ...base, rule_id: "catch_all", subject: "Re: Order 226574 Done", sender_email: "drachten@budget-parts.nl", email_text: done },
     { ...base, rule_id: "catch_all", subject: "Klant heeft foto's gestuurd", sender_email: "drachten@budget-parts.nl", email_text: "De klant zegt dat hij foto's heeft bijgevoegd." },

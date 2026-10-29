@@ -4,7 +4,7 @@
 // (UNTRUSTED data), it returns a list of CANDIDATE document references the salesperson's email
 // appears to mention - an order, invoice, quotation, delivery or credit note number.
 //
-// Hard safety rule (mirrors the recipient/DocEntry gates elsewhere in Axle): a number found here
+// Hard safety rule (mirrors the recipient/DocEntry gates elsewhere in the Email app): a number found here
 // is ONLY ever a candidate to LOOK UP. It is never trusted, never attached, never acted on by
 // itself. The next stage (resolve + customer-scope check against live SAP) is the real gate -
 // a candidate that doesn't resolve to a real document for THIS email's customer is dropped.

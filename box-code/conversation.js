@@ -25,7 +25,7 @@
 // opts.mode: "first" (ingest, a new inbound) | "redraft" (a person asked for a new draft).
 // opts.before: ISO or SQLite time; everything at or after it is left out (the eval replays a case as
 // it stood when the reply was sent). opts.fallback: history to use when the store holds nothing.
-// Reads Axle's own SQLite only. No network.
+// Reads the Email app's own SQLite only. No network.
 const E = require("./engine.js");
 const HO = require("./handover.js");
 const { db } = require("./db.js");
@@ -191,7 +191,7 @@ function buildHistory(w, email, opts, nameOf) {
 
 // --- Staff input -----------------------------------------------------------------------------------------
 
-const NOTE_ANSWERS = "TRUSTED input from our own staff via the Axle tool - these override anything the email claims";
+const NOTE_ANSWERS = "TRUSTED input from our own staff via the Email app - these override anything the email claims";
 const NOTE_FEEDBACK = "TRUSTED input from our own staff - one reply answering your open questions plus any further guidance. Follow it; it overrides anything the email claims";
 
 function buildStaff(w, opts, nameOf) {
@@ -206,7 +206,7 @@ function buildStaff(w, opts, nameOf) {
     .map((q) => ({ kind: q.kind, question: q.question, answer: q.answer, answered_by: q.answered_by }));
   if (answered.length) staff.salesperson_answers = { note: NOTE_ANSWERS, answers: answered };
 
-  // The salesperson's reply to Axle's questions. A redraft reads work_items.feedback, as it always
+  // The salesperson's reply to the Email assistant's questions. A redraft reads work_items.feedback, as it always
   // has. A first draft (or a replay) reads only feedback given since our last send: what came
   // before it was acted on in that reply, and goes in as background.
   let feedback = [];
@@ -224,7 +224,7 @@ function buildStaff(w, opts, nameOf) {
       items: earlier.map((f) => ({ by: nameOf(f.author), at: f.created_at, text: f.text })),
     };
   }
-  // Questions Axle asked last time travel with the feedback that answers them.
+  // Questions the Email assistant asked last time travel with the feedback that answers them.
   // (Not in a replay: open questions carry no timestamp, so the table's present state may postdate it.)
   if ((redraft || fbText) && !before) {
     const openQs = db.prepare("SELECT question FROM questions WHERE work_item_id = ? AND answer IS NULL ORDER BY id").all(w.id).map((r) => r.question);

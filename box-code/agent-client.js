@@ -1,11 +1,11 @@
 "use strict";
-// agent-client.js - Axle's drafting model calls through Workbench's shared agent (AI parity piece 2a).
+// agent-client.js - the Email app's drafting model calls through Workbench's shared agent (AI parity piece 2a).
 //
 // createAgentClient() returns an object with messages.create(params) shaped like the Anthropic SDK's,
 // so engine.agenticDraft keeps its own loop, tools and gates and only the transport changes: each call
 // is one POST /api/agent/step on the local Workbench (channel axle-draft), which picks the model,
 // effort and max_tokens from its channel profile and puts its knowledge pack in front of the prompt.
-//   params.system          -> systemPrompt (Axle's own rules, the last system block, uncached)
+//   params.system          -> systemPrompt (the Email app's own rules, the last system block, uncached)
 //   params.extra_knowledge -> extraKnowledge (K.block(): business knowledge + Teach entries, cached)
 //   params.messages/tools  -> passed through as they are (media blocks included)
 //   round                  -> 1 + the assistant turns already in params.messages (stateless)
@@ -19,7 +19,7 @@
 // comes back as its { error } result.
 //
 // facts(input) and verify(input) (AI parity Step E3) call POST /api/agent/facts (the <supplier_facts> block
-// for the codes, VIN and model Axle found before drafting, cut at 35 s) and POST /api/agent/verify (the codes
+// for the codes, VIN and model the Email assistant found before drafting, cut at 35 s) and POST /api/agent/verify (the codes
 // a draft names, checked, cut at 12 s). Both are optional extras: a non-200, a timeout or an unreachable
 // Workbench gives null after one warning, never a throw, and the draft goes ahead without them.
 //

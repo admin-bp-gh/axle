@@ -1,4 +1,4 @@
-// wipe-slate.js — reset Axle to a clean slate before live use.
+// wipe-slate.js: reset the Email app to a clean slate before live use.
 //
 // Clears all transactional data (work items + everything hanging off them, plus the audit
 // log and the on-view translation cache) so a fresh pilot starts from item #1 with no test

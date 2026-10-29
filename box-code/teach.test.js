@@ -1,4 +1,4 @@
-// teach.test.js - Teach Axle (Phase 6, 2026-10-05): flag, approve, reject, withdraw, the prompt
+// teach.test.js - Teach Email (Phase 6, 2026-10-05): flag, approve, reject, withdraw, the prompt
 // block format, and that an approval reaches the prompt on the next call with no reload.
 // Run: node teach.test.js
 const assert = require("assert");
@@ -34,7 +34,7 @@ test("cleanText strips invisible characters, collapses whitespace, caps length",
 
 test("empty prompt block when nothing is approved", () => {
   const b = K.block(db);
-  assert.ok(b.startsWith("<business_knowledge>\n# Axle business knowledge"));
+  assert.ok(b.startsWith("<business_knowledge>\n# Email business knowledge"));
   assert.ok(b.endsWith("</business_knowledge>"));
   assert.ok(!b.includes(K.HEADING));
 });

@@ -1,4 +1,4 @@
-// attachments.test.js - which Graph attachments Axle shows under an inbound email.
+// attachments.test.js - which Graph attachments the Email app shows under an inbound email.
 // Exists because of #2506 (6 Oct 2026): a customer's phone photo arrived inline (cid:) and never
 // appeared, because inline attachments were filtered out wholesale.
 const test = require("node:test");

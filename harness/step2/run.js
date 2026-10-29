@@ -199,7 +199,7 @@ async function structureChecks(base, dbPath) {
   ok("item1: queue lazy-loaded with selection", i1.includes('hx-get="/queue?sel=1"') && i1.includes("queue-lazy"));
   ok("item1: centre keeps Step-1 contract - reply card + sticky bar", i1.includes('id="replybox"') && i1.includes('form="workform" formaction="/item/1/send"') && i1.includes('id="ai_seed"'));
   ok("item1: centre keeps timeline + chip menus", i1.includes('class="msg"') && i1.includes('action="/item/1/language"') && i1.includes('action="/item/1/owner"'));
-  ok("item1: context pane holds SAP docs + brief", between(i1, 'class="pane-context"', "SAP documents") && between(i1, 'class="pane-context"', "What Axle checked"));
+  ok("item1: context pane holds SAP docs + brief", between(i1, 'class="pane-context"', "SAP documents") && between(i1, 'class="pane-context"', "What the Email assistant checked"));
   ok("item1: SAP docs card no longer in centre", between(i1, 'id="workform"', 'class="pane-context"') && between(i1, 'class="pane-context"', '<select name="doctype">'));
   ok("item1: suggested docs intact in context (F11)", i1.includes('value="90021"') && between(i1, "Different customer", 'value="90002"'));
   ok("item1: status chip uses new vocabulary", i1.includes("Ready to send"));
@@ -232,7 +232,7 @@ async function structureChecks(base, dbPath) {
 
   // item 4 (contact-form): no SAP-docs card -> context holds only the brief
   const i4 = (await get(base, "/item/4")).body;
-  ok("item4: cf keeps picker, context has brief but no attach-doc", i4.includes('action="/item/4/contactform-recipient"') && !i4.includes("/item/4/attach-doc") && between(i4, 'class="pane-context"', "What Axle checked"));
+  ok("item4: cf keeps picker, context has brief but no attach-doc", i4.includes('action="/item/4/contactform-recipient"') && !i4.includes("/item/4/attach-doc") && between(i4, 'class="pane-context"', "What the Email assistant checked"));
 
   // item 5 (compose): instruction card in centre, subject field, SAP docs in context
   const i5 = (await get(base, "/item/5")).body;

@@ -113,10 +113,10 @@ test("the handover note says who, from where to where, the customer and the item
   const f = FG.assembleForward(item(), by);
   const lines = f.comment.replace(/^<div[^>]*>|<\/div>$/g, "").split("<br>");
   assert.deepStrictEqual(lines, [
-    "Handed over in Axle by Brad",
+    "Handed over in the Email app by Brad",
     "From Sales (Gouda) to Brad",
     "Customer: DHL Express &lt;invoices@dhl.com&gt;",
-    "Axle item #1171",
+    "Email item #1171",
   ]);
 });
 
@@ -126,10 +126,10 @@ test("AXLE_BASE_URL turns the item reference into a link that opens the item ins
     for (const base of ["https://axle-box.example.ts.net", "https://axle-box.example.ts.net/", "https://axle-box.example.ts.net/axle"]) {
       process.env.AXLE_BASE_URL = base;
       assert.match(FG.assembleForward(item(), by).comment,
-        /Open in Axle: <a href="https:\/\/axle-box\.example\.ts\.net\/#\/axle\/item\/1171">https:\/\/axle-box\.example\.ts\.net\/#\/axle\/item\/1171<\/a>/, base);
+        /Open in the Email app: <a href="https:\/\/axle-box\.example\.ts\.net\/#\/axle\/item\/1171">https:\/\/axle-box\.example\.ts\.net\/#\/axle\/item\/1171<\/a>/, base);
     }
     process.env.AXLE_BASE_URL = "javascript:alert(1)";
-    assert.match(FG.assembleForward(item(), by).comment, /Axle item #1171/, "only an http(s) base makes a link");
+    assert.match(FG.assembleForward(item(), by).comment, /Email item #1171/, "only an http(s) base makes a link");
   } finally {
     if (prev === undefined) delete process.env.AXLE_BASE_URL; else process.env.AXLE_BASE_URL = prev;
   }

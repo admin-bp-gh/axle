@@ -1,7 +1,7 @@
-// base-path.js - the URL prefix Axle is served under (W3, shell integration, 2026-10).
+// base-path.js - the URL prefix the Email app is served under (W3, shell integration, 2026-10).
 //
 // AXLE_BASE_PATH (box .env, optional). Unset or empty keeps the old root mount. At the Workbench
-// cutover the shell frames Axle at https://axle-box.tail58a804.ts.net/axle/, and the .env then holds:
+// cutover the shell frames the Email app at https://axle-box.tail58a804.ts.net/axle/, and the .env then holds:
 //   AXLE_BASE_PATH=/axle
 //   AXLE_ALLOWED_ORIGIN=https://axle-box.tail58a804.ts.net      (comma-separated list accepted)
 //   AXLE_BASE_URL=https://axle-box.tail58a804.ts.net            (the Workbench address: the emailed

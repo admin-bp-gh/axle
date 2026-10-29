@@ -1,5 +1,5 @@
 "use strict";
-// eval/case-picker.js - picks the replay cases for draft-eval.js from a COPY of the Axle database.
+// eval/case-picker.js - picks the replay cases for draft-eval.js from a COPY of the Email database.
 // Pure: no requires, no network. Takes any db handle with prepare(sql).all()/get() (better-sqlite3
 // on the box). Reads only.
 //
@@ -65,7 +65,7 @@ function anchorFor(sends, msgs) {
 }
 
 // --from-first-message (AI parity Step B): the case is the customer's FIRST stored message alone, judged
-// against our first send after it. No earlier thread, no staff input, no handover: what Axle would draft
+// against our first send after it. No earlier thread, no staff input, no handover: what the Email assistant would draft
 // the moment the email arrived. replay_before tells the thread builder where to cut.
 function firstAnchor(sends, msgs) {
   const first = msgs[0];

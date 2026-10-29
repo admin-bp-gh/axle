@@ -11,7 +11,7 @@
 // It is the same read-and-render capability the "Attach SAP document" control has had since June,
 // with the human's click moved from "find and attach this" to "keep or remove this".
 //
-// THE SCOPE SUBSTITUTION, which is the one genuinely new thing here. Everywhere else in Axle a
+// THE SCOPE SUBSTITUTION, which is the one genuinely new thing here. Everywhere else in the Email app a
 // document may be attached only if its CardCode matches the customer resolved from the SENDER.
 // On a carrier claim the sender is MyParcel, so that rule resolves to nobody and blocks the two
 // correct documents (this is exactly what item 1316 did). The claim scope replaces it:

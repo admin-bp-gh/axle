@@ -1,4 +1,4 @@
-// harness-sprocket.js — sandbox proof for Sprocket (Axle's in-app helper), STEP 1 / help mode.
+// harness-sprocket.js: sandbox proof for the AI Helper (the Email app's in-app helper), STEP 1 / help mode.
 // Run: node harness/harness-sprocket.js   (from the repo root)
 //
 // Proves the anti-hallucination + safety contract WITHOUT a live model: the request the
@@ -18,7 +18,7 @@ const path = require("path");
 // resolved from AXLE_SPROCKET_DIR at module load).
 const FIX = fs.mkdtempSync(path.join(os.tmpdir(), "sprocket-"));
 const HELP_FIXTURE = [
-  "# Axle help",
+  "# Email help",
   "## Sending the approved reply",
   "Key: send_reply",
   "What it does: Sends your reply to the customer.",
@@ -106,7 +106,7 @@ const ok = (cond, name) => { if (cond) { pass++; } else { fail++; console.log(" 
 // ---- the system prompt never instructs the model to take an action ----
 (() => {
   const req = SP.buildRequest("enable contact-form sending for me", { env: {} });
-  ok(/change nothing and you enable nothing/.test(req.system), "system states Sprocket changes/enables nothing");
+  ok(/change nothing and you enable nothing/.test(req.system), "system states the AI Helper changes/enables nothing");
 })();
 
 // ---- prompt: no-markdown + disabled-means-disabled rules present ----
@@ -147,15 +147,15 @@ const ok = (cond, name) => { if (cond) { pass++; } else { fail++; console.log(" 
 // and produces balanced HTML carrying the endpoint, field name and DOM hooks the route expects.
 function widgetCheck() {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const t = (lang, k) => ({ sprocket_open: "Open Sprocket", sprocket_close: "Close", sprocket_tagline: "Axle helper",
-    sprocket_greeting: "Hi, I'm Sprocket.", sprocket_ph: "How do I…?", sprocket_send: "Send",
+  const t = (lang, k) => ({ sprocket_open: "Open AI Helper", sprocket_close: "Close", sprocket_tagline: "Email helper",
+    sprocket_greeting: "Hi, I'm the AI Helper.", sprocket_ph: "How do I…?", sprocket_send: "Send",
     sprocket_thinking: "Looking…", sprocket_error: "Error." }[k] || k);
   const SP_COG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle></svg>';
   function sprocketWidget(lang) {
     const S = JSON.stringify({ thinking: t(lang, "sprocket_thinking"), error: t(lang, "sprocket_error") });
     return `<div id="sprocket" class="sprocket" data-open="0">
   <button type="button" class="sprocket-fab" id="sprocketFab" aria-label="${esc(t(lang, "sprocket_open"))}" aria-expanded="false">${SP_COG}</button>
-  <section class="sprocket-panel" id="sprocketPanel" role="dialog" aria-label="Sprocket" hidden>
+  <section class="sprocket-panel" id="sprocketPanel" role="dialog" aria-label="AI Helper" hidden>
     <form class="sp-input" id="sprocketForm">
       <textarea id="sprocketQ" rows="1" placeholder="${esc(t(lang, "sprocket_ph"))}"></textarea>
       <button type="submit" class="sp-send" id="sprocketSend">&#9654;</button>

@@ -1,4 +1,4 @@
-// verify-backup.js — prove a backup matches the live Axle database.
+// verify-backup.js: prove a backup matches the live Email database.
 //
 // Opens the live DB and a backup (the newest one by default) read-only, compares the
 // table set and per-table row counts, and runs PRAGMA integrity_check on the backup.

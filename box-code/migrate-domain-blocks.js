@@ -2,7 +2,7 @@
 //
 // WHY. Whole-domain blocking was removed on 2026-07-27 after two mis-clicks ('@gmail.com',
 // '@shopify.com') swallowed weeks of customer mail. The 39 domain rows created BEFORE that day
-// survived, because they only ever suppressed mail inside Axle and were therefore harmless enough
+// survived, because they only ever suppressed mail inside the Email app and were therefore harmless enough
 // to leave alone. Wiring blocked senders through to a real Exchange inbox rule (outlook-block.js)
 // changes that: those rows would start filing whole domains out of the shared Outlook inbox.
 //
@@ -10,15 +10,15 @@
 // is BRITISH SPORTSCAR CENTRE, 42 invoices, last one six weeks ago. A live customer.
 //
 // WHAT THIS DOES. Rather than simply deleting the domain rows (which would also stop suppressing
-// the genuine newsletter noise inside Axle), it converts each one down to the exact addresses Axle
+// the genuine newsletter noise inside the Email app), it converts each one down to the exact addresses the Email app
 // actually saw from that domain, taken from its own work_items history, and then removes the domain
 // row. Suppression is preserved at the granularity we can justify; the part nobody can justify —
 // "and everyone else at this domain, forever" — is dropped. Anything that returns is one click.
 //
-// Addresses at a domain that Axle never saw are, by definition, not senders anyone has complained
+// Addresses at a domain that the Email app never saw are, by definition, not senders anyone has complained
 // about. They come back to the inbox, and can be blocked individually if they are a nuisance.
 //
-// SAFETY: touches only Axle's own SQLite; nothing in Outlook, SAP or Shopify. Prints a full plan
+// SAFETY: touches only the Email app's own SQLite; nothing in Outlook, SAP or Shopify. Prints a full plan
 // and changes nothing without --apply. Every insert and delete is written to the audit log.
 //
 // Usage:  node migrate-domain-blocks.js            (dry run — prints the plan)
@@ -46,7 +46,7 @@ const EXCLUDE = new Map([
 const domains = db.prepare("SELECT * FROM sender_blocks WHERE kind = 'domain' ORDER BY pattern").all();
 if (!domains.length) { console.log("No domain rows left — nothing to do."); process.exit(0); }
 
-// Every distinct sender Axle has ever recorded at this domain. Matches the same semantics as
+// Every distinct sender the Email app has ever recorded at this domain. Matches the same semantics as
 // db.isBlockedSender: the domain itself, or any subdomain of it.
 const seenAt = db.prepare(
   "SELECT DISTINCT lower(sender_email) AS addr FROM work_items " +
@@ -70,7 +70,7 @@ for (const d of domains) {
 console.log(`${domains.length} domain row(s) -> ${toInsert} new address block(s)\n`);
 for (const p of plan) {
   console.log(`@${p.bare}`);
-  if (!p.addrs.length) console.log("    (no sender ever recorded in Axle — the domain row simply goes)");
+  if (!p.addrs.length) console.log("    (no sender ever recorded in the Email app, the domain row simply goes)");
   for (const a of p.addrs) {
     if (EXCLUDE.has(a)) console.log(`    KEEP UNBLOCKED  ${a}\n                    ^ ${EXCLUDE.get(a)}`);
     else console.log(`    ${alreadyBlocked.has(a) ? "already blocked" : "block"}  ${a}`);

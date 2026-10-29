@@ -34,7 +34,7 @@ test("neither does the English wording, from any customer domain", () => {
 
 // --- the supplier rules still do their real job ---------------------------------------
 // Their purpose is not routing to a person: it is keeping supplier correspondence out of the
-// drafting path. If one of these ever starts drafting, Axle writes customer-style replies to
+// drafting path. If one of these ever starts drafting, the Email assistant writes customer-style replies to
 // Allmakes and MyParcel.
 test("supplier mail still matches its rule, by sender", () => {
   assert.strictEqual(route("facturen@myparcel.nl", "Factuur 2026-08").id, "supplier_invoice");

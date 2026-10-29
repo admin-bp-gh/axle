@@ -1,4 +1,4 @@
-/* assets/axle.js: Axle's client library (redesign v1, 7 Oct 2026). Plain JavaScript, no build step,
+/* assets/axle.js: the Email app's client library (redesign v1, 7 Oct 2026). Plain JavaScript, no build step,
    loaded deferred on every page after htmx. It writes the same markup and behaviour as the Workbench
    React primitives (menu, sheet, dialog, drawer, page, toast) over the shared wb- classes.
    Sections, in order:
@@ -1185,7 +1185,7 @@
     const xhr = e.detail.xhr;
     const doc = ev === "htmx:responseError" && xhr?.responseText ? new DOMParser().parseFromString(xhr.responseText, "text/html") : null;
     if (doc?.querySelector("[data-ax-pane]") && !doc.querySelector(".errbox")) {
-      W.htmx.swap(wp, xhr.responseText, { swapStyle: "innerHTML" });   // Axle's own pane (not found)
+      W.htmx.swap(wp, xhr.responseText, { swapStyle: "innerHTML" });   // the Email app's own pane (not found)
     } else {
       // The route error pane of server.js (or no answer at all): one banner, the message behind Details.
       const back = `<a class="wb-btn wb-btn--ghost wb-btn--icon" href="${B}/" data-back aria-label="${esc(t("inbox"))}">${icon("back")}</a>`;
@@ -1286,7 +1286,7 @@
     fold(0);
     if (dock.offsetParent) while (n < slots.length && dock.scrollWidth > dock.clientWidth + 1) fold(++n);
   }
-  // Reset to draft shows only while the text differs from Axle's draft.
+  // Reset to draft shows only while the text differs from the Email assistant's draft.
   function resetVisible() {
     const b = $("#workpane [data-reset]"), seed = D.getElementById("ai_seed"), r = replyBox();
     if (b && seed && r) b.hidden = nz(r.value) === nz(seed.value);

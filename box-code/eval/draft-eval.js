@@ -1,9 +1,9 @@
 "use strict";
-// eval/draft-eval.js - offline eval harness for Axle's reply drafter. A script, not a feature.
+// eval/draft-eval.js - offline eval harness for the Email reply drafter. A script, not a feature.
 //
 // Replays real inbound emails (from a COPY of axle.db) through engine.agenticDraft under several
 // configurations, grades each draft against the reply our team actually sent, and writes
-// runs.jsonl + summary.md. Calls the live Anthropic API (Axle's org, key from
+// runs.jsonl + summary.md. Calls the live Anthropic API (the Email app's org, key from
 // C:\Axle\secrets\.env) and reads live SAP / Shopify / MyParcel / M365 through the existing
 // read-only tools (engine.gatherSeed, agent-tools.js). Sends nothing, writes nothing to the live
 // database, changes no production code: the loose configs run eval/engine-loose.js, a patched copy
@@ -244,7 +244,7 @@ async function replay(ctx, c, cfgName, rep, prior) {
     }
     if (cfg.deep) {
       if (!prior || prior.error) throw new Error("deep: no prose run of this case to dig into");
-      // As conversation.js (redraft mode) and runRedraft give it: our unsent draft, Axle's open questions, the flags.
+      // As conversation.js (redraft mode) and runRedraft give it: our unsent draft, the Email assistant's open questions, the flags.
       seed.previous_unsent_draft = { note: "Our own most recent draft on this conversation. It was NOT sent: the customer has not seen it. Staff feedback, if any, was given on it.",
         is_interim: prior.slot === "interim_draft", written_at: "", text: String(prior.draft_text || "").slice(0, 6000) };
       const openQs = [...((prior.result && prior.result.questions_for_salesperson) || []), ...((prior.result && prior.result.physical_checks) || [])];
@@ -433,7 +433,7 @@ function summarise(runs, cases, meta) {
   const caseOf = new Map(cases.map((c) => [c.id, c]));
   const order = Object.keys(CONFIGS).filter((k) => runs.some((r) => r.config === k));
   const L = [];
-  L.push(`# Axle draft eval, ${meta.when}`);
+  L.push(`# Email draft eval, ${meta.when}`);
   L.push("");
   L.push(`Database copy: ${meta.db}. Cases: ${cases.length} (${cases.filter((c) => c.followup).length} follow-ups). Runs: ${runs.length}. Grader: ${GRADER_MODEL}, effort low. Supplier facts: ${[...new Set(runs.map((r) => (r.facts_on === false ? "off" : "on")))].join("/") || "-"}.`);
   if (meta.notes && meta.notes.length) { L.push(""); for (const n of meta.notes) L.push(`Note: ${n}`); }

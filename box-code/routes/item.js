@@ -28,7 +28,7 @@ const { anthropic, MAILBOX_OF, MAX_ATTACH_BYTES, runRedraft, markReadSafe,
         isContactFormItem, isReturnNotificationItem, itemKind, itemCardCode, customerEmails, saveWorkInputs, addAttachment,
         latestWithdrawn, latestDraftVersion } = require("./shared.js");
 const WA = require("../withdrawn-attempt.js");     // why the reply box is empty after a gate withdrew the draft
-const K = require("../knowledge.js");              // Teach Axle: text cap + sanitiser for flags
+const K = require("../knowledge.js");              // Teach Email: text cap + sanitiser for flags
 const MS = require("../message-store.js");         // the thread's stored messages and attachments (files on disk)
 const SEARCH = require("../search.js");            // keeps the customer resolved here in the search index
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
@@ -256,7 +256,7 @@ function peopleList(people, lang, titleKey) {
   return `<div class="ax-people"><span class="wb-label">${esc(t(lang, titleKey))}</span><ul>${people.map(row).join("")}</ul></div>`;
 }
 
-// One Axle item in an issues list: subject (linked), date, owner, status; "closed" once closed.
+// One Email item in an issues list: subject (linked), date, owner, status; "closed" once closed.
 function issueRow(r, lang) {
   const closed = r.status === "done" || r.status === "archived";
   return `<li><a class="wb-link" href="${BASE.path}/item/${r.id}">${esc(r.subject || t(lang, "no_subject"))}</a>`
@@ -271,7 +271,7 @@ function issuesList(found, lang, titleKey) {
 const ISSUE_COLS = "id, subject, email_received, created_at, updated_at, owner, status, sender_email, rule_id, intent, cust_card, caller_card, compose_customer";
 
 // A2, P1: "3rd voicemail from this number in 14 days. Earlier: ..." when the number left one before.
-// Computed from Axle's own rows on every view. Best effort: a failure shows nothing.
+// Computed from the Email app's own rows on every view. Best effort: a failure shows nothing.
 function voicemailCount(w, lang) {
   try {
     const earlier = VS.earlierVoicemails(w, db.prepare(VS.VOICEMAIL_ROWS_SQL).all());
@@ -722,7 +722,7 @@ app.get("/item/:id", async (req, res) => {
   // --- The reply card (editable). The withdrawn notice explains an empty box; the subject of a new
   // outbound sits above the text. The text is the rich editor (assets/axle-editor.js, its first view
   // rendered here from the stored text) over the hidden reply field that holds the stored text and
-  // posts; the AI seed sits in a hidden, name-less textarea so it never posts. Axle's questions, when
+  // posts; the AI seed sits in a hidden, name-less textarea so it never posts. the Email assistant's questions, when
   // it waits for an answer, sit with the redraft line below the card.
   const needsAnswers = editable && w.status === "awaiting_input" && open.length > 0 && !w.injection_flag;
   const qBanner = needsAnswers ? banner("warn", `${L("needs_input")}<details class="wb-details"><summary>${esc(t(lang, questions.length === 1 ? "q_1" : "q_n").replace("{n}", questions.length))}${icon("chevron-right")}</summary><ol class="ax-qs">${questions.map((q) =>
@@ -730,7 +730,7 @@ app.get("/item/:id", async (req, res) => {
     // "Ask the customer" (quick-reply round, 2026-10-10): the questions only the customer can answer
     // become a short reply to them, drafted in the background like Redraft.
     `<button type="submit" class="wb-btn wb-btn--sm ax-askcust" name="action" value="ask_customer" data-inline title="${L("ask_customer_hint")}">${L("ask_customer")}</button>`) : "";
-  // Notes from Axle (prose path: salesperson actions and context, never blocking) on an item that is not
+  // Notes from the Email assistant (prose path: salesperson actions and context, never blocking) on an item that is not
   // waiting for an answer; when it is, they are in the question list above.
   const notesOpen = open.filter((q) => q.kind === "optional");
   const notesBanner = editable && !needsAnswers && notesOpen.length && !w.injection_flag
@@ -763,9 +763,9 @@ app.get("/item/:id", async (req, res) => {
   const retLabel = RL.mode() !== "off" && !isContactForm && !isVoicemail ? (() => { try { return JSON.parse(w.return_label_json || "null"); } catch (e) { return null; } })() : undefined;
   const retLabelBtn = retLabel === undefined || (retLabel && atts.some((a) => a.name === retLabel.attachment)) ? ""
     : `<button type="submit" form="ax-f-retlabel" class="wb-btn wb-btn--ghost wb-btn--sm" data-inline data-confirm="${L("return_label_confirm")}" data-confirm-ok="${L("return_label_ok")}" data-toast="${L("return_label_toast")}">${icon("plus")}<span>${L("return_label")}</span></button>`;
-  // "Re-send (guarantee)" (2026-10-11): opens Ratchet's order builder in a new tab as a zero-priced
+  // "Re-send (guarantee)" (2026-10-11): opens the Sales order builder in a new tab as a zero-priced
   // re-send of the order this e-mail resolved to (trusted side only: the in-scope suggested documents).
-  // Shown only when an order resolved; nothing is created until the rep creates it in Ratchet.
+  // Shown only when an order resolved; nothing is created until the rep creates it in Sales.
   const resendOrders = editable && !isContactForm && !isRN && !isCompose && !isVoicemail
     ? await RL.orderNumbersFor((await computeItemSuggestions(w)).suggestions.filter((x) => x.status === "in_scope")
       .flatMap((x) => x.docs.map((d) => ({ type: docTypeOf(d.objectId), docNum: d.docNum, docEntry: d.docEntry })))) : null;
@@ -809,7 +809,7 @@ app.get("/item/:id", async (req, res) => {
   // The previous round's draft, folded and read-only (plain text, never a field, so it cannot post).
   const prevDraft = supersededRow ? `<details class="wb-disclosure ax-prev"><summary>${L("prev_draft_summary")}${icon("chevron-right")}</summary><div><p class="wb-hint">${L("prev_draft_hint")}</p><div class="ax-msg">${replyParas(supersededRow.body)}</div></div></details>` : "";
 
-  // Axle's questions directly above the redraft line, one unit with it (the answer goes in that field).
+  // The Email assistant's questions directly above the redraft line, one unit with it (the answer goes in that field).
   const ask = qBanner ? `<div class="ax-ask">${qBanner}${redraft}</div>` : notesBanner + redraft;
   // A voicemail has no reply, open or closed (Change A2, P4): no reply box, draft, redraft or documents.
   const replyCol = isVoicemail ? "" : `<div class="ax-replycol">${isCompose ? "" : infoCard}${replyCard}${draftingCard}${closedCard}${ask}${prevDraft}</div>`;
@@ -817,16 +817,16 @@ app.get("/item/:id", async (req, res) => {
 
   // --- The dock (from 640 up) and the phone bar. Send posts the work form to /send in place and
   // locks while it runs; the next email opens on success. Mark done, Reopen and a voicemail's
-  // Resolved by phone post /status; Create order opens Ratchet's builder in a new tab (inbound items
+  // Resolved by phone post /status; Create order opens the Sales order builder in a new tab (inbound items
   // only); More holds the rarer actions. Every rule for a disabled Send is the old one (canSend).
   // inBar: the phone bar's short label (two actions and More must fit at 360 in Dutch too).
   const markDone = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="done" class="wb-btn" data-next data-toast="${L("marked_done")}" title="${L("done_tip")}"${busy ? " disabled" : ""}>${icon("check")}<span>${L(inBar ? "mark_done_bar" : "mark_done")}</span></button>`;
   const phoneBtn = (inBar) => `<button type="submit" form="ax-f-status" name="to" value="phone" class="wb-btn wb-btn--primary" data-next data-toast="${L("mark_phone")}" title="${L("phone_tip")}"><span>${L(inBar ? "mark_phone_bar" : "mark_phone")}</span></button>`;
   const sendBtn = (inBar) => `<button type="submit" class="wb-btn wb-btn--commit"${inBar ? ' form="workform"' : ""} formaction="${U("/send")}" formnovalidate data-send data-inline data-next data-toast="${esc(sentLine(sendTo, ccList.map((e) => e.addr)))}"${canSend ? "" : " disabled"}${openQWarn ? ` title="${L("open_q_warn")}"` : ""}>${icon("send")}<span>${L("send")}</span></button>`
     + (openQWarn && !inBar ? `<span class="wb-hint ax-openq">${L("open_q_warn")}</span>` : "");
-  // Create order (2026-10-11): one dock control for order creation. The button opens Ratchet's builder
+  // Create order (2026-10-11): one dock control for order creation. The button opens the Sales order builder
   // with this e-mail read in; when an order resolved, a chevron offers Re-send order (a zero-priced copy
-  // of it). Both open in this tab: once the order is created Ratchet hands it back to this e-mail.
+  // of it). Both open in this tab: once the order is created Sales hands it back to this e-mail.
   const newHref = `/#/ratchet/new?axle=${w.id}`;
   const ratchet = isCompose ? "" : busy ? `<button type="button" class="wb-btn" disabled>${icon("plus")}<span>${L("new_order_ratchet")}</span></button>`
     : `<span class="ax-split" data-fold="2"><a class="wb-btn" href="${newHref}" target="_top" title="${L("new_order_ratchet_tip")}">${icon("plus")}<span>${L("new_order_ratchet")}</span></a>${resendHref
@@ -848,7 +848,7 @@ app.get("/item/:id", async (req, res) => {
   const blockRow = canBlock ? `<button type="button" class="wb-menu__item wb-menu__item--danger" role="menuitem" ${blockAct}><span>${L("block_sender")}</span></button>` : "";
   const checkedRow = admin ? `<button type="button" class="wb-menu__item" role="menuitem" data-overlay="ax-brief"><span>${L("what_checked")}</span></button>` : "";
   const ratchetRow = isCompose ? "" : `<a class="wb-menu__item" role="menuitem" href="${newHref}" target="_top"><span>${L("new_order_row")}</span></a>`;
-  // More holds what is left: on desk and tablet What Axle checked (admin), plus the dock slots that
+  // More holds what is left: on desk and tablet What the Email assistant checked (admin), plus the dock slots that
   // fold into it when the dock is too narrow (data-fold: Block sender first, then Create order;
   // axle.js dockFold shows their rows and More); on the phone also Create order and Block sender.
   const sepRow = (attr) => `<div class="wb-menu__sep" role="separator"${attr || ""}></div>`;
@@ -918,7 +918,7 @@ app.get("/item/:id", async (req, res) => {
   if (req.get("HX-Request")) {
     // An in-place open (a list row, an inline post's redirect, the poll): the work area only;
     // htmx takes the document title from the top-level <title>.
-    return res.send(`<title>${esc(`Item ${w.id} - Axle`)}</title>${email}${busyPoll}`);
+    return res.send(`<title>${esc(`Item ${w.id} - ${lang === "nl" ? "E-mail" : "Email"}`)}</title>${email}${busyPoll}`);
   }
   // Plain navigation (deep link / old link): the full shell. The queue pane is
   // lazy-loaded from /queue, so this route keeps exactly its old side effects.
@@ -1069,7 +1069,7 @@ app.post("/item/:id/work", (req, res) => {
   res.redirect(BASE.url("/item/" + w.id));
 });
 
-// Teach Axle (Phase 6): queue "Axle should know this" for Brad. The flag carries the item and the
+// Teach Email (Phase 6): queue "the Email assistant should know this" for Brad. The flag carries the item and the
 // reply box as it stands (the salesperson's edit if any, else the newest AI draft) so the review
 // has context. Text is sanitised and capped on the way in; it reaches the prompt only after Brad
 // approves it on /teach. No draft change, no redraft.
@@ -1096,7 +1096,7 @@ app.post("/item/:id/teach/:fid/withdraw", (req, res) => {
 // Change an item's language.
 //  - Compose item: this is the OUTBOUND draft language the salesperson chose, so re-draft in it
 //    (reuses the redraft loop, which already honours w.language).
-//  - Inbound item: this CORRECTS the detected customer language when Axle got it wrong (e.g. an
+//  - Inbound item: this CORRECTS the detected customer language when the Email app got it wrong (e.g. an
 //    image-only reply mis-tagged EN). It only re-tags the item, fixing the translation panel and
 //    the language chip, and does NOT re-draft, since the reply already follows the customer's own
 //    email. A fresh draft remains one click away via "Save & redraft".
@@ -1126,7 +1126,7 @@ app.post("/item/:id/language", (req, res) => {
 //
 // THE ITEM MOVES, IT IS NOT PUSHED. Whatever the destination, the item keeps its id, thread,
 // messages, attachments and drafts and stays open under the new owner, who sees it in their Mine
-// queue with a banner carrying the note. Axle then redrafts with the note and the whole thread in
+// queue with a banner carrying the note. The Email assistant then redrafts with the note and the whole thread in
 // context, so the receiver starts where the colleague left off.
 //
 // TWO SHAPES, decided in code by forward-guard.forwardTargetFor:
@@ -1177,7 +1177,7 @@ app.post("/item/:id/owner", async (req, res) => {
   audit(login, "owner_changed", w.id, `${ownerLabel(w)} -> ${to}${note ? " note: " + note.slice(0, 120) : ""}`);
   if (forwardedTo) audit(login, "email_forwarded", w.id, `${to} <${forwardedTo}> from ${w.mailbox} (item stays open)${info.changes ? "" : " (item already closed by someone else)"}`);
   else if (target) audit(login, "owner_forward_skipped", w.id, `${to} <${target.address}> - AXLE_ACTION_OWNER_FORWARD not enabled`);
-  // The receiver's draft: redrafted with the note and the thread in context, unless Axle is busy on
+  // The receiver's draft: redrafted with the note and the thread in context, unless the Email assistant is busy on
   // it already or the item has nothing to draft (a compose item keeps its draft).
   // A voicemail is never drafted (Change A2, P5), so its status is left exactly as it was.
   if (info.changes && w.status !== "investigating" && w.origin !== "compose" && !w.injection_flag && !SG.isVoicemailItem(w)) {
@@ -1237,7 +1237,7 @@ app.post("/item/:id/return-label", async (req, res) => {
   const rec = { id: made.id, barcode: made.barcode, kind: p.kind, shop: made.shop, order: p.order || null, country: p.country || null, by: login, at: new Date().toISOString(), attachment: fileName };
   db.prepare("UPDATE work_items SET return_label_json = ?, updated_at = datetime('now') WHERE id = ?").run(JSON.stringify(rec), w.id);
   audit(login, "return_label_created", w.id, `${p.kind} shipment ${made.id}${made.barcode ? " " + made.barcode : ""} (${made.shop})${p.order ? " order " + p.order : ""} -> ${fileName}`);
-  // The reply text follows: a redraft with seed.return_label set, unless Axle is busy on the item.
+  // The reply text follows: a redraft with seed.return_label set, unless the Email assistant is busy on the item.
   if (w.status !== "investigating" && w.origin !== "compose") {
     db.prepare("UPDATE work_items SET status = 'investigating', updated_at = datetime('now') WHERE id = ?").run(w.id);
     audit(login, "redraft_started", w.id, "return label");
@@ -1330,9 +1330,9 @@ app.post("/item/:id/shopify-account/:action", async (req, res) => {
 // On-demand: translate the salesperson's CURRENT (possibly edited) reply into their own
 // language so they can read what they're about to send. Returns JSON; cached like all
 // translations. The text is treated strictly as data by the translator.
-// The e-mail as Ratchet's intake text: a From/Subject header (so the parser's customer match can use
+// The e-mail as the Sales intake text: a From/Subject header (so the parser's customer match can use
 // the sender address and domain) over the full plain-text body from Graph, falling back to the stored
-// (4000-char) email_text. Read-only; capped at Ratchet's 8000-char parse limit.
+// (4000-char) email_text. Read-only; capped at the Sales 8000-char parse limit.
 app.get("/item/:id/ratchet-intake.json", async (req, res) => {
   const w = db.prepare("SELECT * FROM work_items WHERE id = ?").get(req.params.id);
   if (!w) return res.status(404).json({ error: "not_found" });
@@ -1449,7 +1449,7 @@ app.post("/item/:id/attach-all", async (req, res) => {
   res.redirect(BASE.url("/item/" + w.id));
 });
 
-// Order hand-back (2026-10-11): Ratchet calls this right after it created an order opened from this
+// Order hand-back (2026-10-11): Sales calls this right after it created an order opened from this
 // e-mail (Create order, or Re-send order with `original`), then sends the user back to this email. The order is
 // re-resolved from SAP and must belong to the email's own customer (itemScope); its PDF is staged on
 // the reply and the reply redrafted with a staff note naming it (the trusted feedback channel). JSON.

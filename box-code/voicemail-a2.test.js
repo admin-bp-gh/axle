@@ -98,7 +98,7 @@ test("the 14 day window: exactly 14 days back counts, one second more does not",
   assert.deepStrictEqual(VS.earlierVoicemails(me, rows).map((x) => x.id), [1]);
 });
 
-test("a voicemail timed outside the window never counts because of when Axle ingested it", () => {
+test("a voicemail timed outside the window never counts because of when the Email app ingested it", () => {
   const me = vm(10, "0499000000", "20 okt. 2026 12:00:00");
   const old = vm(1, "0499000000", "1 okt. 2026 12:00:00", { created_at: "2026-10-19 12:00:00", email_received: "2026-10-19T12:00:00Z" });
   assert.deepStrictEqual(VS.earlierVoicemails(me, [me, old]), []);
@@ -293,7 +293,7 @@ test("Create order hand-back on a voicemail: Done stays Done, an open one keeps 
 
     const ready = insertVm({ subject: subj("0499000000"), status: "ready" });
     const r = await post(`/item/${ready}/order-created`, { docnum: "123456" });
-    assert.strictEqual(r.status, 200, "no error back to Ratchet");
+    assert.strictEqual(r.status, 200, "no error back to Sales");
     await new Promise((ok) => setTimeout(ok, 20));
     const row = db.prepare("SELECT status, feedback FROM work_items WHERE id = ?").get(ready);
     assert.strictEqual(row.status, "ready");

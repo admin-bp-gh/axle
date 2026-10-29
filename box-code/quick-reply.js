@@ -1,17 +1,17 @@
 "use strict";
 // quick-reply.js - quick-reply mode (2026-10-10, draft review section 8). Pure: no network, no DB.
 //
-// Most info@ replies written in Outlook instead of Axle were short conversational turns ("Voor welk
-// type Land Rover?", "Het is onderweg met UPS."), while Axle answered the same turns with a full
+// Most info@ replies written in Outlook instead of the Email app were short conversational turns ("Voor welk
+// type Land Rover?", "Het is onderweg met UPS."), while the Email assistant answered the same turns with a full
 // investigation or a held draft: on items since 10 Sep, 115 newest messages were a short reply in a
-// thread we were in, and Axle held 44 % of them or wrote nothing, with a median draft of 47 words.
+// thread we were in, and the Email assistant held 44 % of them or wrote nothing, with a median draft of 47 words.
 //
 // A QUICK TURN is decided here, in code: the customer's new text (above the quote) is 30 words or
 // fewer, carries no files, and the thread is one we are in (we sent on the item, or the quoted part
 // is one of our own mails). For a quick turn the drafter gets QUICK_BLOCK (a reply of the
 // customer's length, never a held draft) and at most two lookups (engine.agenticDraft
 // opts.maxLookups). Brad's Gate 1 answers: two lookups, both mailboxes, and one "Ask the customer"
-// button that turns Axle's open questions into a short reply to the customer (ASK_CUSTOMER).
+// button that turns the Email assistant's open questions into a short reply to the customer (ASK_CUSTOMER).
 // Off switch: AXLE_QUICK_REPLY=0. Every quick draft is audited as 'quick_reply', which the
 // adoption dashboard reads.
 const { topOfMessage } = require("./engine.js");

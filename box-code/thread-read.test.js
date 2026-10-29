@@ -30,14 +30,14 @@ test("duplicates collapse", () => {
 });
 
 test("a sibling that maps to no work item is ours to mark", () => {
-  // Mail Axle never ingested (arrived after the last sync, or filtered out) is still this
+  // Mail the Email app never ingested (arrived after the last sync, or filtered out) is still this
   // conversation's mail - nobody else is working it.
   assert.deepStrictEqual(planThreadRead(item(), [sib("older")], none).mark, ["older"]);
   assert.deepStrictEqual(planThreadRead(item(), [{ id: "nokey" }], none).mark, ["nokey"]);
 });
 
 test("THE GUARD: a different OPEN item's mail is left unread", () => {
-  // A supplier or colleague writing into the same Outlook conversation is a separate Axle item.
+  // A supplier or colleague writing into the same Outlook conversation is a separate Email item.
   // Marking it read would hide live work, and with AXLE_ACTION_OUTLOOK_CLOSE on, close it.
   const lookup = (key) => (key === "supplier@allmakes.co.uk|package damaged" ? { id: 1400, status: "ready" } : mine());
   const p = planThreadRead(item(), [sib("mine2"), sib("theirs", "supplier@allmakes.co.uk|package damaged")], lookup);

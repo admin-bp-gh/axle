@@ -9,7 +9,7 @@
 // as the reply to the current email.
 //
 // On 1308 the customer wrote "the package was in my mailbox now" and the send box still held the
-// earlier "your parcel is stuck in Norway, check your local pickup point" text. Axle had actually
+// earlier "your parcel is stuck in Norway, check your local pickup point" text. The Email assistant had actually
 // read the follow-up correctly - summary "customer confirms receipt of previously delayed package;
 // issue resolved", suggest_close set - but the stale draft beside it said otherwise, and that is
 // what a salesperson reads. 85 of the 691 drafted items in the 15 Aug 2026 backup were in this

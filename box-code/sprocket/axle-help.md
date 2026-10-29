@@ -1,23 +1,23 @@
-# Axle help — what Axle does and how to use it
+# Email help: what the Email app does and how to use it
 
-This file is Sprocket's only source of truth. Sprocket answers staff questions ("how do I do X
-in Axle?") **using nothing but the capabilities written below.** If something is not described
-here, Sprocket does not know about it and will say so rather than guess — so keep this file
+This file is the AI Helper's only source of truth. The AI Helper answers staff questions ("how do I do X
+in Email?") **using nothing but the capabilities written below.** If something is not described
+here, the AI Helper does not know about it and will say so rather than guess, so keep this file
 accurate and current. Brad maintains it.
 
-How to write an entry (Sprocket reads the structure, so keep to it):
+How to write an entry (the AI Helper reads the structure, so keep to it):
 
 - Start each capability with a `## Heading`.
 - The first line under the heading is `Key: <allow-list-key>` — the action-allow-list key that
   governs it, or `none` for things that are always available (reading, viewing, editing a draft).
-  Sprocket cross-checks this key against the **live** allow-list: if the key is switched off, it
+  The AI Helper cross-checks this key against the **live** allow-list: if the key is switched off, it
   tells the user the capability isn't enabled yet and offers to log a request — it never describes
   an off capability as if it works.
 - Then `What it does:` (one or two plain sentences) and `How to use it:` (short numbered steps).
 - Write for a salesperson, not an engineer. No SAP/Shopify internals unless the user needs them.
 
 Allow-list keys currently referenced here: `send_reply`, `mark_read`, `attach_doc`,
-`compose_send`, `contactform_send`. (The live on/off state is supplied to Sprocket separately at
+`compose_send`, `contactform_send`. (The live on/off state is supplied to the AI Helper separately at
 answer time — do not hard-code on/off in this file.)
 
 ---
@@ -26,66 +26,66 @@ answer time — do not hard-code on/off in this file.)
 Key: none
 
 What it does: The inbox is your prioritised work queue. Each card is one customer conversation
-Axle has already read and researched. The coloured state chip tells you what it needs from you:
-"New", "Drafting…" (Axle is still working), "Needs your answer", "Ready to send", "Done" or
+the Email assistant has already read and researched. The coloured state chip tells you what it needs from you:
+"New", "Drafting…" (the Email assistant is still working), "Needs your answer", "Ready to send", "Done" or
 "Archived". By default the queue sorts so whatever needs you next is at the top.
 
 How to use it:
-1. Open Axle. The left pane is the queue; the middle and right panes are the item you're working.
+1. Open Email. The left pane is the queue; the middle and right panes are the item you're working.
 2. Use Mine / All to switch between your own items and everyone's.
 3. Use the status tabs (Open / Done / Archived / All) and the search box to find anything.
 4. Use the Sort control if you'd rather see newest, oldest or highest-priority first.
 5. Click any card to open the conversation, the draft and the brief.
 
-## Reading the conversation and "What Axle checked"
+## Reading the conversation and "What the Email assistant checked"
 Key: none
 
 What it does: When you open an item you see the customer's email (newest message first, older
-messages folded beneath), and on the right the "What Axle checked" brief plus any SAP documents
-Axle found — so you can see the facts behind the draft without opening SAP yourself.
+messages folded beneath), and on the right the "What the Email assistant checked" brief plus any SAP documents
+the Email assistant found, so you can see the facts behind the draft without opening SAP yourself.
 
 How to use it:
 1. Click an item.
 2. Read the newest message at the top; click "Earlier in this conversation" to expand the history.
-3. Read the right-hand brief to see what Axle looked up (stock, orders, customer, tracking).
+3. Read the right-hand brief to see what the Email assistant looked up (stock, orders, customer, tracking).
 
 ## Reading a foreign-language email in your own language
 Key: none
 
-What it does: If a customer wrote in a language other than your interface language, Axle shows a
+What it does: If a customer wrote in a language other than your interface language, the Email app shows a
 translation so you can read it. Your interface language is separate (EN/NL toggle, top right).
 
 How to use it:
 1. Open the item.
 2. Click "Show translation" under the customer's message.
-3. To change which language Axle thinks the customer wrote in, use the customer-language control
+3. To change which language the Email app thinks the customer wrote in, use the customer-language control
    on the item (this fixes the translation; it does not re-send anything).
 
-## Answering Axle's questions and redrafting
+## Answering the Email assistant's questions and redrafting
 Key: none
 
-What it does: When Axle needs something from you before it can finish a reply — a physical check,
-a colleague's confirmation, a decision — it lists its questions and holds the draft. You answer in
-one box and ask Axle to redraft.
+What it does: When the Email assistant needs something from you before it can finish a reply (a physical check,
+a colleague's confirmation, a decision), it lists its questions and holds the draft. You answer in
+one box and ask the Email assistant to redraft.
 
 How to use it:
 1. Open an item marked "Needs your answer".
 2. Read the numbered questions (a "Please check" marker means a physical check).
-3. Type your answers and anything else Axle should know in the one answer box.
-4. Click "Save & redraft" — Axle rewrites the reply with your input in the background.
+3. Type your answers and anything else the Email assistant should know in the one answer box.
+4. Click "Save & redraft": the Email assistant rewrites the reply with your input in the background.
 
 ## Dig deeper on a draft
 Key: none
 
-What it does: Axle writes the reply again, more thoroughly and with a stronger model: it decodes the VIN
+What it does: The Email assistant writes the reply again, more thoroughly and with a stronger model: it decodes the VIN
 and checks every part it names in JLR EPC, and looks at trusted catalogue sites when SAP and EPC leave
 the fitment open. The new draft replaces the current one, like Redraft. When it changes something, a
-note starting "Dig deeper:" under Notes from Axle says what changed. Axle may suggest it quietly under
+note starting "Dig deeper:" under Notes from the Email assistant says what changed. The Email assistant may suggest it quietly under
 the answer box, for example when the fitment is not confirmed. It never runs by itself.
 
 How to use it:
 1. Open an item with a draft.
-2. (Optional) Type what Axle should look at in the answer box.
+2. (Optional) Type what the Email assistant should look at in the answer box.
 3. Click "Dig deeper" next to Redraft, or press Ctrl+Shift+Enter (Cmd+Shift+Enter on a Mac).
 4. It takes a minute or two; you can work on other emails meanwhile.
 
@@ -93,7 +93,7 @@ How to use it:
 Key: none
 
 What it does: The "Reply to send" box is the exact text the customer will receive. You can change
-it however you like before sending; "Reset to AI draft" puts Axle's original wording back.
+it however you like before sending; "Reset to AI draft" puts the Email assistant's original wording back.
 
 How to use it:
 1. Open a "Ready to send" item.
@@ -104,7 +104,7 @@ How to use it:
 Key: send_reply
 
 What it does: Sends your reply to the customer, in the original email thread, exactly as shown in
-the "Reply to send" box. Axle then marks the item Done and marks the original email read. Axle
+the "Reply to send" box. The Email app then marks the item Done and marks the original email read. The Email app
 re-checks the final text first: a flagged/scam item can never be sent, the recipient is locked to
 the original sender, and only approved links are allowed.
 
@@ -134,10 +134,10 @@ How to use it:
 2. Pick the type and type the document number.
 3. The PDF is staged with the reply; send the reply to send it.
 
-## Suggested documents (Axle proposes the right PDF for you)
+## Suggested documents (the Email assistant proposes the right PDF for you)
 Key: attach_doc
 
-What it does: When a customer's email refers to one of their orders or invoices, Axle finds the
+What it does: When a customer's email refers to one of their orders or invoices, the Email assistant finds the
 document in SAP and offers it as a one-click attachment, so you don't have to look the number up.
 It only ever suggests documents that belong to this customer.
 
@@ -150,7 +150,7 @@ How to use it:
 Key: claim_autoattach
 
 What it does: When MyParcel writes about a parcel that has gone missing and asks for our invoices,
-Axle works out which shipment they mean from the barcode in their email, finds the order and the
+the Email assistant works out which shipment they mean from the barcode in their email, finds the order and the
 sales invoice for it, and attaches two documents to the draft for you: the sales invoice, and a
 purchase-value statement listing every part in that parcel with what it cost us. It also writes the
 reply, including the contents list and the box description MyParcel always asks for.
@@ -163,7 +163,7 @@ How to use it:
 2. Check them, remove either one if you don't want it, and edit the reply as usual.
 3. Send the reply to send them.
 
-Good to know: Axle can only ever attach documents belonging to the order that the barcode itself
+Good to know: The Email assistant can only ever attach documents belonging to the order that the barcode itself
 points to, so it cannot pull in another customer's paperwork. If the barcode is not one of our own
 shipments it attaches nothing and asks you to check it. Photos of the parcel or the product are
 still yours to add.
@@ -171,21 +171,21 @@ still yours to add.
 ## Composing a brand-new email to a customer
 Key: compose_send
 
-What it does: Lets you start a new (non-reply) email. You pick the customer, tell Axle in plain
-language what to say, and Axle researches the facts and drafts it. Sending new emails is governed
+What it does: Lets you start a new (non-reply) email. You pick the customer, tell the Email assistant in plain
+language what to say, and the Email assistant researches the facts and drafts it. Sending new emails is governed
 separately from replies.
 
 How to use it:
 1. Click "New email".
 2. Find the customer (code, email, order #, invoice # or name) and confirm the recipient.
-3. Tell Axle what the email should say, pick the language, and "Draft this email".
+3. Tell the Email assistant what the email should say, pick the language, and "Draft this email".
 4. Review the draft. (Whether you can send it depends on the compose-send allow-list key.)
 
 ## Replying to a webshop contact-form message
 Key: contactform_send
 
 What it does: Contact-form messages arrive from Shopify's mailer, so the customer's real address is
-in the body, not the sender. Axle parses the form, matches the customer in SAP, and proposes the
+in the body, not the sender. The Email app parses the form, matches the customer in SAP, and proposes the
 address to reply to. You confirm the recipient before anything can be sent.
 
 How to use it:
@@ -196,7 +196,7 @@ How to use it:
 ## Setting the customer's language or reassigning an item
 Key: none
 
-What it does: You can correct the language Axle detected for a customer, and reassign an item to a
+What it does: You can correct the language the Email app detected for a customer, and reassign an item to a
 different owner/queue.
 
 How to use it:
@@ -215,34 +215,34 @@ How to use it:
 2. Use the action bar: "Mark done", "Resolved by phone", or "Archive".
 3. A closed item can be reopened from the same bar.
 
-## Handling an email in Outlook instead of Axle
+## Handling an email in Outlook instead of the Email app
 Key: outlook_close
 
-What it does: If you deal with an email straight in Outlook rather than in Axle, you don't have to
-come back and press Done. At the next sync Axle checks each open item's email and closes it if you
+What it does: If you deal with an email straight in Outlook rather than in the Email app, you don't have to
+come back and press Done. At the next sync the Email app checks each open item's email and closes it if you
 have marked it read, filed it out of the Inbox, or deleted it. It shows on the Done tab as
 "handled in Outlook".
 
-Axle only ever works from the Inbox (and, for info@, the Shopify Contact Form folder). Anything you
-move somewhere else is yours to handle in Outlook, and Axle lets it go.
+The Email app only ever works from the Inbox (and, for info@, the Shopify Contact Form folder). Anything you
+move somewhere else is yours to handle in Outlook, and the Email app lets it go.
 
-This also works the other way round. If you mark an email unread again in Outlook — the usual way
-of saying "actually, this still needs doing" — Axle puts the item back on your Open list at the
-next sync, exactly as it was. That only applies to items Axle closed for you: something you closed
-yourself in Axle, or closed by sending a reply, stays closed, because that was your decision. The
+This also works the other way round. If you mark an email unread again in Outlook (the usual way
+of saying "actually, this still needs doing"), the Email app puts the item back on your Open list at the
+next sync, exactly as it was. That only applies to items the Email app closed for you: something you closed
+yourself in the Email app, or closed by sending a reply, stays closed, because that was your decision. The
 email has to be unread and still in the Inbox (or the Shopify Contact Form folder); if you filed or
 deleted it, it stays closed. Items closed more than a month ago are settled and do not come back.
 
-Axle looks at the whole conversation, not just the newest email. While any message in a thread is
+The Email app looks at the whole conversation, not just the newest email. While any message in a thread is
 still unread in the Inbox, the item stays on your Open list — so if a customer's first email is
 unread but you have read their follow-up, the item is still waiting for you. That is deliberate:
-unread mail always wins over any reason Axle might have had to close it.
+unread mail always wins over any reason the Email app might have had to close it.
 
 Two more things worth knowing. Reading counts as handling, so opening the last unread email of a
 conversation in the reading pane will close its item — if that closes something you are still
-working on, mark it unread again, or reopen it from the Done tab. And an item Axle has flagged for
+working on, mark it unread again, or reopen it from the Done tab. And an item the Email assistant has flagged for
 a careful check is treated more cautiously: reading it is not enough to close it, so it stays on
-your list until you either file or delete the email in Outlook, or press Done in Axle.
+your list until you either file or delete the email in Outlook, or press Done in the Email app.
 
 How to use it:
 1. Handle the email in Outlook as you normally would — read it, file it, or delete it.
@@ -252,8 +252,8 @@ How to use it:
 ## Stopping unwanted emails from a sender (block)
 Key: none
 
-What it does: Hides future emails from one sender address so they no longer appear in Axle. The mail
-still arrives in the shared Outlook mailbox; this only affects Axle, and any teammate can undo it.
+What it does: Hides future emails from one sender address so they no longer appear in the Email app. The mail
+still arrives in the shared Outlook mailbox; this only affects the Email app, and any teammate can undo it.
 
 Only the exact address can be blocked — never a whole domain. Blocking a domain like gmail.com would
 hide every customer using it, which is exactly what happened once before anyone noticed.
@@ -263,10 +263,10 @@ How to use it:
 2. Use "Block sender" and confirm — the address is shown before you commit.
 3. Manage or undo blocks on the "Blocked" page.
 
-## Switching Axle's language (English / Dutch)
+## Switching the Email app's language (English / Dutch)
 Key: none
 
-What it does: Switches Axle's own interface wording between English and Dutch. This is separate from
+What it does: Switches the Email app's own interface wording between English and Dutch. This is separate from
 the customer's language — it only changes what you see.
 
 How to use it:
@@ -275,7 +275,7 @@ How to use it:
 ## Getting the newest emails now (Sync)
 Key: none
 
-What it does: Axle checks for new mail automatically on a schedule. "Sync now" fetches immediately
+What it does: The Email app checks for new mail automatically on a schedule. "Sync now" fetches immediately
 instead of waiting.
 
 How to use it:

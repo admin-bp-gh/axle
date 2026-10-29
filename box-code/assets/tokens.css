@@ -1,5 +1,5 @@
 /* Workbench tokens (vocabulary v1, decided 6 Oct 2026). One plain CSS file of custom properties,
-   read unchanged by Workbench (through index.css) and by Axle. Light only. Quiet neutrals with a
+   read unchanged by Workbench (through index.css) and by the Email app. Light only. Quiet neutrals with a
    faint cool bias, hairline borders, near-flat shadows. Near-black is the only strong colour; green
    is status and focus only, except the webshop brand green on commit actions (send, post). */
 :root {
@@ -34,7 +34,7 @@
   --skel: #ededf1;
   --skel-hi: #e3e3e8;
 
-  /* Tones: wash and text. --new-* and --off-* are older names for neutral, kept for existing code and Axle. */
+  /* Tones: wash and text. --new-* and --off-* are older names for neutral, kept for existing code and the Email app. */
   --neutral-bg: #f3f3f6; --neutral-fg: #6e6e73;
   --new-bg: #f3f3f6;     --new-fg: #6e6e73;
   --off-bg: #f3f3f6;     --off-fg: #6e6e73;

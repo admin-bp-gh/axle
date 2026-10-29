@@ -1,5 +1,5 @@
 // acknowledgement.js - should a "no reply needed" item still offer a courtesy line, and is the
-// line Axle wrote actually a courtesy line?
+// line the Email assistant wrote actually a courtesy line?
 //
 // WHY THIS EXISTS (2026-08-15, item 1308). The engine returns status='no_reply' when the newest
 // message merely closes the conversation - a thank-you, "I have placed the order", "the package was
@@ -14,15 +14,15 @@
 //
 // TWO INDEPENDENT CHECKS, both must pass:
 //   1. shouldAcknowledge - were we in this conversation at all? (policy, decided in code)
-//   2. isCourtesyOnly    - is the text Axle wrote actually just a courtesy? (content, not self-report)
+//   2. isCourtesyOnly    - is the text the Email assistant wrote actually just a courtesy? (content, not self-report)
 // Failing either simply restores the old behaviour: no draft, "No reply needed?", human closes it.
 // There is no path here that makes an item MORE sendable than it was before.
 
-// 1. POLICY. "We were in an active exchange" has two reliable traces. A recorded send means Axle
+// 1. POLICY. "We were in an active exchange" has two reliable traces. A recorded send means the Email app
 // itself mailed this customer on this item. A REOPEN means the conversation was already a work item
 // before this message arrived, so someone had it in hand - which also covers the threads answered
 // directly in Outlook, where no send row is ever written (roughly four in five suggest_close items
-// in the 15 Aug 2026 data have no Axle send). A brand-new item with no send is first contact, and
+// in the 15 Aug 2026 data have no Email app send). A brand-new item with no send is first contact, and
 // first contact that needs no reply needs no courtesy line either.
 function shouldAcknowledge({ isReopen = false, priorSends = 0 } = {}) {
   return Boolean(isReopen) || Number(priorSends) > 0;

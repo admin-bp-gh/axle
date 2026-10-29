@@ -3,7 +3,7 @@
 // customer; this one relays an existing message, unaltered, between our own mailboxes.
 //
 // PERMISSION. POST /users/{mailbox}/messages/{id}/forward needs Mail.Send only (Microsoft Graph
-// v1.0, verified 2026-08-08) - the same application permission Axle already holds, Exchange-RBAC
+// v1.0, verified 2026-08-08) - the same application permission the Email app already holds, Exchange-RBAC
 // scoped to info@ + drachten@. No new M365 grant, no Mail.ReadWrite, and admin@ stays denied as a
 // SENDER (it is only ever a recipient here). Graph copies the message body and its attachments
 // itself, so nothing is re-rendered, re-escaped or lost in translation.

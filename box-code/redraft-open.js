@@ -1,6 +1,6 @@
 // redraft-open.js — re-run every OPEN work item through the current drafting build.
 //
-// 2026-08-12: the accuracy gates changed what Axle is allowed to say (no VIN claims, no sourcing
+// 2026-08-12: the accuracy gates changed what the Email assistant is allowed to say (no VIN claims, no sourcing
 // mechanism, only high-confidence statements, interim required on a hold). Items drafted before
 // the change still hold their old text, so they are re-drafted once against the new build rather
 // than left for a salesperson to find. One-off maintenance, safe to re-run.

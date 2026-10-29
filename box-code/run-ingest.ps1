@@ -1,5 +1,5 @@
 # run-ingest.ps1 - one watermark ingest pass over info@ + drachten@ (every email new since the last
-# sync), followed by the Outlook->Axle reconciliation. Invoked by the "Axle Ingest" scheduled task.
+# sync), followed by the Outlook->Email reconciliation. Invoked by the "Axle Ingest" scheduled task.
 # Paths derive from $PSScriptRoot (the app folder), so the runtime can live anywhere; the log sits
 # in the sibling ..\logs. ingest.js loads its own .env relative to itself.
 #

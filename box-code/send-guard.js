@@ -1,4 +1,4 @@
-// send-guard.js - DETERMINISTIC send guardrails for Axle (Phase 5, allow-list action #1).
+// send-guard.js - DETERMINISTIC send guardrails for the Email app (Phase 5, allow-list action #1).
 // Pure and model-independent: no LLM, no network. Given a work item and the approved
 // draft row, it either returns a validated send payload or throws with a clear reason.
 // Everything an attacker could influence (the draft text) is checked here in code, so a

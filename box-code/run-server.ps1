@@ -1,4 +1,4 @@
-# run-server.ps1 - keeps the Axle web server alive. Paths derive from this script's own folder
+# run-server.ps1 - keeps the Email web server alive. Paths derive from this script's own folder
 # ($PSScriptRoot = the app folder, i.e. the C:\Axle\app junction), so the runtime can live anywhere -
 # the logs sit in the sibling ..\logs. The server's stdout+stderr are piped through logrotate-tee.js,
 # which appends to ..\logs\server.log and rotates it by size (threshold + how many rotated files to

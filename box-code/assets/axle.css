@@ -1,7 +1,7 @@
-/* Axle layout (ax-), redesign v1, 7 Oct 2026. Linked after tokens.css and vocabulary.css, which it
+/* Email layout (ax-), redesign v1, 7 Oct 2026. Linked after tokens.css and vocabulary.css, which it
    never restyles: panes, columns and the spacing between vocabulary parts only, tokens only.
    Cut points as the vocabulary: phone under 640, tablet 640 to 1023, laptop 1024 to 1279, desk 1280
-   and up. --ax-top is the height of Axle's own top bar above the panes (0 when framed). */
+   and up. --ax-top is the height of the Email app's own top bar above the panes (0 when framed). */
 
 /* ---------- Page ---------- */
 .ax-doc { margin: 0; min-height: 100vh; background: var(--bg); }
@@ -9,9 +9,9 @@
 :where(.ax-doc) :where(h1, h2, h3, h4, p, ol, ul) { margin: 0; }
 :where(.ax-doc) :where(*, *::before, *::after) { box-sizing: border-box; }
 
-/* Top bars. Standalone (not framed) Axle draws one slim bar: .ax-top across the page from 640 up,
-   and on a phone each pane's own .ax-ptop (the list: home, Axle, the queue's icons; an email: back,
-   sender, status). Framed in Workbench, Axle draws no bar at all. */
+/* Top bars. Standalone (not framed) the Email app draws one slim bar: .ax-top across the page from 640 up,
+   and on a phone each pane's own .ax-ptop (the list: home, Email, the queue's icons; an email: back,
+   sender, status). Framed in Workbench, the Email app draws no bar at all. */
 .ax-ptop { display: none; }
 .ax-top__t { margin: 0 0 0 4px; font-size: var(--fs-md); font-weight: 600; letter-spacing: -.01em; color: inherit; text-decoration: none; }
 .ax-top > .wb-btn + .ax-top__t { margin-left: 0; }
@@ -143,15 +143,15 @@
 .ax-qs { margin: 8px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
 .ax-qs > li { padding-left: 2px; }
 .ax-qs .wb-pill { margin-left: 6px; }
-/* Axle's questions directly above the redraft line, one unit */
+/* The Email assistant's questions directly above the redraft line, one unit */
 .ax-ask { display: flex; flex-direction: column; gap: var(--s2); }
 .ax-redraft { display: flex; gap: var(--s2); }
 .ax-redraft > .wb-input { flex: 1; }
-/* Under the comment field, inside its column: "Suggest as rule" on the left, Teach Axle on the right edge. */
+/* Under the comment field, inside its column: "Suggest as rule" on the left, Teach Email on the right edge. */
 .ax-fbcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s2); }
 .ax-rulerow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
 .ax-rulechk { display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; }
-/* "Ask the customer" under Axle's questions (quick-reply round, 2026-10-10). */
+/* "Ask the customer" under the Email assistant's questions (quick-reply round, 2026-10-10). */
 .ax-askcust { margin-top: 8px; }
 .ax-link { display: block; margin-top: 4px; font: var(--fs-xs)/1.4 var(--mono); overflow-wrap: anywhere; }
 /* The email's text: paragraphs keep the customer's line breaks */
@@ -173,7 +173,7 @@
 [data-tr-again][aria-busy] > .wb-i { animation: wb-spin .7s linear infinite; }
 .ax-caller { margin-top: 10px; font-size: var(--fs-xs); color: var(--ink-2); }
 /* A message's attachments: photo thumbnails (a skeleton until loaded, "Could not load" with Retry
-   when they fail), then file chips; the quiet line naming what Axle could not read */
+   when they fail), then file chips; the quiet line naming what the Email assistant could not read */
 .ax-atts-in { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
 .ax-quoted .ax-atts-in { margin-top: 8px; }
 .ax-thumbs { display: flex; flex-wrap: wrap; gap: var(--s2); }
@@ -251,7 +251,7 @@
   .ax-redraft:has(.ax-deep) > .ax-rdbtns { flex-direction: row; width: 100%; justify-content: flex-end; }
 }
 .ax-prev > div { display: flex; flex-direction: column; gap: 8px; }
-/* Dialog bodies: choices, the language list, earlier Teach flags, What Axle checked */
+/* Dialog bodies: choices, the language list, earlier Teach flags, What the Email assistant checked */
 .ax-choices { display: flex; flex-direction: column; margin: 0 -8px; }
 .ax-choices > form { display: contents; }
 .ax-result { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); }
@@ -281,7 +281,7 @@
 .ax-bar > .wb-btn--icon { flex: none; }
 .ax-bar > .wb-btn > .wb-i { flex: none; }
 .ax-bar > .wb-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Framed, the Workbench shell floats Sprocket (56 px) in the bottom right corner: wherever the
+/* Framed, the Workbench shell floats the AI Helper (56 px) in the bottom right corner: wherever the
    email column reaches the right edge, it stops 76 px short so the dock and the reply stay clear */
 @media (min-width: 640px) and (max-width: 1279.98px) { .is-framed .ax-col { padding-right: 76px; } }
 @media (min-width: 1280px) { .is-framed .ax-col--split { padding-right: 76px; } }
@@ -451,7 +451,7 @@
   .ax-queue .wb-row[aria-selected="true"]::before { display: none; }
 }
 
-/* ---------- Phone: Axle standalone, its own top bar, pages and sheets ---------- */
+/* ---------- Phone: Email standalone, its own top bar, pages and sheets ---------- */
 @media (max-width: 639.98px) {
   /* The To and Cc lines: a wrapped line starts in the address column (the label sits in the
      padding through its negative margin, still centred on the first line); Add Cc there shows its

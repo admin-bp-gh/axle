@@ -1,4 +1,4 @@
-// harness-outlook-close.js — Outlook → Axle reconciliation (outlook-close.js).
+// harness-outlook-close.js: Outlook → Email reconciliation (outlook-close.js).
 //
 // Runs against a THROWAWAY SQLite DB (AXLE_DB is pointed at a temp file BEFORE db.js is
 // required, so the live C:\Axle\data\axle.db is never touched) and a STUBBED Graph read, so
@@ -205,16 +205,16 @@ const MONITORED = new Set([INBOX, FORM]);
 
   // --- 2c. HUMAN closes, marked unread again (2026-08-15) --------------------------------
   // The rule that changed: a human's Done / phone / sent reply IS undone, but only when the unread
-  // message is one AXLE marked read at close time (the read_marks ledger). The obvious test —
-  // "was the message modified after the close?" — is impossible: Exchange does not move
+  // message is one the Email app marked read at close time (the read_marks ledger). The obvious test,
+  // "was the message modified after the close?", is impossible: Exchange does not move
   // lastModifiedDateTime on a read-state change (proved live on #500). The ledger is also what
   // stops the first run resurrecting every item closed before it existed: they have no rows.
   const OURS = true, NOT_OURS = false;
   for (const res of ["done", "phone", "replied"]) {
     ok(OC.canReopen(wi({ resolution: res }), at, OURS) === "unread-after-close",
-      `a human close ('${res}') whose mail AXLE marked read is reopened when it goes unread`);
+      `a human close ('${res}') whose mail the Email app marked read is reopened when it goes unread`);
     ok(OC.canReopen(wi({ resolution: res }), at, NOT_OURS) === null,
-      `...but '${res}' mail Axle never marked read stays closed (never read, not un-read)`);
+      `...but '${res}' mail the Email app never marked read stays closed (never read, not un-read)`);
     ok(OC.canReopen(wi({ resolution: res }), at) === null,
       `...and '${res}' defaults to not-ours when the caller says nothing`);
   }
@@ -234,7 +234,7 @@ const MONITORED = new Set([INBOX, FORM]);
   const led = item({ status: "done", resolution: "done" });
   const notLed = item({ status: "done", resolution: "done" });
   db.prepare("INSERT INTO read_marks (mailbox, message_id, work_item_id) VALUES ('info', 'LEDGER-1', ?)").run(led.id);
-  ok(OC.markedReadByAxle("info", "LEDGER-1", led.id) === true, "a message Axle marked read is on the ledger");
+  ok(OC.markedReadByAxle("info", "LEDGER-1", led.id) === true, "a message the Email app marked read is on the ledger");
   ok(OC.markedReadByAxle("info", "LEDGER-1", notLed.id) === false, "...but only as evidence about the item that closed");
   ok(OC.markedReadByAxle("drachten", "LEDGER-1", led.id) === false, "...and only in its own mailbox");
   ok(OC.markedReadByAxle("info", "NOT-THERE", led.id) === false, "an unknown message is not on the ledger");
@@ -244,7 +244,7 @@ const MONITORED = new Set([INBOX, FORM]);
   // connectors.getMessages maps them; the subject is what threadGroup keys on.
   const msg = (id, subject, from = "customer@example.com", received = "2026-08-06T09:00:00Z") =>
     ({ id, subject, from: { address: from, name: "C" }, received, text: "", hasAttachments: false });
-  // Stand in for markReadSafe: record that Axle marked this message read when it closed the item.
+  // Stand in for markReadSafe: record that the Email app marked this message read when it closed the item.
   const ledger = (mailbox, messageId, itemId) =>
     db.prepare("INSERT OR REPLACE INTO read_marks (mailbox, message_id, work_item_id) VALUES (?, ?, ?)")
       .run(mailbox, messageId, itemId);
@@ -320,7 +320,7 @@ const MONITORED = new Set([INBOX, FORM]);
   // the thread grouping and the guarded UPDATE (whose WHERE used to hardcode resolution 'outlook').
   const byHand = item({ status: "done", resolution: "done", closed_ago: "-2 hours",
                         conversation_key: "garage@example.com|return request" });
-  ledger("info", "H1", byHand.id);                    // Axle marked it read when the item closed
+  ledger("info", "H1", byHand.id);                    // the Email app marked it read when the item closed
   r = await OC.reconcileBox("info", {
     monitored: MONITORED, states: stub({}),
     unread: [msg("H1", "RE: Return request", "garage@example.com")],
@@ -332,7 +332,7 @@ const MONITORED = new Set([INBOX, FORM]);
     (db.prepare("SELECT detail FROM audit_log WHERE work_item_id = ? AND action = 'reopened_in_outlook'")
       .get(byHand.id) || {}).detail || ""), "...and an audit row that says which kind of close it undid");
 
-  // Same shape, but Axle never marked that message read (an item closed before the ledger existed,
+  // Same shape, but the Email app never marked that message read (an item closed before the ledger existed,
   // or mail that was simply never opened): nothing to undo, and no mass resurrection on first run.
   const stillDone = item({ status: "done", resolution: "done", closed_ago: "-2 hours",
                            conversation_key: "never@example.com|never read" });

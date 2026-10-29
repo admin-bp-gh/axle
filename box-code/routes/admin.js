@@ -5,7 +5,7 @@
 const RESOLVE = require("../resolve-customer.js"); // read-only SAP-customer check in the block dialog
 const OB = require("../outlook-block.js");        // Outlook-side filing of blocked senders (action #7)
 const { db, audit } = require("../db.js");
-const K = require("../knowledge.js");             // Teach Axle: text cap, sanitiser, prompt line format
+const K = require("../knowledge.js");             // Teach Email: text cap, sanitiser, prompt line format
 const { esc, t, fmtDateTime, icon, iconBtn, pill, deskPage, bannerPage, notFoundPage } = require("../views/ui.js");
 const { markReadSafe } = require("./shared.js");
 const BASE = require("../base-path.js");          // AXLE_BASE_PATH URL prefix
@@ -37,7 +37,7 @@ const requireAdmin = (req, res, what) => {
 
 module.exports = function mountAdmin(app) {
 
-// ---- Block sender (Axle-only suppression, reversible) -------------------------------------
+// ---- Block sender (Email-app-only suppression, reversible) -------------------------------------
 // GET = what will be blocked: the ONE address, with a SAP-customer check so a real customer isn't
 // blocked by accident. In place (X-Axle-Inline) it is the dialog the email's More menu opens; any
 // other request gets the same content as a page. POST = insert the block, archive this item
@@ -116,7 +116,7 @@ app.post("/item/:id/block", async (req, res) => {
   await markReadSafe(req.user.tailscale_login, w);
   // Outlook side (action #7): rebuild the inbox rule from the table, then sweep this sender's mail
   // already in the inbox into the "Axle Blocked" folder. DB first, mailbox second, and applyBlock
-  // never throws: a Graph failure is audited and leaves the Axle-side block standing rather than
+  // never throws: a Graph failure is audited and leaves the Email-side block standing rather than
   // failing the whole action in the user's face.
   await OB.applyBlock(req.user.tailscale_login, pattern, w.id);
   res.redirect(BASE.url("/"));
@@ -168,7 +168,7 @@ app.post("/blocks/:id/unblock", async (req, res) => {
 // Adoption dashboard (owners). Computed live from the DB (adoption-report.js), the numbers cached
 // for 5 minutes so the shell button and repeat views cost nothing; drawn per request in the
 // reader's language and frame. Opened from the queue More menu, the Workbench shell's Adoption
-// button inside the Axle frame, or at /adoption directly.
+// button inside the Email frame, or at /adoption directly.
 let adoptionCache = { at: 0, data: null };
 app.get("/adoption", (req, res) => {
   if (!requireAdmin(req, res, "adoption")) return;
@@ -178,7 +178,7 @@ app.get("/adoption", (req, res) => {
   res.send(ADOPT.renderHtml(adoptionCache.data, req.user));
 });
 
-// Teach Axle review (owners, Phase 6). Pending flags first, each with the email link, the draft as
+// Teach Email review (owners, Phase 6). Pending flags first, each with the email link, the draft as
 // the salesperson saw it, and an editable text box: Approve stores the box's text as final_text (so
 // Brad's edit IS the gate), Reject keeps the row with status 'rejected'. Decided entries are listed
 // below, approved ones as they appear in the prompt, for folding into business-knowledge.md by
@@ -188,7 +188,7 @@ app.get("/teach", (req, res) => {
   const lang = req.user.lang;
   const L = (k) => esc(t(lang, k));
   audit(req.user.tailscale_login, "view_teach", null, null);
-  // fb_*: the staff feedback an entry came from (learning loop, 2026-10-10), shown on Axle's proposals.
+  // fb_*: the staff feedback an entry came from (learning loop, 2026-10-10), shown on the Email assistant's proposals.
   const rows = db.prepare(`SELECT f.*, COALESCE(u.display_name, f.flagged_by) AS who, COALESCE(r.display_name, f.reviewed_by) AS reviewer, w.subject,
       fb.text AS fb_text, COALESCE(fu.display_name, fb.author) AS fb_who
     FROM teach_flags f LEFT JOIN users u ON u.tailscale_login = f.flagged_by LEFT JOIN users r ON r.tailscale_login = f.reviewed_by

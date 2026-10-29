@@ -15,7 +15,7 @@
 // customer's original mail several replies back, deliberately marked unread as a to-do (this is
 // the #992 shape). Feeding that straight into ingest would reopen settled items and point them at
 // stale mail. Marking OLD mail unread is the reopen mirror's job (outlook-close.js), which handles
-// it without disturbing the item's newest message. So the sweep adds only what Axle has never
+// it without disturbing the item's newest message. So the sweep adds only what the Email app has never
 // seen:
 //
 //   no work item for this thread          -> ADD. This is the moved-mail case the sweep is for.

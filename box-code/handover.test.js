@@ -49,7 +49,7 @@ test("seedBlock names the note as trusted staff input and carries our replies, c
 });
 
 test("forwardComment puts the note under forward-guard's own note after a blank line, nothing when empty", () => {
-  const base = FG.noteBlock(["Handed over in Axle by Jack", "From Sales (Gouda) to Drachten"]);
+  const base = FG.noteBlock(["Handed over in the Email app by Jack", "From Sales (Gouda) to Drachten"]);
   assert.strictEqual(HO.forwardComment(base, "  "), base);
   assert.strictEqual(HO.forwardComment(base, "Hi Rob, pls can you give him a call"),
     base + "<br>" + FG.noteBlock(["Note:", "Hi Rob, pls can you give him a call"]));

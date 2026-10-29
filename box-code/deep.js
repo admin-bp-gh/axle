@@ -1,14 +1,14 @@
 "use strict";
-// deep.js - Dig deeper on an Axle draft (AI parity Step D, 17 Oct 2026).
+// deep.js - Dig deeper on an Email draft (AI parity Step D, 17 Oct 2026).
 //
-// A person presses Dig deeper (or Ctrl/Cmd+Shift+Enter) and Axle redrafts the reply on Workbench's axle-deep
+// A person presses Dig deeper (or Ctrl/Cmd+Shift+Enter) and the Email assistant redrafts the reply on Workbench's axle-deep
 // channel (Opus 5.5, adaptive thinking) through the same prose path, gates, containment, <internal> contract
 // and Send-blocking as every draft. The deep draft replaces the current one, as Redraft does (Gate 1).
-// Nothing here sends anything. Opus never runs by itself: Axle only shows a quiet hint (hintFor).
+// Nothing here sends anything. Opus never runs by itself: the Email app only shows a quiet hint (hintFor).
 //   drafter()  the agent client on channel axle-deep.
 //   enabled()  AXLE_DEEP=on, and drafts go through the Workbench agent (AXLE_AGENT=step with AGENT_TOKEN).
 //   DEEP_BLOCK our own trusted instruction, placed after the seed context like quick-reply mode.
-//   WEB_SEARCH the Anthropic server tool, trusted Land Rover catalogues only (the list Ratchet uses).
+//   WEB_SEARCH the Anthropic server tool, trusted Land Rover catalogues only (the list Sales uses).
 //   hintFor()  why Dig deeper may help on this draft, or null.
 //   checkBudget() the soft daily budget per user: one deep_budget audit row once crossed, never a stop.
 

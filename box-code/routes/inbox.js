@@ -249,7 +249,7 @@ async function buildQueuePane(req, opts) {
   const total = found ? found.total : hist ? db.prepare(`SELECT COUNT(*) AS n FROM work_items w WHERE ${conds.join(" AND ")}`).get(...params).n : items.length;
   audit(req.user.tailscale_login, "view_inbox", null, `mailbox=${mb} scope=${scope} show=${show} items=${total} lang=${lang}`);
   const qs = filterQs(f);
-  // Axle authors summaries in English; CACHED translations render inline, uncached ones show
+  // The Email app authors summaries in English; CACHED translations render inline, uncached ones show
   // English first and axle.js fills them in through POST /queue/summaries ([data-trs]).
   const sumTr = {};
   const sumPending = new Set();
@@ -260,7 +260,7 @@ async function buildQueuePane(req, opts) {
   }
   const sumOf = (w) => (lang !== "en" && sumTr[w.id]) || w.summary || "";
   const ws = q ? SEARCH.matchWords(q) : null;
-  // Voicemail counts only when the list shows a voicemail; computed from Axle's own rows. Best effort.
+  // Voicemail counts only when the list shows a voicemail; computed from the Email app's own rows. Best effort.
   let vmN = null;
   if (items.some((w) => SG.isVoicemailItem(w))) {
     try { vmN = VS.voicemailCounts(db.prepare(VS.VOICEMAIL_ROWS_SQL).all()); } catch (e) { vmN = null; }
@@ -295,7 +295,7 @@ async function buildQueuePane(req, opts) {
   const count = q ? `<p class="ax-qcount" role="status">${esc(t(lang, total === 1 ? "q_count_1" : total ? "q_count_n" : "q_count_0").replace("{n}", total))}</p>` : "";
   const lastT = sync.finished_at ? fmtTime(parseTS(sync.finished_at), lang) : t(lang, "never");
   const html = `<div class="ax-q" data-qs="${esc(qs)}" data-stamp="${esc(queueStamp(f))}" data-show="${show}"${follow ? ` data-followed="${follow}"` : ""}>
-<header class="wb-page__hd ax-ptop">${homeLink(lang)}<h1 class="wb-page__t">Axle</h1>${icons}</header>
+<header class="wb-page__hd ax-ptop">${homeLink(lang)}<h1 class="wb-page__t">${lang === "nl" ? "E-mail" : "Email"}</h1>${icons}</header>
 ${head}
 <div data-ax-banner>${opts && opts.syncedBanner ? `<div class="wb-banner ax-flash" data-tone="info">${icon("info")}<div class="wb-banner__body">${L("sync_started")}</div></div>` : ""}</div>
 <div id="qbody">${count}
@@ -310,7 +310,7 @@ ${menu}
 // --- Compose (Compose A) ----------------------------------------------------------------------
 // A drawer from 640 up, a page on the phone (axle.js draws the one markup either way). Customer
 // (the resolver, read-only), What should it say, Attach; Cancel, Write it myself (reveals Subject,
-// the main button becomes Send; only while allow-list #3 is on), Draft with Axle. Language is
+// the main button becomes Send; only while allow-list #3 is on), Draft with the Email assistant. Language is
 // automatic and Send from follows the person, as the old selects defaulted. Posts exactly the
 // fields POST /compose reads; the recipient is re-resolved and re-validated there.
 function composeUi(req) {

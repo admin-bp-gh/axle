@@ -1,6 +1,6 @@
-// adoption-report.js: the Axle Adoption Dashboard.
+// adoption-report.js: the Email Adoption Dashboard.
 //
-// Reads the Axle SQLite DB directly (computeFromDb) and draws the numbers as an Axle page in the
+// Reads the Email SQLite DB directly (computeFromDb) and draws the numbers as an Email page in the
 // shared vocabulary, in plain HTML and CSS (renderHtml; no chart library, no external requests).
 // The server shows it to owners at /adoption; run from the command line it writes a single HTML
 // file that opens on its own (the stylesheets inline, no scripts).
@@ -18,8 +18,8 @@
 // drafts of the last 7 days, grouped by intent, each linking to its item.
 //
 // 2026-10-10 (learning loop, draft review section 7): two metrics beside the existing one. The
-// existing "unchanged" share compares the sent text with Axle's LAST version, after any redrafts
-// (66 % in the review); it is now labelled that way. First-draft acceptance compares it with Axle's
+// existing "unchanged" share compares the sent text with the Email assistant's LAST version, after any redrafts
+// (66 % in the review); it is now labelled that way. First-draft acceptance compares it with the Email assistant's
 // FIRST draft for that reply (47 % in the review), and the redraft rate is the share of replies
 // where a salesperson pressed Redraft. Both by user, topic and ISO week; definitions below.
 const fs = require("fs");
@@ -50,7 +50,7 @@ const db = new Database(DB_PATH, { readonly: true });
 const norm = (t) => (t || "").replace(/\s+/g, " ").trim().toLowerCase();
 
 // Normalised Levenshtein ratio (1 = identical). Used to grade how close the sent
-// email is to Axle's AI draft. Strings here are short emails, so O(n*m) is fine.
+// email is to the Email assistant's AI draft. Strings here are short emails, so O(n*m) is fine.
 function simRatio(a, b) {
   a = norm(a); b = norm(b);
   if (!a && !b) return 1;
@@ -111,7 +111,7 @@ const meta = {
 
 // --- per-send similarity --------------------------------------------------
 const itemById = {}; for (const it of items) itemById[it.id] = it;
-// sim: against the AI version the send was edited from (the last one). firstSim: against Axle's
+// sim: against the AI version the send was edited from (the last one). firstSim: against the Email assistant's
 // first draft of the turn (the same draft when nobody redrafted). firstOk: first draft accepted,
 // that is no redraft in the turn and 80 % or more of it kept. redrafted: Redraft pressed in the turn.
 const sendRows = sends.map((s) => {
@@ -166,7 +166,7 @@ const mailbox = MB.map((mb) => {
   };
 });
 
-// --- daily trend (items created vs Axle sends, per mailbox) ---------------
+// --- daily trend (items created vs Email app sends, per mailbox) ---------------
 const day = (ts) => (ts || "").slice(0, 10);
 const dset = new Set();
 const created = {}, sent = {};
@@ -291,7 +291,7 @@ function renderHtml(D, user) {
     D.perUser.filter((u) => u.sends > 0 || u.user !== "admin").map((u) => `<tr><td>${esc(u.label)}</td>${num(u.sends)}${num(pc(u.firstPct))}${num(pc(u.redraftPct))}${num(pc(u.verbatimPct))}<td class="ax-mixcell">${mix(u)}</td>${num(u.medianSim != null ? pc(Math.round(u.medianSim * 100)) : "")}<td class="ax-nowrap">${last(u.lastSend)}</td></tr>`))
     + `<div class="ax-legend ax-legend--row">${BUCKETS.map(([k, c]) => `<div><i class="${c}"></i>${L("ad_b_" + k)}</div>`).join("")}</div>`);
 
-  // Daily activity per mailbox: emails in beside sends through Axle, one thin pair of bars a day
+  // Daily activity per mailbox: emails in beside sends through the Email app, one thin pair of bars a day
   const daily = (mb, ins, sent) => {
     const max = Math.max(1, ...ins, ...sent);
     const days = D.trend.days.map((d, i) => `<span title="${esc(date(d))}: ${ins[i]} ${L("ad_in").toLowerCase()}, ${sent[i]} ${L("ad_sent").toLowerCase()}"><i style="height:${100 * ins[i] / max}%"></i><i class="ax-fill-info" style="height:${100 * sent[i] / max}%"></i></span>`).join("");

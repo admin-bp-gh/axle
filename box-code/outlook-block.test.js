@@ -25,7 +25,7 @@ const path = require("node:path");
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "axle-oblock-"));
 process.env.AXLE_DB = path.join(tmpDir, "test.db");
-assert.ok(!/[\\/](Axle|axle)[\\/]data[\\/]/.test(process.env.AXLE_DB), "refusing to run against a real Axle data dir");
+assert.ok(!/[\\/](Axle|axle)[\\/]data[\\/]/.test(process.env.AXLE_DB), "refusing to run against a real Email data dir");
 process.env.MAILBOX_INFO = "info@budget-parts.nl";
 process.env.MAILBOX_DRACHTEN = "drachten@budget-parts.nl";
 process.env.M365_TENANT_ID = "t"; process.env.M365_CLIENT_ID = "c"; process.env.M365_CLIENT_SECRET = "s";
@@ -127,7 +127,7 @@ test("an empty blocklist DELETES the rules and writes nothing else", async () =>
   });
   setBlocks([]);
   const rep = await OB.syncMailbox("info");
-  assert.equal(g.state.rules.length, 0, "both Axle rules removed");
+  assert.equal(g.state.rules.length, 0, "both Email app rules removed");
   assert.equal(rep.changes.filter((c) => c.startsWith("deleted")).length, 2);
   assert.equal(g.writes().filter((c) => c.method === "POST" || c.method === "PATCH").length, 0,
     "an empty blocklist must never create or patch a rule");
@@ -215,7 +215,7 @@ test("dry run reads but never writes", async () => {
 
 // ---- 5. rule content, ordering and idempotency ----------------------------------------------------
 
-test("the created rule moves to the Axle folder, marks read and stops processing", async () => {
+test("the created rule moves to the Axle Blocked folder, marks read and stops processing", async () => {
   const g = makeGraph();
   setBlocks([["spam@example.com", "address"]]);
   await OB.syncMailbox("info");

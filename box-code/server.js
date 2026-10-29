@@ -680,9 +680,25 @@ root.get(BASE.url("/healthz"), (req, res) => res.json({ ok: true, version: VERSI
 root.use(BASE.path || "/", app);
 
 if (require.main === module) {
-  root.listen(PORT, BIND_IP, () => {
+  const server = root.listen(PORT, BIND_IP, () => {
     console.log(`Axle web listening on ${BIND_IP}:${PORT}${BASE.path ? ` under ${BASE.path}` : ""} (loopback; fronted by Tailscale Serve)`);
     MS.startBackfillOnce();   // once per database, in the background: the threads and attachments of the open emails
+  });
+  // Deploy handover (run-server.ps1): the supervisor starts the new release while the old one still
+  // holds the port. This process loads everything, writes ..\data\deploy\ready and keeps trying the
+  // port every 100 ms; the supervisor then stops the old process and this one binds within a fraction
+  // of a second. The backfill starts in the listening callback, so it never runs in two processes.
+  let waitingForPort = false;
+  server.on("error", (e) => {
+    if (e.code !== "EADDRINUSE") throw e;
+    if (!waitingForPort) {
+      waitingForPort = true;
+      console.log(`port ${PORT} in use: loaded and waiting for the handover`);
+      const fs = require("fs"), dir = require("path").join(__dirname, "..", "data", "deploy");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(require("path").join(dir, "ready"), String(process.pid));
+    }
+    setTimeout(() => { server.close(); server.listen(PORT, BIND_IP); }, 100);
   });
 }
 module.exports = root;   // for base-path.test.js (healthz and the identity wall over plain http)

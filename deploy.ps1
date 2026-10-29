@@ -7,9 +7,12 @@
 # What it does, stopping at the first problem:
 #   1. Compares every file under box-code\ with its counterpart in C:\Axle\app and stages the ones
 #      that differ (content hash, not timestamp — a re-copied identical file is not a change).
-#   2. Runs axle-pull.ps1, which places each file and node --checks the JS.
-#   3. Runs the test suites AGAINST THE LIVE TREE. Any failure: stops without restarting.
-#   4. Restarts the Axle Server task and confirms the PID changed.
+#   2. Builds a NEW release folder C:\Axle\app-<commit>-<stamp> (a copy of the live release plus
+#      the changed files, node --checked). The live tree is never written.
+#   3. Runs the test suites against that new release. Any failure: the live server is untouched.
+#   4. switch-release.ps1: points the C:\Axle\app junction at it and hands over. The new release
+#      loads next to the old one, which keeps serving; then the old one stops and the new one takes
+#      the port in well under a second. rollback.ps1 hands back to the previous release.
 #
 # Self-elevates: the task runs as the low-privilege `axle` account, so an unelevated restart
 # fails with "Access is denied". Logs line by line to deploy.log so the result survives even if
@@ -19,7 +22,7 @@
 # live tree is listed but NOT sent unless you pass -IncludeNew: most such files are repo-only dev
 # helpers, not pending deploys.
 #
-# Flags (optional, for a shell):  -WhatIf  list changes and stop.   -NoRestart  deploy but leave
+# Flags (optional, for a shell):  -WhatIf  list changes and stop.   -NoRestart  switch the files but leave
 # the running server alone (safe for test-only or asset-only changes).   -IncludeNew  also send
 # files the box does not have yet.
 
@@ -188,69 +191,64 @@ try {
   Say ("  all relative requires in {0} changed file(s) resolve on the box." -f $changed.Count) "Green"
   if ($WhatIf) { Say "`n-WhatIf: stopping without changing anything." "Yellow"; return }
 
-  # --- 2. Placing ------------------------------------------------------------------------------
-  # Placed DIRECTLY, by each file's own repo-relative path. This used to hand the files to
-  # axle-pull.ps1, which routes by BASENAME - it looks for a file of that name somewhere under the
-  # app tree and copies over it. That is a guess, and on 2026-08-15 it failed: `sprocket.js` exists
-  # BOTH at app\sprocket.js and app\routes\sprocket.js, so axle-pull refused the file as ambiguous
-  # and the change never landed. Deploy already KNOWS where each file belongs - it computed $Dest
-  # to compare against in step 1 - so guessing was never necessary. Placing by path also removes
-  # the "brand-new subfolder file lands in the app root" caveat entirely.
-  #
-  # axle-pull.ps1 keeps its original job (placing files Taildropped from the Mac); it is simply no
-  # longer in the deploy path.
-  Say "`n=== 2. Placing ===" "Cyan"
+  # --- 2. Building the release -----------------------------------------------------------------
+  # The live tree is never written any more. A deploy builds a NEW release folder next to it,
+  # C:\Axle\app-<commit>-<stamp>: a copy of the live release (node_modules and box-only files
+  # included, ACLs included so the axle account keeps exactly the rights it has today), with this
+  # run's changed files placed into it by their own repo-relative path. Tests then run against that
+  # folder, and only step 4 makes it live. app\ is a junction to the live release; release folders
+  # sit NEXT to it so __dirname\.. is still C:\Axle (data\, secrets\, logs\, sprocket\).
+  # Sprocket's help doc is the one exception: it lives in C:\Axle\sprocket (read fresh on every
+  # answer, see step 1), so it is placed there directly, as before.
+  Say "`n=== 2. Building release $commit ===" "Cyan"
+  $live = (Get-Item $app -Force).Target | Select-Object -First 1
+  $from = if ($live) { $live } else { $app }
+  $rel  = Join-Path (Split-Path $app -Parent) "app-$commit-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+  New-Item -ItemType Directory -Force $rel | Out-Null
+  $acl = Get-Acl $rel; $acl.SetSecurityDescriptorSddlForm((Get-Acl $from).Sddl, "Access"); Set-Acl $rel $acl   # same rights as the live release, owner left alone
+  robocopy $from $rel /E /SEC /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "copying the live release into $rel failed (robocopy $LASTEXITCODE) - nothing changed." }
   $placeFailed = @()
   foreach ($c in $changed) {
-    $where = Split-Path $c.Dest -Parent
+    $dest = if ($c.Rel -like 'sprocket\*') { $c.Dest } else { Join-Path $rel $c.Rel }
+    $where = Split-Path $dest -Parent
     try {
       New-Item -ItemType Directory -Force $where | Out-Null
-      Copy-Item $c.Path $c.Dest -Force
+      Copy-Item $c.Path $dest -Force
     } catch {
       Say ("  FAIL  {0}  ({1})" -f $c.Rel, $_.Exception.Message) "Red"
       $placeFailed += $c.Rel; continue
     }
-    if (-not (Test-Path $c.Dest)) { Say ("  FAIL  {0}  (not at {1} after copy)" -f $c.Rel, $c.Dest) "Red"; $placeFailed += $c.Rel; continue }
     if ([IO.Path]::GetExtension($c.Rel) -ieq ".js") {
-      & node --check $c.Dest 2>&1 | Out-Null
+      & node --check $dest 2>&1 | Out-Null
       if ($LASTEXITCODE -ne 0) { Say ("  FAIL  {0}  (node --check failed)" -f $c.Rel) "Red"; $placeFailed += $c.Rel; continue }
     }
-    Say ("  OK    {0}  -> {1}" -f $c.Rel, $where) "Green"
+    Say ("  OK    {0}" -f $c.Rel) "Green"
   }
-  # A file that did not land must STOP the deploy. Previously axle-pull printed its own warning,
-  # deploy piped it through as ordinary output and carried on - so the run restarted the server and
-  # reported "DEPLOY OK" while a change had silently not been applied. Same failure family as the
-  # dependency check added earlier the same day: never restart into a tree you did not fully write.
+  # Never switch to a release you did not fully write.
   if ($placeFailed.Count) {
-    throw ("{0} file(s) did not place: {1} - NOT restarting. Fix, then re-run." -f $placeFailed.Count, ($placeFailed -join ", "))
+    throw ("{0} file(s) did not place: {1} - live server untouched. Fix, then re-run." -f $placeFailed.Count, ($placeFailed -join ", "))
   }
+  "$commit  deployed $(Get-Date -Format 'yyyy-MM-dd HH:mm')  by $env:USERNAME" | Set-Content (Join-Path $rel "VERSION.txt") -Encoding ascii
 
-  Say "`n=== 3. Test suites against the LIVE tree ===" "Cyan"
-  Push-Location $app
+  Say "`n=== 3. Test suites against the new release ===" "Cyan"
+  Push-Location $rel
   $failed = @()
   foreach ($s in $suites) {
-    if (-not (Test-Path (Join-Path $app $s))) { Say "  (skipped $s - not deployed)"; continue }
+    if (-not (Test-Path (Join-Path $rel $s))) { Say "  (skipped $s - not deployed)"; continue }
     & node $s 2>&1 | ForEach-Object { Say "  $_" }
     if ($LASTEXITCODE -ne 0) { $failed += $s }
   }
   Pop-Location
-  if ($failed.Count) { throw ("TESTS FAILED: " + ($failed -join ", ") + " - NOT restarting. Fix, then re-run.") }
+  if ($failed.Count) { throw ("TESTS FAILED: " + ($failed -join ", ") + " - live server untouched. Fix, then re-run.") }
 
-  if ($NoRestart) { Say "`n-NoRestart: files are live, server left running." "Yellow"; return }
+  Say "`n=== 4. Switching to the new release ===" "Cyan"
+  & (Join-Path $repo "switch-release.ps1") -Release $rel -NoRestart:$NoRestart *>&1 | ForEach-Object { Say "  $_" }
 
-  Say "`n=== 4. Restarting Axle Server ===" "Cyan"
-  $before = (Get-NetTCPConnection -LocalPort 8484 -State Listen -ErrorAction SilentlyContinue).OwningProcess
-  Stop-ScheduledTask  -TaskName "Axle Server"
-  Start-ScheduledTask -TaskName "Axle Server"
-  Start-Sleep -Seconds 10
-  $after = (Get-NetTCPConnection -LocalPort 8484 -State Listen -ErrorAction SilentlyContinue).OwningProcess
-  if (-not $after) { throw "Server is DOWN after restart - check C:\Axle\logs\server.log" }
-  Say "  before PID $before / after PID $after" "Green"
-  if ($before -and $before -eq $after) { Say "  WARNING: same PID - it may not have restarted." "Yellow" }
-
-  # Stamp which commit is live, so "what is running?" is a file read, not a guess. Written only
-  # after a successful restart, so a failed deploy never claims a version it did not ship.
-  "$commit  deployed $(Get-Date -Format 'yyyy-MM-dd HH:mm')  by $env:USERNAME" | Set-Content (Join-Path $app "VERSION.txt") -Encoding ascii
+  # Keep the live release and the 4 before it (rollback.ps1 goes back one).
+  Get-ChildItem (Split-Path $app -Parent) -Directory -Filter "app-*" | Where-Object { $_.FullName -ne $rel } |
+    Sort-Object CreationTime -Descending | Select-Object -Skip 4 |
+    ForEach-Object { Say "  pruning $($_.Name)"; Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 
   Say "`nDEPLOY OK - now hard-refresh Axle over Tailscale and check the change on a real item." "Green"
 }
